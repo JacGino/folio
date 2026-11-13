@@ -5,6 +5,8 @@ import { formatDate } from './dates.js';
 
 let bar = null, target = null;
 const isTouch = () => window.FOLIO_KBAR === true || matchMedia('(pointer: coarse)').matches;
+// the on-screen keyboard is up when it takes a good part of the screen (a hardware keyboard does not)
+const keyboardUp = () => window.FOLIO_KBAR === true || (window.visualViewport ? innerHeight - visualViewport.height > 150 : false);
 const editable = el => el && (el.isContentEditable || el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && /^(text|search|url|email|tel|number|)$/.test(el.type)));
 const rich = () => target && target.isContentEditable;
 const fire = () => target && target.dispatchEvent(new Event('input', { bubbles: true }));
@@ -74,17 +76,18 @@ function place() {
   const vv = window.visualViewport; const bottom = vv ? vv.offsetTop + vv.height : innerHeight;
   bar.style.top = Math.round(bottom - bar.offsetHeight - 8) + 'px';
 }
-function show(el) {
-  if (!isTouch()) return;
-  target = el; if (!bar) build();
-  bar.classList.toggle('plain', !el.isContentEditable);
-  bar.hidden = false; document.body.classList.add('typing'); place(); setTimeout(place, 300); setTimeout(place, 650);
+function show(el) { target = el; update(); }
+function update() {
+  const on = !!target && isTouch() && keyboardUp() && editable(document.activeElement);
+  if (on && !bar) build();
+  if (bar) { bar.hidden = !on; if (on) { bar.classList.toggle('plain', !target.isContentEditable); place(); } else { const pk = bar.querySelector('.kpick'); if (pk) { pk.remove(); bar.querySelector('.kscroll').hidden = false; } } }
+  document.body.classList.toggle('typing', on);
 }
-function hide() { target = null; if (bar) { bar.hidden = true; const p = bar.querySelector('.kpick'); if (p) { p.remove(); bar.querySelector('.kscroll').hidden = false; } } document.body.classList.remove('typing'); }
+function hide() { target = null; update(); }
 
 export function initKeyboardBar() {
   document.addEventListener('focusin', e => { if (editable(e.target)) show(e.target); });
   document.addEventListener('focusout', () => setTimeout(() => { if (!editable(document.activeElement)) hide(); else show(document.activeElement); }, 60));
-  if (window.visualViewport) { visualViewport.addEventListener('resize', place); visualViewport.addEventListener('scroll', place); }
+  if (window.visualViewport) { visualViewport.addEventListener('resize', () => { update(); setTimeout(update, 250); }); visualViewport.addEventListener('scroll', place); }
   addEventListener('resize', place);
 }

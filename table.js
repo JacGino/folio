@@ -6,6 +6,7 @@ import { formatDate, parseDate, toISODate, dateAdd } from './dates.js';
 import { go, openTask, state, now, browserUrl } from './app.js';
 import { propEditor, chip } from './page.js';
 import { evaluate } from './formula.js';
+import { popEdit } from './popedit.js';
 
 const cur = new Map();     // dbId -> view id
 const searches = new Map(); // dbId -> text
@@ -119,13 +120,37 @@ let lastTap = { key: '', t: 0 };
 // only a tap (pressed and let go without moving) counts toward a double-tap
 const doubleTap = key => lastTap.key === key && Date.now() - lastTap.t < 400;
 const noteTap = (key, moved) => { lastTap = moved ? { key: '', t: 0 } : { key, t: Date.now() }; };
+const HOLD_MS = 450; // finger: hold a line this long to start resizing
 function drag(e, onMove, onEnd) {
-  e.preventDefault(); e.stopPropagation();
-  const el = e.currentTarget; el.classList.add('on'); try { el.setPointerCapture(e.pointerId); } catch {}
-  const x0 = e.clientX, y0 = e.clientY; let moved = false;
-  const move = ev => { if (Math.abs(ev.clientX - x0) + Math.abs(ev.clientY - y0) > 2) moved = true; onMove(ev.clientX - x0, ev.clientY - y0); };
-  const up = () => { el.classList.remove('on'); el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up); el.removeEventListener('pointercancel', up); onEnd(moved); };
-  el.addEventListener('pointermove', move); el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+  const el = e.currentTarget;
+  if (e.pointerType === 'mouse') { // mouse: drag straight away
+    e.preventDefault(); e.stopPropagation();
+    el.classList.add('on'); try { el.setPointerCapture(e.pointerId); } catch {}
+    const x0 = e.clientX, y0 = e.clientY; let moved = false;
+    const move = ev => { if (Math.abs(ev.clientX - x0) + Math.abs(ev.clientY - y0) > 2) moved = true; onMove(ev.clientX - x0, ev.clientY - y0); };
+    const up = () => { el.classList.remove('on'); el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up); el.removeEventListener('pointercancel', up); onEnd(moved); };
+    el.addEventListener('pointermove', move); el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+    return;
+  }
+  // finger or pencil: hold to turn dragging on, let go to turn it off; a swipe just scrolls the table
+  const x0 = e.clientX, y0 = e.clientY; let active = false, moved = false, gone = false;
+  const timer = setTimeout(() => { if (gone) return; active = true; el.classList.add('on'); try { navigator.vibrate && navigator.vibrate(10); } catch {} }, HOLD_MS);
+  const pt = ev => ev.touches && ev.touches[0] ? ev.touches[0] : ev.changedTouches && ev.changedTouches[0] ? ev.changedTouches[0] : ev;
+  const move = ev => {
+    const t = pt(ev), dx = t.clientX - x0, dy = t.clientY - y0;
+    if (!active) { if (Math.abs(dx) + Math.abs(dy) > 8) stop(null); return; } // it is a scroll
+    if (ev.cancelable) ev.preventDefault();                                        // dragging: hold the page still
+    moved = true; onMove(dx, dy);
+  };
+  const end = () => { const was = active; stop(was ? moved : 'tap'); };
+  function stop(result) {
+    if (gone) return; gone = true; clearTimeout(timer); el.classList.remove('on');
+    document.removeEventListener('touchmove', move, { passive: false }); document.removeEventListener('touchend', end); document.removeEventListener('touchcancel', end);
+    document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', end); document.removeEventListener('pointercancel', end);
+    if (result === 'tap') onEnd(false); else if (result !== null) onEnd(result); else noteTap('', true);
+  }
+  document.addEventListener('touchmove', move, { passive: false }); document.addEventListener('touchend', end); document.addEventListener('touchcancel', end);
+  if (!('ontouchstart' in window)) { document.addEventListener('pointermove', move); document.addEventListener('pointerup', end); document.addEventListener('pointercancel', end); }
 }
 function applyCols(grid, dbr, v) {
   const ps = visibleProps(dbr, v); const cols = ps.map(q => colW(q, v) + 'px').join(' ');
@@ -136,32 +161,7 @@ function colHandles(dbr, v, ps) {
   let x = 0;
   return ps.map(p => { x += colW(p, v); return h('span', { class: 'colrz', 'aria-hidden': 'true', title: 'Drag to change column width. Double-tap to reset.', style: { left: (x - 6) + 'px' }, onpointerdown: e => resize(e, dbr, v, p) }); });
 }
-// Notion-style editing: a white floating card over the cell, the text grows downward as you type.
-export function popEdit(td, r, p, fill) {
-  document.querySelector('.cellpop')?.dispatchEvent(new Event('commit'));
-  const rc = td.getBoundingClientRect(), num = p.type === 'number';
-  const inp = h('textarea', { class: 'popin', rows: 1, 'aria-label': p.name, inputmode: num ? 'decimal' : p.type === 'url' ? 'url' : null, autocapitalize: p.type === 'url' ? 'off' : null, spellcheck: p.type === 'text' ? null : 'false' });
-  inp.value = DB.raw(r, p) ?? '';
-  const left = Math.max(8, Math.min(rc.left - 1, innerWidth - 248));
-  const box = h('div', { class: 'cellpop', style: { left: left + 'px', top: (rc.top - 1) + 'px', minWidth: Math.min(Math.max(rc.width + 2, 240), innerWidth - left - 8) + 'px', maxWidth: Math.max(240, Math.min(440, innerWidth - left - 8)) + 'px' } }, inp);
-  const grow = () => { inp.style.height = 'auto'; inp.style.height = Math.min(inp.scrollHeight, innerHeight * 0.4) + 'px'; };
-  let done = false;
-  const close = save => {
-    if (done) return; done = true;
-    if (save) { let val = inp.value.replace(/\n+$/, ''); if (num) val = val.trim() === '' ? null : +val; else if (p.type === 'url') val = val.trim(); if (val !== (DB.raw(r, p) ?? (num ? null : ''))) D.update(r.id, { ['p:' + p.id]: val }); }
-    box.remove(); removeEventListener('scroll', onScroll, true); fill(); td.classList.remove('editing');
-  };
-  // the keyboard sliding up scrolls the page: follow the cell, close only when it has left the screen
-  const onScroll = e => { if (box.contains(e.target)) return; const b = td.getBoundingClientRect(); const vh = window.visualViewport ? visualViewport.height + visualViewport.offsetTop : innerHeight;
-    if (b.bottom < 0 || b.top > vh) return close(true); box.style.top = (b.top - 1) + 'px'; box.style.left = Math.max(8, Math.min(b.left - 1, innerWidth - 248)) + 'px'; };
-  inp.addEventListener('input', grow);
-  inp.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); close(true); } if (e.key === 'Escape') { e.preventDefault(); close(false); td.focus(); } });
-  inp.addEventListener('blur', () => setTimeout(() => close(true), 0));
-  box.addEventListener('commit', () => close(true));
-  document.body.append(box); td.classList.add('editing'); grow();
-  inp.focus({ preventScroll: true }); const n = inp.value.length; try { inp.setSelectionRange(n, n); } catch {}
-  addEventListener('scroll', onScroll, true);
-}
+export { popEdit };
 function resize(e, dbr, v, p) {
   const grid = e.currentTarget.closest('.grid');
   if (doubleTap('c' + p.id)) { lastTap = { key: '', t: 0 }; const w = { ...(v.widths || {}) }; delete w[p.id]; v.widths = w; applyCols(grid, dbr, v); saveView(dbr, v); return; }

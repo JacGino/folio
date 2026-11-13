@@ -7,6 +7,7 @@ import { mountEditor, blocksToMd, nb } from './editor.js';
 import { formatDate, toISODate, parseDate } from './dates.js';
 import { state, go, renderNav, download, layoutMode, browserUrl, now, moreMenu } from './app.js';
 import { renderDbBlock } from './table.js';
+import { popEdit } from './popedit.js';
 
 let editor = null; // only one main editor at a time
 const urls = new Map();
@@ -115,15 +116,18 @@ export function propEditor(rec, p, dbr, { compact = false } = {}) {
   const key = 'p:' + p.id, v = DB.raw(rec, p), set = val => { D.update(rec.id, { [key]: val }); document.dispatchEvent(new CustomEvent('folio-row', { detail: rec.id })); };
   const refresh = (el) => { const n = propEditor(D.getRec(rec.id), p, DB.db(dbr.id), { compact }); el.replaceWith(n); n.querySelector?.('button,input')?.focus(); };
   switch (p.type) {
-    case 'text': case 'title': case 'number': {
-      const inp = h('input', { class: 'val', value: v ?? '', inputmode: p.type === 'number' ? 'decimal' : null, placeholder: 'Empty', 'aria-label': p.name,
-        onchange: e => set(p.type === 'number' ? (e.target.value === '' ? null : +e.target.value) : e.target.value), onkeydown: e => { if (e.key === 'Enter') e.target.blur(); } });
-      if (p.name === 'ECX & WBS NO' || /^ecx/i.test(p.name)) inp.style.fontFamily = 'var(--mono)';
-      return inp;
-    }
-    case 'url': {
-      const inp = h('input', { class: 'val', value: v ?? '', type: 'url', placeholder: 'Empty', 'aria-label': p.name, onchange: e => set(e.target.value.trim()), onkeydown: e => { if (e.key === 'Enter') e.target.blur(); } });
-      return h('span', { style: { display: 'flex', width: '100%', alignItems: 'center', gap: '4px' } }, inp, v ? h('a', { class: 'iconbtn', href: browserUrl(v), target: '_blank', rel: 'noopener', 'aria-label': 'Open link' }, icon('globe', 16)) : null);
+    case 'text': case 'title': case 'number': case 'url': {
+      // tap the value: a Notion-style white edit card opens over it
+      const mono = /^ecx/i.test(p.name);
+      const show = val => {
+        if (val == null || val === '') return h('span', { class: 'muted' }, 'Empty');
+        if (p.type === 'url') { try { const x = new URL(val); return h('span', { class: 'url' }, h('b', {}, x.hostname), h('i', {}, decodeURIComponent(x.pathname + x.search).replace(/\/$/, ''))); } catch {} } // like Notion: host dark, rest grey
+        return String(val);
+      };
+      const btn = h('button', { class: 'val tval' + (v == null || v === '' ? ' empty' : ''), type: 'button', 'aria-label': p.name + ': ' + (v ?? 'Empty'), style: mono ? { fontFamily: 'var(--mono)' } : null,
+        onclick: () => popEdit(btn, D.getRec(rec.id), p, () => { const nv = DB.raw(D.getRec(rec.id), p); btn.replaceChildren(show(nv)); btn.classList.toggle('empty', nv == null || nv === ''); }) }, show(v));
+      if (p.type === 'url' && v) return h('span', { style: { display: 'flex', width: '100%', alignItems: 'center', gap: '4px' } }, btn, h('a', { class: 'iconbtn', href: browserUrl(v), target: '_blank', rel: 'noopener', 'aria-label': 'Open link' }, icon('globe', 18)));
+      return btn;
     }
     case 'checkbox': return h('input', { type: 'checkbox', checked: v ? true : null, 'aria-label': p.name, style: { width: '18px', height: '18px', margin: '4px', accentColor: 'var(--blue)' }, onchange: e => set(e.target.checked) });
     case 'select': case 'status': {

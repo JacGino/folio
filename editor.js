@@ -195,7 +195,8 @@ export function mountEditor(root, opts) {
   let bar = null;
   const onSel = () => {
     const s = getSelection(); const inside = s.rangeCount && doc.contains(s.anchorNode) && !s.isCollapsed;
-    if (!inside) { bar && bar.remove(); bar = null; return; }
+    // on iPhone/iPad the shortcut bar above the keyboard has these buttons, so no second bar
+    if (!inside || matchMedia('(pointer: coarse)').matches) { bar && bar.remove(); bar = null; return; }
     const r = s.getRangeAt(0).getBoundingClientRect();
     if (!bar) {
       const f = (label, cmd, txt, style) => h('button', { 'aria-label': label, title: label, onmousedown: e => { e.preventDefault(); if (cmd === 'link') { const ce = s.anchorNode.parentElement.closest('.ce'); addLink(blocks.find(x => x.id === ce.closest('.blk').dataset.id), ce); } else { document.execCommand(cmd === 'code' ? 'insertHTML' : cmd, false, cmd === 'code' ? `<code>${esc(s.toString())}</code>` : null); const ce = s.anchorNode && (s.anchorNode.nodeType === 1 ? s.anchorNode : s.anchorNode.parentElement).closest('.ce'); if (ce) onInput(blocks.find(x => x.id === ce.closest('.blk').dataset.id), ce); } } , style }, txt);

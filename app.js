@@ -6,12 +6,14 @@ import * as S from './store.js';
 import { h, icon, logo, $, toast, menu, sheet, promptBox, later } from './ui.js';
 import { formatDate, toISODate } from './dates.js';
 import { renderPage, renderRow, newPage } from './page.js';
-import { renderDb, popEdit } from './table.js';
+import { renderDb } from './table.js';
+import { popEdit } from './popedit.js';
 import { renderSettings, startupSync } from './settings.js';
 import { initLock } from './lock.js';
 import { renderSearch } from './search.js';
 import { startNotifier } from './notify.js';
 import { initKeyboardBar } from './kbar.js';
+import { commentsScreen, calendarScreen, inboxScreen } from './hub.js';
 
 export const state = { route: [], pane: null, ctx: {} };
 
@@ -22,7 +24,10 @@ export async function loadFont() {
   let f = ws.font;
   if (!f) { const p = D.all().find(r => r.k === 'page' && ['serif', 'mono'].includes(D.val(r, 'font'))); f = p ? D.val(p, 'font') : 'default'; } // keep a font chosen earlier on a page
   setFontClass(f);
+  setGlass(ws.glass ?? 50);
 }
+/** Liquid Glass opacity, 0 = Clear … 100 = Tinted (like the iPhone's Appearance → Liquid Glass slider). */
+export function setGlass(pct) { document.documentElement.style.setProperty('--lg-a', String(Math.max(0, Math.min(100, +pct || 0)) / 100)); }
 function setFontClass(f) { appFont = f; document.body.classList.remove('font-default', 'font-serif', 'font-mono'); document.body.classList.add('font-' + f); }
 async function chooseFont(f) { setFontClass(f); await Sync.saveSettings({ font: f }); Sync.soon(500); }
 /** The ⋯ menu, the same on every screen. `extra` goes on top; `rec` adds Copy link / Move to Trash for that page. */
@@ -84,10 +89,13 @@ export function render() {
       case 'search': main.append(renderSearch()); break;
       case 'settings': main.append(renderSettings(r[1])); break;
       case 'trash': main.append(trashScreen()); break;
+      case 'comments': main.append(commentsScreen()); break;
+      case 'calendar': main.append(calendarScreen()); break;
+      case 'inbox': main.append(inboxScreen()); break;
       default: main.append(listScreen('today'));
     }
   } catch (e) { console.error(e); main.append(h('div', { class: 'wrap' }, h('p', { class: 'empty' }, 'Something went wrong showing this screen: ' + e.message))); }
-  if (layoutMode() !== 'rail') main.prepend(topbar());
+  main.prepend(topbar());
   if (layoutMode() !== 'wide') document.body.classList.remove('side-open');
   if (['p', 'r'].includes(r[0]) && r[1]) noteRecent(r[1]);
   if (same) main.scrollTop = scroll;
@@ -100,6 +108,21 @@ export function render() {
 }
 
 // ---------- sidebar (wide) ----------
+// ---------- split screen divider: drag to resize; drag to the edge to open one side full ----------
+function dragDivider(e) {
+  const app = $('#app'), el = e.currentTarget, portrait = document.body.dataset.orient === 'portrait';
+  e.preventDefault(); el.classList.add('on'); try { el.setPointerCapture(e.pointerId); } catch {}
+  const r = app.getBoundingClientRect(); let pct = 50;
+  const move = ev => { pct = portrait ? (ev.clientY - r.top) / r.height * 100 : (ev.clientX - r.left) / r.width * 100; pct = Math.max(8, Math.min(92, pct)); app.style.setProperty(portrait ? '--split' : '--splitx', pct.toFixed(1)); };
+  const up = () => {
+    el.classList.remove('on'); el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up); el.removeEventListener('pointercancel', up);
+    const reset = () => app.style.removeProperty(portrait ? '--split' : '--splitx');
+    if (pct < 20) { const id = state.pane; reset(); state.pane = null; go('#/r/' + id); }        // task opens full page
+    else if (pct > 80) { reset(); state.pane = null; render(); }                                // list goes full, task closes
+  };
+  el.addEventListener('pointermove', move); el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+}
+
 // ---------- recents & favourites ----------
 let recents = [];
 S.meta.get('recents').then(v => { if (Array.isArray(v)) recents = v; });
@@ -119,10 +142,27 @@ export function toggleSide(force) {
   if (layoutMode() === 'wide') { b.classList.toggle('side-closed', force === undefined ? undefined : !force); try { localStorage.setItem('folio-side', b.classList.contains('side-closed') ? 'closed' : 'open'); } catch {} }
   else b.classList.toggle('side-open', force);
 }
+// the F logo opens a menu like Notion's workspace menu
+function workspaceMenu(anchor) {
+  menu(anchor, [
+    { label: 'Settings', icon: 'settings', run: () => go('#/settings') },
+    { label: 'Trash', icon: 'trash', run: () => go('#/trash') },
+    { label: 'Import from Notion', icon: 'import', run: () => go('#/settings/import') }, '-',
+    { label: 'Help and support', icon: 'help', run: () => helpSheet() }]);
+}
+function helpSheet() {
+  const tip = (t, d) => h('div', { class: 'tip' }, h('b', {}, t), h('p', { class: 'muted' }, d));
+  sheet('Help and support', h('div', {},
+    tip('Edit straight from a list', 'Tap a name, address, station, status or date on Today, To Site Survey or Rejected ECPAR. Press and hold a link to change it.'),
+    tip('Resize the table', 'Hold a line in the table until it turns blue, then drag. Double-tap a line to reset it.'),
+    tip('Sync', 'Folio saves to your private GitHub repository (Settings → GitHub). Each device syncs every few minutes and when you open the app.'),
+    tip('Reminders and widgets', 'Inbox lists what is due. Turn on the 08:00 reminder there. The Folio widget (Scriptable) adds due dates to your iPhone calendar.'),
+    tip('Backups', 'Settings → Download a full backup, and the widget keeps a daily copy in iCloud Drive for one year.')));
+}
 function renderSide() {
-  const side = $('#side'); if (layoutMode() === 'rail') { side.replaceChildren(); return; }
+  const side = $('#side');
   const cur = state.route[0], kp = DB.kpiDb() && D.val(DB.kpiDb(), 'page');
-  const circ = (hash, content, label, on) => h('a', { class: 'circ' + (on ? ' on' : ''), href: hash, 'aria-label': label, title: label, 'aria-current': on ? 'page' : null }, content);
+  const circ = (hash, content, label, on) => h('a', { class: 'circ' + (on ? ' on' : ''), href: hash, 'aria-label': label, title: label, 'aria-current': on ? 'page' : null }, content, on ? h('span', { class: 'clabel' }, label) : null);
   const item = rec => { const hsh = recHash(rec); const on = location.hash === hsh || (hsh === '#/tracker' && (cur === 'tracker' || cur === 'archive'));
     return h('a', { class: 'sitem' + (on ? ' on' : ''), href: hsh, 'aria-current': on ? 'page' : null }, recIcon(rec), h('span', { class: 'st' }, recTitle(rec))); };
   const sec = (key, label, items, extra) => h('div', { class: 'ssec' },
@@ -135,11 +175,12 @@ function renderSide() {
   const syncText = Sync.connected() ? (st.state === 'error' ? 'Sync problem' : st.state === 'syncing' ? 'Syncing…' : st.at ? 'Synced ' + ago(st.at) : 'Not synced yet') : 'Sync is off';
   side.replaceChildren(
     h('div', { class: 'srow' },
-      circ('#/settings', logo(24), 'Settings', cur === 'settings'),
-      circ('#/today', icon('today', 21), 'Today', cur === 'today'),
-      circ('#/survey', icon('pin', 21), 'To Site Survey', cur === 'survey'),
-      circ('#/ecpar', icon('ecpar', 21), 'Rejected ECPAR', cur === 'ecpar'),
-      circ('#/tracker', icon('table', 21), 'Planning KPI Tracker', cur === 'tracker' || cur === 'archive')),
+      h('button', { class: 'circ avatar', 'aria-label': 'Folio menu', title: 'Folio menu', onclick: e => workspaceMenu(e.currentTarget) }, logo(24)),
+      circ('#/today', icon('home', 21), 'Home', cur === 'today'),
+      circ('#/comments', icon('comment', 21), 'Comments', cur === 'comments'),
+      circ('#/calendar', icon('date', 21), 'Calendar', cur === 'calendar'),
+      circ('#/inbox', icon('inbox', 21), 'Inbox', cur === 'inbox'),
+      layoutMode() === 'rail' ? h('button', { class: 'circ sclose', 'aria-label': 'Close the menu', onclick: () => toggleSide(false) }, icon('close', 20)) : null),
     h('div', { class: 'sscroll' },
       sec('recents', 'Recents', rec.map(item)),
       sec('favs', 'Favourites', favs.map(item)),
@@ -154,7 +195,7 @@ function renderSide() {
 }
 
 // ---------- top bar (Notion style): menu, back, forward, title, share, favourite, more ----------
-const SCREEN = { today: ['Today', 'today'], survey: ['To Site Survey', 'pin'], ecpar: ['Rejected ECPAR', 'ecpar'], pages: ['Pages', 'pages'], search: ['Search', 'search'], settings: ['Settings', 'settings'], trash: ['Trash', 'trash'] };
+const SCREEN = { comments: ['Comments', 'comment'], calendar: ['Calendar', 'date'], inbox: ['Inbox', 'inbox'], today: ['Today', 'today'], survey: ['To Site Survey', 'pin'], ecpar: ['Rejected ECPAR', 'ecpar'], pages: ['Pages', 'pages'], search: ['Search', 'search'], settings: ['Settings', 'settings'], trash: ['Trash', 'trash'] };
 function topbar() {
   const r = state.route[0], ctx = state.ctx;
   const kp = DB.kpiDb() && D.val(DB.kpiDb(), 'page');
@@ -162,14 +203,22 @@ function topbar() {
   const [title, ic] = rec ? [recTitle(rec), null] : r === 'db' ? [D.val(DB.db(state.route[1]) || {}, 'name', 'Database'), 'table'] : (SCREEN[r] || SCREEN.today);
   const fav = rec && D.val(rec, 'fav');
   const tb = (label, content, onclick, cls = '') => h('button', { class: 'tb ' + cls, 'aria-label': label, title: label, onclick }, content);
-  return h('header', { class: 'topbar' },
-    tb('Show or hide the menu', icon('sidebar', 24), () => toggleSide()),
-    tb('Back', icon('arrowl', 24), () => back()),
-    tb('Forward', icon('arrowr', 24), () => history.forward()),
-    h('div', { class: 'tt' }, rec ? recIcon(rec, 22) : icon(ic, 20), h('span', {}, title)),
-    tb('Share or export', icon('export', 24), e => ctx.export ? ctx.export(e.currentTarget) : window.print()),
-    rec ? tb(fav ? 'Remove from Favourites' : 'Add to Favourites', icon(fav ? 'starf' : 'star', 24), () => { D.update(rec.id, { fav: !fav }); toast(fav ? 'Removed from Favourites' : 'Added to Favourites'); render(); }, fav ? 'fav' : '') : null,
-    tb('More options', icon('more', 24), e => (ctx.more || (a => moreMenu(a)))(e.currentTarget)));
+  if (layoutMode() === 'rail') // Duo outer screen, like Notion there: ‹ on the left, Share and ⋯ as separate circles on the right
+    return h('header', { class: 'topbar circles', 'aria-label': title },
+      h('div', { class: 'tpill' }, h('div', { class: 'tcirc glass' }, tb('Back', icon('back', 24), () => back()))),
+      h('div', { class: 'tpill' },
+        h('div', { class: 'tcirc glass' }, tb('Share or export', icon('export', 23), e => ctx.export ? ctx.export(e.currentTarget) : window.print())),
+        h('div', { class: 'tcirc glass' }, tb('More options', icon('more', 23), e => (ctx.more || (a => moreMenu(a)))(e.currentTarget)))));
+  // floating Liquid Glass buttons: ☰ ← → on the left, Share ★ ⋯ on the right (the page title is in the page itself)
+  return h('header', { class: 'topbar', 'aria-label': title },
+    h('div', { class: 'tpill glass' },
+      tb('Show or hide the menu', icon('sidebar', 23), () => toggleSide()),
+      tb('Back', icon('arrowl', 23), () => back()),
+      tb('Forward', icon('arrowr', 23), () => history.forward())),
+    h('div', { class: 'tpill glass' },
+      tb('Share or export', icon('export', 23), e => ctx.export ? ctx.export(e.currentTarget) : window.print()),
+      rec ? tb(fav ? 'Remove from Favourites' : 'Add to Favourites', icon(fav ? 'starf' : 'star', 23), () => { D.update(rec.id, { fav: !fav }); toast(fav ? 'Removed from Favourites' : 'Added to Favourites'); render(); }, fav ? 'fav' : '') : null,
+      tb('More options', icon('more', 23), e => (ctx.more || (a => moreMenu(a)))(e.currentTarget))));
 }
 const ago = t => { const s = (Date.now() - t) / 1000; return s < 60 ? 'just now' : s < 3600 ? Math.round(s / 60) + ' min ago' : Math.round(s / 3600) + ' h ago'; };
 
@@ -189,9 +238,9 @@ export function renderNav() {
   const backPill = pill(nb(r === 'settings' ? 'Close' : 'Back', r === 'settings' ? 'close' : 'back', back));
   let top = [], bottom = [], bottomSplit = false;
   const tools = ctx.tools ? [pill(...ctx.tools)] : [];
-  if (mode === 'rail') { // iPhone Duo outer screen: actions in the corner, menu bar at the bottom
-    top = [actions];
-    if (isPage) { bottom = [ctx.tools ? pill(...ctx.tools) : h('span'), backPill]; bottomSplit = true; } else bottom = [menuPill, newPill];
+  if (mode === 'rail') { // iPhone Duo outer screen, like Notion: ☰ on the left, menu in the middle, + on the right
+    const menuBtn = pill(nb('Menu', 'menu', () => toggleSide(true)));
+    bottom = [menuBtn, isPage && ctx.tools ? pill(...ctx.tools) : menuPill, newPill]; bottomSplit = true;
   } else if (mode === 'wide') { bottom = isPage ? tools : []; }
   else { bottom = isPage ? tools : [menuPill, newPill]; } // phone, Duo inner screen, iPad upright
   nav.replaceChildren(h('div', { class: 'cl top' }, top), h('div', { class: 'cl bottom' + (bottomSplit ? ' spread' : '') }, bottom));
@@ -208,7 +257,8 @@ function listScreen(kind) {
   if (!DB.kpiDb()) { wrap.append(emptyTracker(true)); return wrap; }
   const g = kind === 'today' ? DB.todayGroups(n) : kind === 'survey' ? DB.surveyGroups(n) : DB.ecparGroups(n);
   const names = kind === 'ecpar' ? ['Overdue Amendment', 'Pending Amendment'] : ['Overdue', 'Today', 'Upcoming'];
-  const sec = (label, color, list, numColor) => list.length ? [h('h2', { class: 'bar ' + color }, label), ...later(list, t => taskRow(t, numColor, kind), { first: 15, step: 30 })] : [];
+  const unitFor = label => /overdue/i.test(label) ? 'days late' : 'days left';
+  const sec = (label, color, list, numColor) => list.length ? [h('div', { class: 'barrow' }, h('span', { class: 'bunit ' + color }, unitFor(label)), h('h2', { class: 'bar ' + color }, label)), ...later(list, t => taskRow(t, numColor, kind), { first: 15, step: 30 })] : [];
   wrap.append(...sec(names[0], 'red', g.overdue, 'red'), ...sec(names[1], 'orange', g.today, 'orange'), ...(g.upcoming ? sec(names[2], 'blue', g.upcoming, 'blue') : []));
   if (!g.overdue.length && !g.today.length && !(g.upcoming || []).length)
     wrap.append(h('p', { class: 'empty' }, kind === 'today' ? 'Nothing due in the next 2 days. Nice.' : kind === 'survey' ? 'No tasks are waiting for a site survey.' : 'No rejected ECPAR to amend.'));
@@ -234,6 +284,14 @@ function rowEdit(t) {
   };
   return { rec, text, choose, date, P };
 }
+// the embedded link of a task is kept with the task (synced), not as a table column
+const LINK_PROP = { id: '__link', name: 'Link', type: 'url' };
+function urlParts(u) { // host dark, the rest grey, like Notion's link cells
+  try { const x = new URL(u); return h('span', { class: 'url' }, h('b', {}, x.hostname), h('i', {}, decodeURIComponent(x.pathname + x.search).replace(/\/$/, ''))); } catch { return h('span', {}, u); }
+}
+function linkLabel(u) { // "https://x.com/ApplicationA?ApplicationId=135583" → "ApplicationA?ApplicationId=135583"
+  try { const x = new URL(u); const last = decodeURIComponent(x.pathname.split('/').filter(Boolean).pop() || ''); return (last + x.search) || x.hostname; } catch { return u; }
+}
 function holdToEdit(a, onHold) { // press and hold a link to edit it; a normal tap still opens it
   let timer = 0, held = false;
   a.addEventListener('pointerdown', () => { held = false; timer = setTimeout(() => { held = true; onHold(); }, 550); });
@@ -254,20 +312,27 @@ function taskRow(t, color, kind) {
       t.status ? [h('i', { style: { background: DB.optColor(sp, t.status)[1] } }), t.status] : 'Status');
   // the date shown is the one that sets the countdown: ECPAR Rejected for amendments, Due Date otherwise
   const dateProp = kind === 'ecpar' || t.amend ? 'ECPAR Rejected' : 'Due Date';
-  const meta = kind === 'ecpar' ? (t.rejected ? 'Rejected ' + formatDate(t.rejected, 'D MMM YYYY') : 'Add rejected date') : (t.due ? 'Due ' + formatDate(t.due, 'D MMM YYYY') : 'Add due date');
+  const meta = kind === 'ecpar' ? (t.rejected ? 'Rejected ' + formatDate(t.rejected, 'D/M/YYYY') : 'Add rejected date') : (t.due ? 'Due ' + formatDate(t.due, 'D/M/YYYY') : 'Add due date');
   const dueBtn = h('button', { class: 'due ebtn' + (/^Add/.test(meta) ? ' empty' : ''), 'aria-label': 'Change ' + dateProp, onclick: () => ed.date(dateProp) }, meta);
   const map = t.map && /^https?:/i.test(t.map) ? t.map : '';
   const editMap = () => ed.text(mapRow, 'Pin Location');
-  const mapRow = map ? h('div', { class: 'links' },
-      holdToEdit(h('a', { class: 'lnk', href: mapsUrl(map), target: '_blank', rel: 'noopener', title: 'Press and hold to change the link' }, icon('pin', 14), 'Open in Google Maps'), editMap),
-      holdToEdit(h('a', { class: 'lnk', href: browserUrl(map), target: '_blank', rel: 'noopener', title: 'Press and hold to change the link' }, icon('globe', 14), 'Open in browser'), editMap))
-    : h('div', { class: 'links' }, h('button', { class: 'lnk ebtn empty', onclick: editMap }, icon('pin', 14), 'Add map link'));
+  // Google Maps link, then an embedded link (any link you paste), like Notion's link mention
+  // Pin Location shown like Notion: 🔗 maps.app.goo.gl/71c… — tap opens Maps, hold to change
+  const mapLink = map ? holdToEdit(h('a', { class: 'lnk elink pinlink', href: mapsUrl(map), target: '_blank', rel: 'noopener', title: map + ' (press and hold to change)' }, icon('link', 16), urlParts(map)), editMap)
+    : h('button', { class: 'lnk ebtn empty', onclick: editMap }, icon('link', 16), 'Pin Location');
+  const linkUrl = t.row ? DB.raw(t.row, LINK_PROP) : null;
+  let linkEl;
+  const editLink = () => popEdit(linkEl, D.getRec(t.id), LINK_PROP, () => render());
+  linkEl = linkUrl && /^https?:/i.test(linkUrl)
+    ? holdToEdit(h('a', { class: 'lnk elink', href: browserUrl(linkUrl), target: '_blank', rel: 'noopener', title: linkUrl + ' (press and hold to change)' }, icon('filelink', 16), h('span', {}, linkLabel(linkUrl))), editLink)
+    : h('button', { class: 'lnk ebtn empty', onclick: editLink }, icon('filelink', 16), 'Paste a link');
+  const mapRow = h('div', { class: 'links' }, mapLink, linkEl);
   let addrEl;
   addrEl = h('button', { class: 'addr ebtn' + (t.address ? '' : ' empty'), onclick: () => ed.text(addrEl, 'Address') }, t.address || 'Add address');
   let nameEl;
   nameEl = h('button', { class: 'name ebtn', onclick: () => ed.text(nameEl, DB.titleProp(dbr)?.name || 'Customer Name') }, t.title || 'Untitled');
   return h('div', { class: 'task ' + color + (state.pane === t.id ? ' sel' : '') },
-    h('button', { class: 'rail', 'aria-label': 'Open ' + (t.title || 'task'), onclick: () => openTask(t.id) }, h('b', {}, d == null ? '–' : Math.abs(d)), h('small', {}, unit)),
+    h('button', { class: 'rail', 'aria-label': 'Open ' + (t.title || 'task'), onclick: () => openTask(t.id) }, h('b', {}, d == null ? '–' : Math.abs(d)), d == null ? h('small', {}, 'no date') : null),
     h('div', { class: 'body' },
       h('div', { class: 'l1' }, h('span', { class: 'nm' }, nameEl, commentCount.get(t.id) ? h('button', { class: 'ccount', 'aria-label': commentCount.get(t.id) + ' comments, open task', onclick: () => openTask(t.id) }, icon('comment', 15), commentCount.get(t.id)) : null), h('div', { class: 'rt' }, h('button', { class: 'openbtn', onclick: () => openTask(t.id) }, 'Open'), right)),
       addrEl,
@@ -314,7 +379,7 @@ function trashScreen() {
 // ---------- boot ----------
 export async function boot() {
   try { if (localStorage.getItem('folio-side') === 'closed') document.body.classList.add('side-closed'); } catch {}
-  document.body.append(h('div', { id: 'app' }, h('div', { id: 'scrim', onclick: () => toggleSide(false) }), h('nav', { id: 'side', 'aria-label': 'Workspace' }), h('main', { id: 'main' }), h('section', { id: 'pane', 'aria-label': 'Selected task' })), h('div', { id: 'fnav' }));
+  document.body.append(h('div', { id: 'app' }, h('div', { id: 'scrim', onclick: () => toggleSide(false) }), h('nav', { id: 'side', 'aria-label': 'Workspace' }), h('main', { id: 'main' }), h('div', { id: 'divider', role: 'separator', 'aria-label': 'Drag to resize. Drag to the edge to open full.', onpointerdown: dragDivider }), h('section', { id: 'pane', 'aria-label': 'Selected task' })), h('div', { id: 'fnav' }));
   window.__folioStep = 'storage'; await D.load(); S.persist(); await loadFont();
   D.onChange(info => { if (info.type === 'sync' || info.type === 'create' || info.type === 'delete' || info.type === 'wipe') render(); if (info.type !== 'sync') Sync.soon(); });
   Sync.onStatus(() => { renderSide(); loadFont(); });

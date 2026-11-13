@@ -5,7 +5,7 @@ import * as Sync from './sync.js';
 import * as M from './model.js';
 import { setupKeys, unlockKeys, changePassphrase } from './crypto.js';
 import { h, icon, logo, group, row, sheet, toast, confirmBox } from './ui.js';
-import { go, render, state, download } from './app.js';
+import { go, render, state, download, setGlass } from './app.js';
 import { lockSettings } from './lock.js';
 import { importNotion } from './import.js';
 import { enableNotifications } from './notify.js';
@@ -34,6 +34,7 @@ export function renderSettings(sub) {
       group(
         row({ icon: 'lock', label: 'Encrypted attachments', value: ws.crypto ? (hasKey ? 'Unlocked' : 'Locked') : 'Not set up', onclick: cryptoSheet }),
         row({ icon: 'face', label: 'App lock', value: '', onclick: lockSettings })),
+      group(row({ icon: 'paint', label: 'Liquid Glass', value: (ws.glass ?? 50) + '%', onclick: glassSheet })),
       h('p', { class: 'ghead' }, 'Your data'),
       group(
         row({ icon: 'import', label: 'Import from Notion', onclick: importSheet }),
@@ -138,4 +139,16 @@ function widgetSheet() {
       h('li', {}, 'Add a Scriptable widget, choose the script Folio, and type today, survey, ecpar or links as its Parameter.'),
       h('li', {}, 'In Shortcuts › Automation, run Folio every day at 8:00 AM so alerts and the calendar stay fresh.')),
     h('a', { class: 'btn primary block', href: 'Folio.js', download: 'Folio.js' }, 'Download Folio.js')));
+}
+
+// Liquid Glass opacity for the floating buttons and the shortcut bar — match it to the iPhone's
+// Settings → Appearance → Liquid Glass slider (Clear on the left, Tinted on the right).
+async function glassSheet() {
+  const ws = (await S.meta.get('ws-settings')) || {}; let v = ws.glass ?? 50;
+  const out = h('b', {}, v + '%');
+  const rng = h('input', { type: 'range', min: 0, max: 100, step: 5, value: v, class: 'glassrange', 'aria-label': 'Liquid Glass opacity', oninput: e => { v = +e.target.value; out.textContent = v + '%'; setGlass(v); } });
+  sheet('Liquid Glass', h('div', {},
+    h('p', { class: 'muted' }, 'Match this to your iPhone: Settings → Appearance → Liquid Glass. Clear is more see-through, Tinted is more solid.'),
+    h('div', { class: 'glassrow' }, h('span', {}, 'Clear'), rng, h('span', {}, 'Tinted')), h('p', { style: { textAlign: 'center' } }, out)),
+    { onDone: async () => { await Sync.saveSettings({ glass: v }); Sync.soon(500); render(); } });
 }
