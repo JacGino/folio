@@ -3,14 +3,15 @@
 // and the page scrolls so the card is always visible above the keyboard and the shortcut bar.
 import * as D from './data.js';
 import * as DB from './db.js';
-import { h } from './ui.js';
+import { h, textbox } from './ui.js';
 
 const TOPBAR = 64, BAR = 76; // room for the top bar, and for the shortcut bar above the keyboard
 export function popEdit(anchor, rec, p, after) {
   document.querySelector('.cellpop')?.dispatchEvent(new Event('commit'));
+  if (!anchor.isConnected) return null; // the screen changed under the tap; nothing to edit
   const host = anchor.closest('#pane') || document.getElementById('main') || document.body;
   const num = p.type === 'number';
-  const inp = h('textarea', { class: 'popin', rows: 1, 'aria-label': p.name, inputmode: num ? 'decimal' : p.type === 'url' ? 'url' : null, autocapitalize: p.type === 'url' ? 'off' : null, spellcheck: p.type === 'text' || p.type === 'title' ? null : 'false' });
+  const inp = textbox({ cls: 'popin', multiline: true, label: p.name, attrs: { inputmode: num ? 'decimal' : p.type === 'url' ? 'url' : null, autocapitalize: p.type === 'url' ? 'off' : null, spellcheck: p.type === 'text' || p.type === 'title' ? null : 'false' } });
   if (/^ecx/i.test(p.name)) inp.style.fontFamily = 'var(--mono)';
   inp.value = DB.raw(rec, p) ?? '';
   const box = h('div', { class: 'cellpop' }, inp);
@@ -39,6 +40,7 @@ export function popEdit(anchor, rec, p, after) {
       const cur = D.getRec(rec.id);
       if (cur && val !== (DB.raw(cur, p) ?? (num ? null : ''))) { D.update(rec.id, { ['p:' + p.id]: val }); document.dispatchEvent(new CustomEvent('folio-row', { detail: rec.id })); }
     }
+    if (save && anchor.isConnected && anchor.childElementCount === 0 && inp.value.trim()) anchor.textContent = inp.value.replace(/\n+$/, ''); // show the new text right away
     box.remove(); anchor.classList.remove('editing');
     if (window.visualViewport) { visualViewport.removeEventListener('resize', vvOn); visualViewport.removeEventListener('scroll', vvOn); }
     after && after();

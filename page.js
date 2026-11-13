@@ -2,7 +2,7 @@
 import * as D from './data.js';
 import * as DB from './db.js';
 import * as Sync from './sync.js';
-import { h, icon, toast, menu, sheet, group, row, confirmBox, promptBox, esc } from './ui.js';
+import { h, icon, toast, menu, sheet, group, row, confirmBox, promptBox, esc, textbox } from './ui.js';
 import { mountEditor, blocksToMd, nb } from './editor.js';
 import { formatDate, toISODate, parseDate } from './dates.js';
 import { state, go, renderNav, download, layoutMode, browserUrl, now, moreMenu } from './app.js';
@@ -33,14 +33,52 @@ function coverAndPhoto(rec) {
   const pick = (field) => { const inp = h('input', { type: 'file', accept: 'image/*' }); inp.onchange = async () => { const f = inp.files[0]; if (!f) return; const ref = await addFile(f); D.update(rec.id, { [field]: ref }); go(location.hash); }; inp.click(); };
   const out = [];
   if (cover || D.val(rec, 'db')) { // pages holding a database always show a cover; a soft default until one is picked
-    const c = h('div', { class: 'cover' + (cover ? '' : ' default'), role: 'img', 'aria-label': 'Cover photo' }, h('button', { class: 'chg', onclick: () => menu(c.querySelector('.chg'), [{ label: 'Change cover', icon: 'paint', run: () => pick('cover') }, { label: 'Remove cover', icon: 'trash', danger: true, run: () => { D.update(rec.id, { cover: null }); go(location.hash); } }]) }, 'Change cover'));
-    if (cover) fileUrl(cover.id).then(u => { if (u) c.style.backgroundImage = `url("${u}")`; }); out.push(c);
+    const c = h('div', { class: 'cover' + (cover ? '' : ' default'), role: 'img', 'aria-label': 'Cover photo' }, h('button', { class: 'chg', onclick: () => menu(c.querySelector('.chg'), [{ label: 'Change cover', icon: 'paint', run: () => pick('cover') }, ...(cover ? [{ label: 'Reposition & resize', icon: 'expand', run: () => adjust(c, rec, 'cover') }] : []), { label: 'Remove cover', icon: 'trash', danger: true, run: () => { D.update(rec.id, { cover: null }); go(location.hash); } }]) }, 'Change cover'));
+    if (cover) fileUrl(cover.id).then(u => { if (u) c.style.backgroundImage = `url("${u}")`; });
+    c.style.backgroundPosition = D.val(rec, 'coverPos', '50% 50%'); if (D.val(rec, 'coverH')) c.style.setProperty('height', D.val(rec, 'coverH') + 'px', 'important');
+    out.push(c);
   }
   const av = h('button', { class: 'avatar', 'aria-label': photo ? 'Change profile photo' : 'Add profile photo', onclick: () => menu(av, [
-    { label: photo ? 'Change photo' : 'Add photo', icon: 'person', run: () => pick('icon') }, ...(photo ? [{ label: 'Remove photo', icon: 'trash', danger: true, run: () => { D.update(rec.id, { icon: null }); go(location.hash); } }] : []),
+    { label: photo ? 'Change photo' : 'Add photo', icon: 'person', run: () => pick('icon') }, ...(photo ? [{ label: 'Reposition & resize', icon: 'expand', run: () => adjust(av, rec, 'icon') }, { label: 'Remove photo', icon: 'trash', danger: true, run: () => { D.update(rec.id, { icon: null }); go(location.hash); } }] : []),
     ...(!cover ? [{ label: 'Add cover', icon: 'paint', run: () => pick('cover') }] : [])]) }, photo ? null : icon('person', 34));
   if (photo) fileUrl(photo.id).then(u => { if (u) av.style.backgroundImage = `url("${u}")`; });
+  av.style.backgroundPosition = D.val(rec, 'iconPos', '50% 50%');
+  const sz = D.val(rec, 'iconSize'); if (sz) { av.style.setProperty('width', sz + 'px', 'important'); av.style.setProperty('height', sz + 'px', 'important'); }
   return { out, av, hasPhotoUi: !!(cover || photo) };
+}
+
+// ---------- reposition & resize the cover or the profile photo ----------
+// drag the photo to move it; drag the handle to resize (cover: bottom edge = taller/shorter; photo: corner = bigger/smaller)
+function adjust(el, rec, kind) {
+  if (el.classList.contains('adjust')) return;
+  const isCover = kind === 'cover';
+  let [px, py] = (D.val(rec, isCover ? 'coverPos' : 'iconPos', '50% 50%') + '').split(' ').map(v => parseFloat(v) || 50);
+  let size = isCover ? el.offsetHeight : el.offsetWidth;
+  const z = parseFloat(getComputedStyle(el.closest('.wrap') || el).zoom) || 1;
+  const apply = () => { el.style.backgroundPosition = `${px.toFixed(1)}% ${py.toFixed(1)}%`;
+    if (isCover) el.style.setProperty('height', size + 'px', 'important'); else { el.style.setProperty('width', size + 'px', 'important'); el.style.setProperty('height', size + 'px', 'important'); } };
+  const handle = h('span', { class: 'adjh ' + (isCover ? 'edge' : 'corner'), 'aria-label': isCover ? 'Drag to change the cover height' : 'Drag to change the photo size' });
+  const done = () => { D.update(rec.id, isCover ? { coverPos: `${px.toFixed(1)}% ${py.toFixed(1)}%`, coverH: Math.round(size) } : { iconPos: `${px.toFixed(1)}% ${py.toFixed(1)}%`, iconSize: Math.round(size) }); finish(); toast('Saved'); };
+  const reset = () => { px = py = 50; size = isCover ? 150 : 72; apply(); };
+  const bar = h('div', { class: 'adjbar glass' }, h('span', {}, isCover ? 'Drag to move · drag the bottom edge to resize' : 'Drag to move · drag the corner to resize'),
+    h('button', { class: 'btn', type: 'button', onclick: e => { e.stopPropagation(); reset(); } }, 'Reset'),
+    h('button', { class: 'btn primary', type: 'button', onclick: e => { e.stopPropagation(); done(); } }, 'Done'));
+  el.classList.add('adjust'); el.append(handle); (isCover ? el : el.parentElement).append(bar);
+  const stopClick = e => { if (e.target.closest('.adjbar')) return; e.stopPropagation(); e.preventDefault(); };
+  el.addEventListener('click', stopClick, true);
+  const onDown = e => {
+    if (e.target.closest('.adjbar')) return;
+    e.preventDefault(); e.stopPropagation(); try { el.setPointerCapture(e.pointerId); } catch {}
+    const resizing = e.target === handle, x0 = e.clientX, y0 = e.clientY, p0 = [px, py], s0 = size;
+    const move = ev => { const dx = (ev.clientX - x0) / z, dy = (ev.clientY - y0) / z;
+      if (resizing) size = isCover ? Math.max(80, Math.min(560, s0 + dy)) : Math.max(40, Math.min(240, s0 + Math.max(dx, dy)));
+      else { px = Math.max(0, Math.min(100, p0[0] - dx / el.offsetWidth * 100)); py = Math.max(0, Math.min(100, p0[1] - dy / el.offsetHeight * 100)); }
+      apply(); };
+    const up = () => { el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up); el.removeEventListener('pointercancel', up); };
+    el.addEventListener('pointermove', move); el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+  };
+  el.addEventListener('pointerdown', onDown);
+  function finish() { el.classList.remove('adjust'); handle.remove(); bar.remove(); el.removeEventListener('pointerdown', onDown); setTimeout(() => el.removeEventListener('click', stopClick, true), 0); }
 }
 
 // ---------- standalone page (also the Planning KPI Tracker page) ----------
@@ -180,8 +218,8 @@ function comments(rec) {
   const box = h('section', { class: 'comments', 'aria-label': 'Comments' });
   const draw = () => {
     const list = D.all('cmt', c => D.val(c, 'parent') === rec.id).sort((a, b) => D.val(a, 'created', 0) - D.val(b, 'created', 0));
-    const ta = h('textarea', { placeholder: 'Add a comment…', 'aria-label': 'Add a comment', rows: 1, oninput: e => { e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; },
-      onkeydown: e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) send(); } });
+    const ta = textbox({ cls: 'cbox', multiline: true, placeholder: 'Add a comment…', label: 'Add a comment',
+      onkeydown: e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send(); } } });
     const send = () => { const t = ta.value.trim(); if (!t) return; D.create('cmt', rec.sh, { parent: rec.id, text: t, created: Date.now(), author: 'You' }); draw(); };
     box.replaceChildren(...list.map(c => {
       const txt = h('div', { class: 'txt' }, D.val(c, 'text', ''));

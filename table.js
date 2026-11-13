@@ -1,9 +1,9 @@
 // Folio v2 — database views (table, board, calendar, list), toolbar, filter & settings sheets.
 import * as D from './data.js';
 import * as DB from './db.js';
-import { h, icon, menu, sheet, group, row, toast, promptBox, confirmBox, esc, later } from './ui.js';
+import { h, icon, menu, sheet, group, row, toast, promptBox, confirmBox, esc, later, textbox } from './ui.js';
 import { formatDate, parseDate, toISODate, dateAdd } from './dates.js';
-import { go, openTask, state, now, browserUrl } from './app.js';
+import { go, openTask, state, now, browserUrl, zoomFactor, longPress, rowActions } from './app.js';
 import { propEditor, chip } from './page.js';
 import { evaluate } from './formula.js';
 import { popEdit } from './popedit.js';
@@ -33,9 +33,9 @@ export function renderDbBlock(dbId, { initialView } = {}) {
     const vbtn = h('button', { class: 'viewbtn', 'aria-haspopup': 'listbox', onclick: () => menu(vbtn, [
       ...DB.views(dbr).map(x => ({ label: x.name, icon: x.type === 'board' ? 'board' : x.type === 'calendar' ? 'date' : 'table', checked: x.id === v?.id, run: () => { cur.set(dbId, x.id); draw(); } })), '-',
       { label: 'New view', icon: 'plus', run: () => newView(dbr, draw) }], { width: 280 }) }, icon(v?.type === 'board' ? 'board' : v?.type === 'calendar' ? 'date' : 'table', 16), v?.name || 'View', icon('chevd', 14));
-    const searchInput = h('input', { class: 'field dbsearch', type: 'search', value: q, placeholder: 'Search name, project no, address…', 'aria-label': 'Search this database',
+    const searchInput = textbox({ cls: 'field dbsearch', value: q, placeholder: 'Search name, project no, address…', label: 'Search this database',
       oninput: e => { searches.set(dbId, e.target.value); clearTimeout(box._t); box._t = setTimeout(() => { draw(); const s = box.querySelector('.dbsearch'); s.focus(); s.setSelectionRange(s.value.length, s.value.length); }, 150); },
-      onkeydown: e => { if (e.key === 'Escape') { searches.delete(dbId); draw(); } } });
+      onkeydown: e => { if (e.key === 'Escape') { searches.delete(dbId); draw(); } if (e.key === 'Enter') e.target.blur(); } });
     const tools = h('div', { class: 'tools' },
       h('button', { class: 'iconbtn', 'aria-label': 'Search', 'aria-pressed': searchOn ? 'true' : 'false', onclick: () => { if (searchOn) searches.delete(dbId); else searches.set(dbId, ''); draw(); if (!searchOn) box.querySelector('.dbsearch')?.focus(); } }, icon('search', 18)),
       h('button', { class: 'iconbtn', 'aria-label': 'Filter and sort', onclick: () => filterSheet(dbr, v, draw) }, icon('filter', 18)),
@@ -47,7 +47,7 @@ export function renderDbBlock(dbId, { initialView } = {}) {
     const content = !v ? h('p', { class: 'muted' }, 'No views') : v.type === 'board' ? board(dbr, v, list, draw) : v.type === 'calendar' ? calendar(dbr, v, list, draw) : v.type === 'list' ? listView(dbr, v, list) : table(dbr, v, list, draw);
     box.replaceChildren(
       h('button', { class: 'dbname', onclick: e => menu(e.currentTarget, [{ label: 'Rename database', icon: 'text', run: async () => { const n = await promptBox('Database name', D.val(dbr, 'name')); if (n) { D.update(dbId, { name: n }); draw(); } } }, { label: 'Edit properties', icon: 'list', run: () => editProperties(dbr, draw) }]) }, D.val(dbr, 'name', 'Database'), icon('chevd', 14)),
-      h('div', { class: 'dbbar' }, vbtn, tools, searchOn ? searchInput : null), content);
+      h('div', { class: 'dbbar' + (searchOn ? ' searching' : '') }, vbtn, searchOn ? searchInput : null, tools), content);
   };
   draw();
   return box;
@@ -73,8 +73,10 @@ function table(dbr, v, list, draw) {
     const c = colors.find(rule => DB.matches(r, rule, dbr, now()));
     const bg = c ? DB.COLORS[c.color]?.[0] : null;
     const ht = (v.heights || {})[r.id];
-    return h('div', { class: 'tr' + (ht ? ' fixed' : ''), role: 'row', 'data-row': r.id, style: { gridTemplateColumns: ps.map(q => colW(q, v) + 'px').join(' '), ...(ht ? { height: ht + 'px' } : {}), ...(bg ? { background: bg } : {}) } }, ps.map((p, i) => cell(r, p, dbr, i === 0, bg, ccount.get(r.id) || 0)),
+    const tr = h('div', { class: 'tr' + (ht ? ' fixed' : ''), role: 'row', 'data-row': r.id, style: { gridTemplateColumns: ps.map(q => colW(q, v) + 'px').join(' '), ...(ht ? { height: ht + 'px' } : {}), ...(bg ? { background: bg } : {}) } }, ps.map((p, i) => cell(r, p, dbr, i === 0, bg, ccount.get(r.id) || 0)),
       h('span', { class: 'rzr', 'aria-hidden': 'true', title: 'Drag to change row height. Double-tap to reset.', onpointerdown: e => resizeRow(e, dbr, v, r.id) }));
+    longPress(tr, () => rowActions(r.id));
+    return tr;
   };
   let body;
   if (v.group) {
@@ -166,14 +168,14 @@ function resize(e, dbr, v, p) {
   const grid = e.currentTarget.closest('.grid');
   if (doubleTap('c' + p.id)) { lastTap = { key: '', t: 0 }; const w = { ...(v.widths || {}) }; delete w[p.id]; v.widths = w; applyCols(grid, dbr, v); saveView(dbr, v); return; }
   const w0 = colW(p, v);
-  drag(e, dx => { v.widths = { ...(v.widths || {}), [p.id]: Math.max(70, Math.min(900, Math.round(w0 + dx))) }; applyCols(grid, dbr, v); }, moved => { noteTap('c' + p.id, moved); if (moved) saveView(dbr, v); });
+  drag(e, (dx0) => { const dx = dx0 / zoomFactor(); v.widths = { ...(v.widths || {}), [p.id]: Math.max(70, Math.min(900, Math.round(w0 + dx))) }; applyCols(grid, dbr, v); }, moved => { noteTap('c' + p.id, moved); if (moved) saveView(dbr, v); });
 }
 function resizeRow(e, dbr, v, rowId) {
   const tr = e.currentTarget.closest('.tr');
   const reset = () => { const hs = { ...(v.heights || {}) }; delete hs[rowId]; v.heights = hs; tr.style.height = ''; tr.classList.remove('fixed'); saveView(dbr, v); };
   if (doubleTap('r' + rowId)) { lastTap = { key: '', t: 0 }; return reset(); }
   const h0 = tr.getBoundingClientRect().height;
-  drag(e, (dx, dy) => { const ht = Math.max(32, Math.min(800, Math.round(h0 + dy))); v.heights = { ...(v.heights || {}), [rowId]: ht }; tr.style.height = ht + 'px'; tr.classList.add('fixed'); }, moved => { noteTap('r' + rowId, moved); if (moved) saveView(dbr, v); });
+  drag(e, (dx, dy0) => { const dy = dy0 / zoomFactor(); const ht = Math.max(32, Math.min(800, Math.round(h0 + dy))); v.heights = { ...(v.heights || {}), [rowId]: ht }; tr.style.height = ht + 'px'; tr.classList.add('fixed'); }, moved => { noteTap('r' + rowId, moved); if (moved) saveView(dbr, v); });
 }
 function colMenu(dbr, v, p, anchor, draw) {
   menu(anchor, [

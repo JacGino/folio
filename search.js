@@ -1,15 +1,15 @@
 // Folio v2 — search across pages, tasks (every property), comments and page text.
 import * as D from './data.js';
 import * as DB from './db.js';
-import { h, icon, logo, strip } from './ui.js';
-import { state, openTask, now } from './app.js';
+import { h, icon, logo, strip, textbox } from './ui.js';
+import { state, openTask, now, elabel } from './app.js';
 
 let last = '';
 export function renderSearch() {
   state.ctx = {};
   const res = h('div', { role: 'list' });
-  const inp = h('input', { class: 'field', type: 'search', value: last, placeholder: 'Search customer, project no, address, notes…', 'aria-label': 'Search everything', style: { marginTop: '20px' },
-    oninput: e => { last = e.target.value; clearTimeout(inp._t); inp._t = setTimeout(run, 120); } });
+  const inp = textbox({ cls: 'field searchbox', value: last, placeholder: 'Search customer, project no, address, notes…', label: 'Search everything', style: { marginTop: '20px' },
+    oninput: e => { last = inp.value; clearTimeout(inp._t); inp._t = setTimeout(run, 120); }, onkeydown: e => { if (e.key === 'Enter') inp.blur(); } });
   function run() {
     const q = last.trim().toLowerCase(); if (!q) { res.replaceChildren(); return; }
     const t0 = performance.now(); const hits = [];
@@ -30,5 +30,5 @@ export function renderSearch() {
   }
   const clip = (t, q) => { const i = t.toLowerCase().indexOf(q); return (i > 30 ? '…' : '') + t.slice(Math.max(0, i - 30), i + q.length + 50) + '…'; };
   setTimeout(() => { inp.focus(); if (last) run(); }, 30);
-  return h('div', { class: 'wrap' }, h('div', { class: 'head' }, logo(40), h('div', {}, h('h1', {}, 'Search'))), inp, res);
+  return h('div', { class: 'wrap' }, h('div', { class: 'head' }, logo(40), h('div', {}, elabel('title.search', 'Search', 'h1'))), inp, res);
 }

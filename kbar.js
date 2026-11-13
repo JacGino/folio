@@ -8,7 +8,7 @@ const isTouch = () => window.FOLIO_KBAR === true || matchMedia('(pointer: coarse
 // the on-screen keyboard is up when it takes a good part of the screen (a hardware keyboard does not)
 const keyboardUp = () => window.FOLIO_KBAR === true || (window.visualViewport ? innerHeight - visualViewport.height > 150 : false);
 const editable = el => el && (el.isContentEditable || el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && /^(text|search|url|email|tel|number|)$/.test(el.type)));
-const rich = () => target && target.isContentEditable;
+const rich = () => target && target.isContentEditable && !target.classList.contains('tbox') && target.contentEditable !== 'plaintext-only';
 const fire = () => target && target.dispatchEvent(new Event('input', { bubbles: true }));
 const insert = text => { if (!target) return; target.focus(); document.execCommand('insertText', false, text); fire(); };
 
@@ -24,13 +24,13 @@ function run(cmd) {
   }
 }
 function addLink(anchor) {
-  if (target && !target.isContentEditable) { insert('https://'); return; }
+  if (target && !rich()) { insert('https://'); return; }
   const sel = getSelection(); const range = sel.rangeCount ? sel.getRangeAt(0).cloneRange() : null; const el = target;
   const url = prompt('Link (https://…)', 'https://');
   if (!url || url === 'https://') { el && el.focus(); return; }
   const clean = /^(https?:|mailto:|tel:)/i.test(url.trim()) ? url.trim() : 'https://' + url.trim();
   el.focus();
-  if (el.isContentEditable) {
+  if (rich()) {
     if (range) { sel.removeAllRanges(); sel.addRange(range); }
     if (sel.isCollapsed) document.execCommand('insertHTML', false, `<a href="${esc(clean)}">${esc(clean)}</a>`); else document.execCommand('createLink', false, clean);
     fire();
@@ -80,7 +80,7 @@ function show(el) { target = el; update(); }
 function update() {
   const on = !!target && isTouch() && keyboardUp() && editable(document.activeElement);
   if (on && !bar) build();
-  if (bar) { bar.hidden = !on; if (on) { bar.classList.toggle('plain', !target.isContentEditable); place(); } else { const pk = bar.querySelector('.kpick'); if (pk) { pk.remove(); bar.querySelector('.kscroll').hidden = false; } } }
+  if (bar) { bar.hidden = !on; if (on) { bar.classList.toggle('plain', !rich()); place(); } else { const pk = bar.querySelector('.kpick'); if (pk) { pk.remove(); bar.querySelector('.kscroll').hidden = false; } } }
   document.body.classList.toggle('typing', on);
 }
 function hide() { target = null; update(); }

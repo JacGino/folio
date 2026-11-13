@@ -140,7 +140,7 @@ export function menu(anchor, items, { width = 240 } = {}) {
   closeMenus();
   const r = anchor.getBoundingClientRect();
   const m = h('div', { class: 'menu', role: 'menu', style: { width: width + 'px' } },
-    items.map(it => it === '-' ? h('div', { class: 'sep' }) :
+    items.map(it => it === '-' ? h('div', { class: 'sep' }) : it.el ? it.el :
       h('button', { role: 'menuitem', class: it.danger ? 'danger' : '', onclick: () => { closeMenus(); it.run(); } },
         it.icon ? icon(it.icon, 16) : null, h('span', {}, it.label), it.checked ? icon('check', 16, 'chk') : null)));
   document.body.append(m);
@@ -148,7 +148,7 @@ export function menu(anchor, items, { width = 240 } = {}) {
   const top = r.bottom + 6 + m.offsetHeight > innerHeight ? Math.max(8, r.top - 6 - m.offsetHeight) : r.bottom + 6;
   Object.assign(m.style, { left: left + 'px', top: top + 'px' });
   setTimeout(() => document.addEventListener('pointerdown', outside, { once: true }), 0);
-  function outside(e) { if (!m.contains(e.target)) closeMenus(); else document.addEventListener('pointerdown', outside, { once: true }); }
+  function outside(e) { if (!m.isConnected) return; if (!m.contains(e.target)) closeMenus(); else document.addEventListener('pointerdown', outside, { once: true }); } // a menu that already closed must not close the next one
   m.querySelector('button')?.focus();
   return m;
 }
@@ -167,4 +167,23 @@ export function promptBox(title, value = '', placeholder = '') {
     const s = sheet(title, h('form', { onsubmit: e => { e.preventDefault(); done = true; res(inp.value); s.close(); } }, inp, h('button', { class: 'btn primary block', type: 'submit' }, 'Save')),
       { done: 'Cancel', onDone: () => { if (!done) res(null); } });
   });
+}
+
+/** A text box that behaves like an <input>/<textarea> (.value, setSelectionRange, input/keydown events)
+ *  but is an editable area, so iPhone Safari does not add its ^ v ✓ bar above the keyboard (like Notion). */
+export function textbox({ value = '', placeholder = '', multiline = false, cls = '', label = '', attrs = {}, style = null, oninput, onkeydown, onblur } = {}) {
+  const el = h('div', { class: ('tbox ' + cls).trim(), role: 'textbox', 'aria-label': label || placeholder, 'aria-multiline': multiline ? 'true' : 'false', 'data-ph': placeholder, tabindex: '0', autocorrect: 'on', ...attrs, style });
+  el.contentEditable = 'plaintext-only'; if (el.contentEditable !== 'plaintext-only') el.contentEditable = 'true';
+  const read = () => { let t = el.innerText ?? el.textContent; t = t.replace(/\u00a0/g, ' '); if (t === '\n') t = ''; return multiline ? t.replace(/\n$/, '') : t.replace(/\n/g, ' '); };
+  Object.defineProperty(el, 'value', { get: read, set: v => { el.textContent = v == null ? '' : String(v); } });
+  el.setSelectionRange = (a, b) => { const sel = getSelection(), r = document.createRange(), tn = el.firstChild;
+    if (tn && tn.nodeType === 3 && el.childNodes.length === 1) { const n = tn.length; r.setStart(tn, Math.min(a, n)); r.setEnd(tn, Math.min(b ?? a, n)); } else { r.selectNodeContents(el); r.collapse(a === 0 && !b ? true : false); }
+    sel.removeAllRanges(); sel.addRange(r); };
+  el.select = () => { const r = document.createRange(); r.selectNodeContents(el); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); };
+  el.value = value;
+  el.addEventListener('keydown', e => { if (e.key === 'Enter' && !multiline) e.preventDefault(); onkeydown && onkeydown(e); });
+  el.addEventListener('input', e => { if (!el.textContent && el.innerHTML) el.innerHTML = ''; oninput && oninput(e); });
+  el.addEventListener('paste', e => { if (el.contentEditable === 'plaintext-only') return; e.preventDefault(); document.execCommand('insertText', false, (e.clipboardData || window.clipboardData).getData('text/plain')); });
+  if (onblur) el.addEventListener('blur', onblur);
+  return el;
 }

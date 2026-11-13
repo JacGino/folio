@@ -5,7 +5,7 @@ import * as Sync from './sync.js';
 import * as S from './store.js';
 import { h, icon, logo, $, toast, menu, sheet, promptBox, later } from './ui.js';
 import { formatDate, toISODate } from './dates.js';
-import { renderPage, renderRow, newPage } from './page.js';
+import { renderPage, renderRow, newPage, propEditor } from './page.js';
 import { renderDb } from './table.js';
 import { popEdit } from './popedit.js';
 import { renderSettings, startupSync } from './settings.js';
@@ -17,6 +17,44 @@ import { commentsScreen, calendarScreen, inboxScreen } from './hub.js';
 
 export const state = { route: [], pane: null, ctx: {} };
 
+// ---------- editable headings (names sync with the workspace settings) ----------
+let labels = {};
+export const L = (key, def) => labels[key] || def;
+/** A heading you can rename: tap it, type, press Return (or tap away). Empty puts the original name back. */
+export function elabel(key, def, tag = 'span', attrs = {}) {
+  const el = h(tag, { ...attrs, class: ((attrs.class || '') + ' elabel').trim(), title: 'Tap to rename' }, L(key, def));
+  let before = '';
+  el.addEventListener('click', e => {
+    if (el.isContentEditable) return; e.stopPropagation(); e.preventDefault();
+    before = el.textContent; el.contentEditable = 'plaintext-only'; if (el.contentEditable !== 'plaintext-only') el.contentEditable = 'true';
+    el.focus(); const r = document.createRange(); r.selectNodeContents(el); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+  });
+  el.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); el.blur(); } if (e.key === 'Escape') { el.textContent = before; el.blur(); } });
+  el.addEventListener('blur', () => {
+    el.contentEditable = 'false'; const v = el.textContent.replace(/\s+/g, ' ').trim();
+    const next = { ...labels }; if (!v || v === def) delete next[key]; else next[key] = v.slice(0, 80);
+    el.textContent = next[key] || def;
+    if (JSON.stringify(next) !== JSON.stringify(labels)) { labels = next; Sync.saveSettings({ labels }); Sync.soon(500); }
+  });
+  return el;
+}
+
+// ---------- zoom (per device, ⋯ → Zoom) ----------
+let zoomPct = 100;
+try { zoomPct = Math.max(70, Math.min(200, +localStorage.getItem('folio-zoom') || 100)); } catch {}
+export const zoomFactor = () => zoomPct / 100;
+function applyZoom() { document.documentElement.style.setProperty('--zoom', String(zoomPct / 100)); document.documentElement.classList.toggle('zoomed', zoomPct !== 100); } // zoom only costs anything when it is not 100%
+applyZoom();
+function setZoom(p) { zoomPct = Math.max(70, Math.min(200, Math.round(p / 10) * 10)); try { localStorage.setItem('folio-zoom', zoomPct); } catch {} applyZoom(); }
+function zoomRow() {
+  const pct = h('b', { class: 'zpct' }, zoomPct + '%');
+  const step = d => e => { e.stopPropagation(); setZoom(zoomPct + d); pct.textContent = zoomPct + '%'; };
+  return h('div', { class: 'zoomrow' }, icon('search', 16), h('span', {}, 'Zoom'),
+    h('button', { class: 'zb', 'aria-label': 'Zoom out', onclick: step(-10) }, '−'), pct,
+    h('button', { class: 'zb', 'aria-label': 'Zoom in', onclick: step(10) }, '+'),
+    h('button', { class: 'zb zr', 'aria-label': 'Reset zoom', onclick: e => { e.stopPropagation(); setZoom(100); pct.textContent = '100%'; } }, '↺'));
+}
+
 // ---------- app-wide font (synced with the workspace settings) ----------
 let appFont = 'default';
 export async function loadFont() {
@@ -25,22 +63,124 @@ export async function loadFont() {
   if (!f) { const p = D.all().find(r => r.k === 'page' && ['serif', 'mono'].includes(D.val(r, 'font'))); f = p ? D.val(p, 'font') : 'default'; } // keep a font chosen earlier on a page
   setFontClass(f);
   setGlass(ws.glass ?? 50);
+  labels = ws.labels || {}; if (ws.privSort) privSort = ws.privSort; if (ws.privShow != null) privShow = ws.privShow;
 }
 /** Liquid Glass opacity, 0 = Clear … 100 = Tinted (like the iPhone's Appearance → Liquid Glass slider). */
-export function setGlass(pct) { document.documentElement.style.setProperty('--lg-a', String(Math.max(0, Math.min(100, +pct || 0)) / 100)); }
-function setFontClass(f) { appFont = f; document.body.classList.remove('font-default', 'font-serif', 'font-mono'); document.body.classList.add('font-' + f); }
+export function setGlass(pct) { const v = String(Math.max(0, Math.min(100, +pct || 0)) / 100); if (document.documentElement.style.getPropertyValue('--lg-a') !== v) document.documentElement.style.setProperty('--lg-a', v); }
+function setFontClass(f) { if (appFont === f && document.body.classList.contains('font-' + f)) return; appFont = f; document.body.classList.remove('font-default', 'font-serif', 'font-mono'); document.body.classList.add('font-' + f); }
 async function chooseFont(f) { setFontClass(f); await Sync.saveSettings({ font: f }); Sync.soon(500); }
 /** The ⋯ menu, the same on every screen. `extra` goes on top; `rec` adds Copy link / Move to Trash for that page. */
+// ⋯ opens an "Actions" sheet like Notion's: font, zoom, favourites, share, copy, duplicate, trash, photo, lock, export, last edited
 export function moreMenu(anchor, { extra = [], rec = null, onTrash = null } = {}) {
+  const kp = DB.kpiDb() && D.val(DB.kpiDb(), 'page');
+  if (!rec && (state.route[0] === 'tracker' || state.route[0] === 'archive') && kp) rec = D.live(kp);
+  const ctx = state.ctx;
   const link = location.href.split('#')[0] + (rec ? '#/' + (rec.k === 'row' ? 'r/' : 'p/') + rec.id : location.hash);
-  menu(anchor, [
-    ...extra, ...(extra.length ? ['-'] : []),
-    { label: 'Font: Default', icon: 'text', checked: appFont === 'default', run: () => chooseFont('default') },
-    { label: 'Font: Serif', icon: 'text', checked: appFont === 'serif', run: () => chooseFont('serif') },
-    { label: 'Font: Mono', icon: 'text', checked: appFont === 'mono', run: () => chooseFont('mono') }, '-',
-    { label: 'Copy link', icon: 'link', run: () => navigator.clipboard.writeText(link).then(() => toast('Link copied'), () => toast('Could not copy the link')) },
-    ...(state.route[0] === 'settings' ? [] : [{ label: 'Settings', icon: 'settings', run: () => go('#/settings') }]),
-    ...(rec && onTrash ? [{ label: 'Move to Trash', icon: 'trash', danger: true, run: onTrash }] : [])]);
+  let s;
+  const act = (ic, label, run, opts = {}) => h('button', { class: 'arow' + (opts.danger ? ' danger' : ''), type: 'button', onclick: () => { if (!opts.keep) s.close(); run(); } },
+    icon(ic, 20), h('span', {}, label), opts.value ? h('small', {}, opts.value) : null, opts.chev ? icon('chevr', 16, 'achev') : null);
+  const toggle = (ic, label, on, change) => { const sw = h('input', { type: 'checkbox', class: 'switch', role: 'switch', 'aria-label': label, checked: on ? true : null, onchange: e => change(e.target.checked) });
+    return h('label', { class: 'arow' }, icon(ic, 20), h('span', {}, label), sw); };
+  const grp = (...rows) => { const r = rows.flat().filter(Boolean); return r.length ? h('div', { class: 'agrp' }, r) : null; };
+  const fontCard = (f, label, fam) => h('button', { class: 'agcard' + (appFont === f ? ' on' : ''), type: 'button', onclick: e => { chooseFont(f); e.currentTarget.parentElement.querySelectorAll('.agcard').forEach(c => c.classList.toggle('on', c === e.currentTarget)); } },
+    h('b', { style: { fontFamily: fam } }, 'Ag'), h('small', {}, label));
+  const fav = rec && D.val(rec, 'fav'), locked = rec && D.val(rec, 'locked');
+  const pageText = () => (document.querySelector('#main > .wrap') || document.body).innerText.trim();
+  const words = rec ? pageText().split(/\s+/).filter(Boolean).length : 0;
+  const duplicate = () => {
+    if (rec.k === 'row') { const r = D.create('row', rec.sh, { db: D.val(rec, 'db'), created: Date.now(), order: Date.now() }); const up = {};
+      for (const [k, f] of Object.entries(rec.f)) if (k.startsWith('p:') || k === 'blocks') up[k] = JSON.parse(JSON.stringify(f.v));
+      const tp = DB.titleProp(DB.db(D.val(rec, 'db'))); if (tp && up['p:' + tp.id]) up['p:' + tp.id] += ' (copy)'; D.update(r.id, up); toast('Duplicated'); openTask(r.id); return; }
+    const up = {}; for (const [k, f] of Object.entries(rec.f)) if (!['created', 'edited', 'order', 'fav', 'db'].includes(k)) up[k] = JSON.parse(JSON.stringify(f.v));
+    up.title = (D.val(rec, 'title') || 'Untitled') + ' (copy)'; up.created = up.edited = up.order = Date.now();
+    const p = D.create('page', 'ws', up); toast('Duplicated'); go('#/p/' + p.id);
+  };
+  const photo = (field, label) => () => { const inp = h('input', { type: 'file', accept: 'image/*' }); inp.onchange = async () => { const f = inp.files[0]; if (!f) return; const ref = await Sync.addFile(f); D.update(rec.id, { [field]: ref }); render(); }; inp.click(); };
+  const body = h('div', { class: 'actions' },
+    h('div', { class: 'agrp fonts' }, fontCard('default', 'Default', '-apple-system, sans-serif'), fontCard('serif', 'Serif', 'var(--serif)'), fontCard('mono', 'Mono', 'var(--mono)')),
+    h('div', { class: 'agrp' }, zoomRow()),
+    extra.length ? grp(extra.map(e => act(e.icon || 'chevr', e.label, e.run))) : null,
+    grp(rec ? act('star', fav ? 'Remove from Favourites' : 'Add to Favourites', () => { D.update(rec.id, { fav: !fav }); toast(fav ? 'Removed from Favourites' : 'Added to Favourites'); render(); }) : null,
+      act('export', 'Share', () => ctx.export ? ctx.export(anchor) : window.print()),
+      act('link', 'Copy link', () => navigator.clipboard.writeText(link).then(() => toast('Link copied'), () => toast('Could not copy the link'))),
+      act('page', 'Copy page contents', () => navigator.clipboard.writeText(pageText()).then(() => toast('Page contents copied'), () => toast('Could not copy'))),
+      rec && rec.id !== kp ? act('pages', 'Duplicate', duplicate) : null,
+      rec && onTrash ? act('trash', 'Move to Trash', onTrash, { danger: true }) : null),
+    rec ? grp(act('person', D.val(rec, 'icon') ? 'Change icon' : 'Add icon', photo('icon')), act('paint', D.val(rec, 'cover') ? 'Change cover' : 'Add cover', photo('cover'))) : null,
+    rec ? grp(toggle('lock', 'Lock page', locked, on => { D.update(rec.id, { locked: on }); toast(on ? 'Page locked: editing is off' : 'Page unlocked'); render(); })) : null,
+    grp(act('export', 'Export', () => ctx.export ? ctx.export(anchor) : window.print(), { chev: true }),
+      state.route[0] === 'settings' ? null : act('settings', 'Settings', () => go('#/settings'), { chev: true })),
+    rec ? h('div', { class: 'agrp ainfo' }, h('b', {}, 'Last edited'), h('span', {}, lastEdited(rec)), h('span', {}, words + (words === 1 ? ' word' : ' words'))) : null);
+  s = sheet('Actions', body, { done: 'Done' });
+}
+function lastEdited(rec) {
+  let t = 0; for (const f of Object.values(rec.f || {})) { const w = parseInt(String(f.ts).split(':')[0], 36); if (w > t) t = w; }
+  if (!t) t = D.val(rec, 'edited', D.val(rec, 'created', Date.now()));
+  const d = new Date(t), n = new Date(NOW()), days = Math.round((new Date(n.toDateString()) - new Date(d.toDateString())) / 864e5), hm = d.toTimeString().slice(0, 5);
+  return days === 0 ? 'Today at ' + hm : days === 1 ? 'Yesterday at ' + hm : formatDate(d, 'D/M/YYYY') + ' at ' + hm;
+}
+// ---------- press and hold a task: Actions sheet (like Notion) ----------
+/** Calls fn after holding ~0.5s without moving (or on right-click). The tap that follows a hold is swallowed. */
+export function longPress(el, fn, skip = '.colrz, .rzr, .rz, .lnk, a, input, textarea, .cellpop, [contenteditable="true"]') {
+  let timer = 0, x0 = 0, y0 = 0, fired = false;
+  const cancel = () => { clearTimeout(timer); timer = 0; el.classList.remove('pressing'); };
+  el.addEventListener('pointerdown', e => {
+    if (e.button > 0 || e.target.closest(skip)) return;
+    fired = false; x0 = e.clientX; y0 = e.clientY; cancel();
+    timer = setTimeout(() => { timer = 0; fired = true; el.classList.remove('pressing'); try { navigator.vibrate && navigator.vibrate(12); } catch {} fn(e); }, 500);
+    setTimeout(() => { if (timer) el.classList.add('pressing'); }, 150);
+  });
+  el.addEventListener('pointermove', e => { if (timer && Math.abs(e.clientX - x0) + Math.abs(e.clientY - y0) > 8) cancel(); });
+  for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) el.addEventListener(ev, cancel);
+  el.addEventListener('scroll', cancel, true);
+  el.addEventListener('click', e => { if (fired) { e.stopPropagation(); e.preventDefault(); fired = false; } }, true);
+  el.addEventListener('contextmenu', e => { if (e.target.closest(skip)) return; e.preventDefault(); cancel(); if (!fired) fn(e); fired = false; });
+}
+export function rowActions(id) {
+  const rec = D.live(id); if (!rec) return;
+  const dbr = rec.k === 'row' ? DB.db(D.val(rec, 'db')) : null; const title = rec.k === 'row' ? DB.title(rec) : (D.val(rec, 'title') || 'Untitled');
+  const fav = D.val(rec, 'fav'); let s;
+  const act = (ic, label, run, opts = {}) => h('button', { class: 'arow' + (opts.danger ? ' danger' : ''), type: 'button', onclick: () => { s.close(); run(); } }, icon(ic, 20), h('span', {}, label), opts.chev ? icon('chevr', 16, 'achev') : null);
+  const link = location.href.split('#')[0] + '#/' + (rec.k === 'row' ? 'r/' : 'p/') + rec.id;
+  const created = D.val(rec, 'created', 0);
+  const duplicate = () => { const r = D.create('row', rec.sh, { db: D.val(rec, 'db'), created: Date.now(), order: Date.now() }); const up = {};
+    for (const [k, f] of Object.entries(rec.f)) if (k.startsWith('p:') || k === 'blocks') up[k] = JSON.parse(JSON.stringify(f.v));
+    const tp = dbr && DB.titleProp(dbr); if (tp && up['p:' + tp.id]) up['p:' + tp.id] += ' (copy)'; D.update(r.id, up); toast('Duplicated'); render(); };
+  const body = h('div', { class: 'actions' },
+    h('div', { class: 'asub' }, rec.k === 'row' ? 'Task' : 'Page', h('b', {}, title)),
+    h('div', { class: 'agrp' },
+      act('star', fav ? 'Remove from Favourites' : 'Add to Favourites', () => { D.update(id, { fav: !fav }); toast(fav ? 'Removed from Favourites' : 'Added to Favourites'); render(); }),
+      act('expand', 'Open', () => openTask(id)),
+      dbr ? act('list', 'Edit property', () => editProps(rec, dbr), { chev: true }) : null),
+    h('div', { class: 'agrp' }, act('comment', 'Comment', () => { openTask(id); setTimeout(() => document.querySelector('[aria-label="Add a comment"]')?.focus(), 450); })),
+    h('div', { class: 'agrp' },
+      act('link', 'Copy link', () => navigator.clipboard.writeText(link).then(() => toast('Link copied'), () => toast('Could not copy the link'))),
+      dbr ? act('pages', 'Duplicate', duplicate) : null,
+      act('trash', 'Move to Trash', () => { D.trash(id); if (state.pane === id) state.pane = null; render(); toast('Moved to Trash. Restore it from Trash.'); }, { danger: true })),
+    h('div', { class: 'agrp ainfo' }, h('b', {}, 'Last edited'), h('span', {}, lastEdited(rec)),
+      h('b', { style: { marginTop: '8px' } }, 'Activity'), h('span', {}, 'Edited ' + lastEdited(rec)), created ? h('span', {}, 'Created ' + formatDate(new Date(created), 'D/M/YYYY') + ' at ' + new Date(created).toTimeString().slice(0, 5)) : null));
+  s = sheet('Actions', body, { done: 'Done' });
+}
+// every property of a task in one sheet; changes save straight away
+function editProps(rec, dbr) {
+  const rows = DB.props(dbr).map(p => {
+    let ed;
+    if (['text', 'title', 'number', 'url'].includes(p.type)) {
+      ed = h('input', { class: 'field', value: DB.raw(D.getRec(rec.id), p) ?? '', inputmode: p.type === 'number' ? 'decimal' : null, type: p.type === 'url' ? 'url' : 'text', 'aria-label': p.name,
+        onchange: e => { const v = p.type === 'number' ? (e.target.value === '' ? null : +e.target.value) : e.target.value; D.update(rec.id, { ['p:' + p.id]: v }); document.dispatchEvent(new CustomEvent('folio-row', { detail: rec.id })); } });
+    } else ed = propEditor(D.getRec(rec.id), p, dbr);
+    return h('div', { class: 'eprow' }, h('span', { class: 'epname' }, icon(DB.TYPE_ICON[p.type] || 'text', 16), p.name), h('div', { class: 'epval props' }, ed));
+  });
+  sheet('Edit property', h('div', { class: 'agrp eplist' }, rows), { done: 'Done', onDone: () => render() });
+}
+
+// a locked page can be read but not edited
+function applyLock() {
+  const r = state.route[0], kp = DB.kpiDb() && D.val(DB.kpiDb(), 'page');
+  const rec = r === 'p' || r === 'r' ? D.live(state.route[1]) : (r === 'tracker' || r === 'archive') && kp ? D.live(kp) : null;
+  const wrap = document.querySelector('#main > .wrap'); if (!wrap) return;
+  const on = !!(rec && D.val(rec, 'locked')); wrap.classList.toggle('locked-page', on);
+  if (on) wrap.querySelectorAll('[contenteditable="true"], [contenteditable="plaintext-only"], [contenteditable=""]').forEach(e => e.contentEditable = 'false');
 }
 const NOW = () => (window.FOLIO_NOW ? +window.FOLIO_NOW : Date.now()); // FOLIO_NOW lets tests pin the date
 export const now = NOW;
@@ -69,8 +209,16 @@ export function openTask(id) {
 }
 export function back() { if (history.length > 1) history.back(); else go('#/today'); }
 
+// While you are typing (edit card, a field, page text), background redraws (sync, layout changes) wait until you finish,
+// so the card or the text you are editing never disappears. Going to another screen still redraws straight away.
+let renderLater = false;
+// after an edit card closes: redraw the list, unless you already moved on to edit something else (then redraw when you finish)
+function softRender() { setTimeout(() => { if (document.querySelector('.cellpop') || typingNow()) renderLater = true; else render(); }, 0); }
+const typingNow = () => { const a = document.activeElement; return !!a && a !== document.body && (a.isContentEditable || a.tagName === 'TEXTAREA' || (a.tagName === 'INPUT' && !/^(checkbox|radio|range|button|submit|file|date)$/.test(a.type))) && !!a.closest('#main, #pane, .cellpop'); };
+document.addEventListener('focusout', () => setTimeout(() => { if (renderLater && !typingNow()) { renderLater = false; render(); } }, 120));
 export function render() {
   const app = $('#app'); if (!app) return;
+  if (typingNow() && $('#main')?.dataset.route === location.hash) { renderLater = true; renderSide(); return; }
   const r = (location.hash.replace(/^#\/?/, '') || 'today').split('/'); state.route = r;
   const main = $('#main'); const scroll = main.scrollTop; const same = main.dataset.route === location.hash;
   main.replaceChildren(); main.dataset.route = location.hash;
@@ -97,6 +245,7 @@ export function render() {
   } catch (e) { console.error(e); main.append(h('div', { class: 'wrap' }, h('p', { class: 'empty' }, 'Something went wrong showing this screen: ' + e.message))); }
   main.prepend(topbar());
   if (layoutMode() !== 'wide') document.body.classList.remove('side-open');
+  applyLock();
   if (['p', 'r'].includes(r[0]) && r[1]) noteRecent(r[1]);
   if (same) main.scrollTop = scroll;
   // side pane
@@ -159,10 +308,26 @@ function helpSheet() {
     tip('Reminders and widgets', 'Inbox lists what is due. Turn on the 08:00 reminder there. The Folio widget (Scriptable) adds due dates to your iPhone calendar.'),
     tip('Backups', 'Settings → Download a full backup, and the widget keeps a daily copy in iCloud Drive for one year.')));
 }
+// ⋯ next to Private (like Notion): Sort by (Manual / Last edited) and Show (5, 10, 15, 20 items or All); synced
+let privSort = 'manual', privShow = 0;
+async function savePriv() { renderSide(); await Sync.saveSettings({ privSort, privShow }); Sync.soon(500); renderSide(); }
+function privateMenu(anchor) {
+  menu(anchor, [
+    { el: h('div', { class: 'mhead' }, 'Private') },
+    { label: 'Sort by: ' + (privSort === 'edited' ? 'Last edited' : 'Manual'), icon: 'sort', run: () => menu(anchor, [
+      { el: h('div', { class: 'mhead' }, 'Sort by') },
+      { label: 'Manual', checked: privSort === 'manual', run: () => { privSort = 'manual'; savePriv(); } },
+      { label: 'Last edited', checked: privSort === 'edited', run: () => { privSort = 'edited'; savePriv(); } }]) },
+    { label: 'Show: ' + (privShow ? privShow + ' items' : 'All'), icon: 'number', run: () => menu(anchor, [
+      { el: h('div', { class: 'mhead' }, 'Show') },
+      ...[5, 10, 15, 20].map(n => ({ label: n + ' items', checked: privShow === n, run: () => { privShow = n; savePriv(); } })),
+      { label: 'All', checked: !privShow, run: () => { privShow = 0; savePriv(); } }]) }, '-',
+    { label: 'All pages', icon: 'pages', run: () => go('#/pages') }]);
+}
 function renderSide() {
   const side = $('#side');
   const cur = state.route[0], kp = DB.kpiDb() && D.val(DB.kpiDb(), 'page');
-  const circ = (hash, content, label, on) => h('a', { class: 'circ' + (on ? ' on' : ''), href: hash, 'aria-label': label, title: label, 'aria-current': on ? 'page' : null }, content, on ? h('span', { class: 'clabel' }, label) : null);
+  const circ = (hash, content, label, on) => h('a', { class: 'circ' + (on ? ' on' : ''), href: hash, 'aria-label': label, title: label, 'aria-current': on ? 'page' : null }, content);
   const item = rec => { const hsh = recHash(rec); const on = location.hash === hsh || (hsh === '#/tracker' && (cur === 'tracker' || cur === 'archive'));
     return h('a', { class: 'sitem' + (on ? ' on' : ''), href: hsh, 'aria-current': on ? 'page' : null }, recIcon(rec), h('span', { class: 'st' }, recTitle(rec))); };
   const sec = (key, label, items, extra) => h('div', { class: 'ssec' },
@@ -170,7 +335,9 @@ function renderSide() {
     sideOpenSecs[key] ? (items.length ? items : h('div', { class: 'sempty' }, key === 'favs' ? 'Tap ★ on a page or task to add it here.' : 'Nothing yet.')) : null);
   const rec = recents.map(id => D.live(id)).filter(Boolean).slice(0, 6);
   const favs = [...D.all('page', p => D.val(p, 'fav')), ...D.all('row', r => D.val(r, 'fav'))];
-  const pages = D.all('page', p => !D.val(p, 'parent')).sort((a, b) => (b.id === kp) - (a.id === kp) || recTitle(a).localeCompare(recTitle(b)));
+  const edited = r => { let t = 0; for (const f of Object.values(r.f || {})) { const w = parseInt(String(f.ts).split(':')[0], 36); if (w > t) t = w; } return t; };
+  const pages = D.all('page', p => !D.val(p, 'parent')).sort(privSort === 'edited' ? (a, b) => edited(b) - edited(a)
+    : (a, b) => (b.id === kp) - (a.id === kp) || (D.val(a, 'order', 0) - D.val(b, 'order', 0)) || recTitle(a).localeCompare(recTitle(b))).slice(0, privShow || Infinity);
   const st = Sync.getStatus();
   const syncText = Sync.connected() ? (st.state === 'error' ? 'Sync problem' : st.state === 'syncing' ? 'Syncing…' : st.at ? 'Synced ' + ago(st.at) : 'Not synced yet') : 'Sync is off';
   side.replaceChildren(
@@ -187,7 +354,7 @@ function renderSide() {
       sec('private', 'Private', [...pages.map(item),
         h('button', { class: 'sitem', onclick: () => go('#/p/' + newPage().id) }, icon('plus', 20, 'ricon'), h('span', { class: 'st muted' }, 'New page')),
         h('a', { class: 'sitem' + (cur === 'trash' ? ' on' : ''), href: '#/trash' }, icon('trash', 20, 'ricon'), h('span', { class: 'st muted' }, 'Trash'))],
-        h('button', { class: 'smore', 'aria-label': 'Pages', onclick: () => go('#/pages') }, icon('more', 18)))),
+        h('button', { class: 'smore', 'aria-label': 'Private options', onclick: e => privateMenu(e.currentTarget) }, icon('more', 18)))),
     h('div', { class: 'sfoot' },
       h('a', { class: 'fcirc', href: '#/search', 'aria-label': 'Search', title: 'Search' }, icon('search', 22)),
       h('a', { class: 'fpill' + (st.state === 'error' ? ' bad' : ''), href: '#/settings', title: 'Sync with GitHub' }, icon('sync', 18), h('span', {}, syncText)),
@@ -252,13 +419,13 @@ let commentCount = new Map(); // task id -> number of comments, built once per l
 function listScreen(kind) {
   commentCount = new Map(); for (const c of D.all('cmt')) { const k = D.val(c, 'parent'); commentCount.set(k, (commentCount.get(k) || 0) + 1); }
   const n = NOW(); state.ctx = { export: a => exportList(kind, a), more: a => moreMenu(a, { extra: [{ label: 'Open Planning KPI Tracker', icon: 'table', run: () => go('#/tracker') }] }) };
-  const head = h('div', { class: 'head' }, logo(40), h('div', {}, h('h1', {}, TITLES[kind]), h('p', { class: 'date' }, formatDate(new Date(n), 'dddd, D MMMM YYYY'))));
+  const head = h('div', { class: 'head' }, logo(40), h('div', {}, elabel('title.' + kind, TITLES[kind], 'h1'), h('p', { class: 'date' }, formatDate(new Date(n), 'dddd, D MMMM YYYY'))));
   const wrap = h('div', { class: 'wrap' }, head);
   if (!DB.kpiDb()) { wrap.append(emptyTracker(true)); return wrap; }
   const g = kind === 'today' ? DB.todayGroups(n) : kind === 'survey' ? DB.surveyGroups(n) : DB.ecparGroups(n);
   const names = kind === 'ecpar' ? ['Overdue Amendment', 'Pending Amendment'] : ['Overdue', 'Today', 'Upcoming'];
-  const unitFor = label => /overdue/i.test(label) ? 'days late' : 'days left';
-  const sec = (label, color, list, numColor) => list.length ? [h('div', { class: 'barrow' }, h('span', { class: 'bunit ' + color }, unitFor(label)), h('h2', { class: 'bar ' + color }, label)), ...later(list, t => taskRow(t, numColor, kind), { first: 15, step: 30 })] : [];
+  const unitFor = () => 'Days';
+  const sec = (label, color, list, numColor) => list.length ? [h('div', { class: 'barrow' }, h('span', { class: 'bunit ' + color }, elabel('unit.' + kind + '.' + label, unitFor(label))), h('h2', { class: 'bar ' + color }, elabel('sec.' + kind + '.' + label, label))), ...later(list, t => taskRow(t, numColor, kind), { first: 15, step: 30 })] : [];
   wrap.append(...sec(names[0], 'red', g.overdue, 'red'), ...sec(names[1], 'orange', g.today, 'orange'), ...(g.upcoming ? sec(names[2], 'blue', g.upcoming, 'blue') : []));
   if (!g.overdue.length && !g.today.length && !(g.upcoming || []).length)
     wrap.append(h('p', { class: 'empty' }, kind === 'today' ? 'Nothing due in the next 2 days. Nice.' : kind === 'survey' ? 'No tasks are waiting for a site survey.' : 'No rejected ECPAR to amend.'));
@@ -269,7 +436,7 @@ function listScreen(kind) {
 function rowEdit(t) {
   const dbr = DB.kpiDb(), rec = D.getRec(t.id), P = n => DB.propByName(dbr, n);
   const set = (p, val) => { D.update(t.id, { ['p:' + p.id]: val }); document.dispatchEvent(new CustomEvent('folio-row', { detail: t.id })); render(); };
-  const text = (el, name) => { const p = P(name); if (p) popEdit(el, D.getRec(t.id), p, () => render()); };
+  const text = (el, name) => { const p = P(name); if (p) popEdit(el, D.getRec(t.id), p, softRender); };
   const choose = (el, name) => {
     const p = P(name); if (!p) return; const v = DB.raw(D.getRec(t.id), p);
     menu(el, [...(p.options || []).map(o => ({ label: o.name, checked: o.name === v, run: () => set(p, o.name) })), '-',
@@ -322,7 +489,7 @@ function taskRow(t, color, kind) {
     : h('button', { class: 'lnk ebtn empty', onclick: editMap }, icon('link', 16), 'Pin Location');
   const linkUrl = t.row ? DB.raw(t.row, LINK_PROP) : null;
   let linkEl;
-  const editLink = () => popEdit(linkEl, D.getRec(t.id), LINK_PROP, () => render());
+  const editLink = () => popEdit(linkEl, D.getRec(t.id), LINK_PROP, softRender);
   linkEl = linkUrl && /^https?:/i.test(linkUrl)
     ? holdToEdit(h('a', { class: 'lnk elink', href: browserUrl(linkUrl), target: '_blank', rel: 'noopener', title: linkUrl + ' (press and hold to change)' }, icon('filelink', 16), h('span', {}, linkLabel(linkUrl))), editLink)
     : h('button', { class: 'lnk ebtn empty', onclick: editLink }, icon('filelink', 16), 'Paste a link');
@@ -331,12 +498,14 @@ function taskRow(t, color, kind) {
   addrEl = h('button', { class: 'addr ebtn' + (t.address ? '' : ' empty'), onclick: () => ed.text(addrEl, 'Address') }, t.address || 'Add address');
   let nameEl;
   nameEl = h('button', { class: 'name ebtn', onclick: () => ed.text(nameEl, DB.titleProp(dbr)?.name || 'Customer Name') }, t.title || 'Untitled');
-  return h('div', { class: 'task ' + color + (state.pane === t.id ? ' sel' : '') },
+  const taskEl = h('div', { class: 'task ' + color + (state.pane === t.id ? ' sel' : '') },
     h('button', { class: 'rail', 'aria-label': 'Open ' + (t.title || 'task'), onclick: () => openTask(t.id) }, h('b', {}, d == null ? '–' : Math.abs(d)), d == null ? h('small', {}, 'no date') : null),
     h('div', { class: 'body' },
       h('div', { class: 'l1' }, h('span', { class: 'nm' }, nameEl, commentCount.get(t.id) ? h('button', { class: 'ccount', 'aria-label': commentCount.get(t.id) + ' comments, open task', onclick: () => openTask(t.id) }, icon('comment', 15), commentCount.get(t.id)) : null), h('div', { class: 'rt' }, h('button', { class: 'openbtn', onclick: () => openTask(t.id) }, 'Open'), right)),
       addrEl,
       h('div', { class: 'l3' }, mapRow, dueBtn)));
+  longPress(taskEl, () => rowActions(t.id));
+  return taskEl;
 }
 // Maps app on iPhone; plain web elsewhere
 const isIOS = () => /iP(hone|ad|od)/.test(navigator.platform) || (navigator.userAgent.includes('Mac') && 'ontouchend' in document);
@@ -364,7 +533,7 @@ function emptyTracker(inList) {
 function pagesScreen() {
   state.ctx = {};
   const list = D.all('page', p => !D.val(p, 'db')).sort((a, b) => (D.val(b, 'edited', 0) - D.val(a, 'edited', 0)));
-  return h('div', { class: 'wrap' }, h('div', { class: 'head' }, logo(40), h('div', {}, h('h1', {}, 'Pages'), h('p', { class: 'date' }, list.length + ' pages'))),
+  return h('div', { class: 'wrap' }, h('div', { class: 'head' }, logo(40), h('div', {}, elabel('title.pages', 'Pages', 'h1'), h('p', { class: 'date' }, list.length + ' pages'))),
     h('div', { class: 'group', style: { marginTop: '24px' } }, list.map(p => h('a', { class: 'grow', href: '#/p/' + p.id }, icon('pages', 18), h('span', { class: 'gl' }, D.val(p, 'title') || 'Untitled'), icon('chevr', 14, 'chev'))),
       h('button', { class: 'grow', onclick: () => go('#/p/' + newPage().id) }, icon('plus', 18), h('span', { class: 'gl' }, 'New page'))));
 }

@@ -3,10 +3,10 @@ import * as D from './data.js';
 import * as DB from './db.js';
 import { h, icon, logo, sanitize, strip } from './ui.js';
 import { formatDate, toISODate } from './dates.js';
-import { state, openTask, now, render, download } from './app.js';
+import { state, openTask, now, render, download, elabel } from './app.js';
 import { reminderOn, setReminder } from './notify.js';
 
-const head = (title, sub, ic) => h('div', { class: 'head' }, h('span', { class: 'hubicon' }, icon(ic, 26)), h('div', {}, h('h1', {}, title), sub ? h('p', { class: 'date' }, sub) : null));
+const head = (title, sub, ic) => h('div', { class: 'head' }, h('span', { class: 'hubicon' }, icon(ic, 26)), h('div', {}, elabel('title.' + title.toLowerCase(), title, 'h1'), sub ? h('p', { class: 'date' }, sub) : null));
 const when = t => { const d = new Date(t), n = new Date(now()); const days = Math.round((new Date(n.toDateString()) - new Date(d.toDateString())) / 864e5);
   return days === 0 ? 'Today ' + d.toTimeString().slice(0, 5) : days === 1 ? 'Yesterday' : formatDate(d, 'D/M/YYYY'); };
 
@@ -14,14 +14,16 @@ const when = t => { const d = new Date(t), n = new Date(now()); const days = Mat
 let cFrom = '', cTo = ''; // Comments date filter (YYYY-MM-DD), kept while the app is open
 export function commentsScreen() {
   state.ctx = {};
-  const dayOf = c => toISODate(new Date(D.val(c, 'created', 0)));
+  // the date filter uses each task's Date Assigned (My Task)
+  const assigned = c => { const t = D.live(D.val(c, 'parent')); const d = t && t.k === 'row' && DB.db(D.val(t, 'db')); const p = d && DB.propByName(d, 'Date Assigned'); return p ? toISODate(DB.value(t, p)) : ''; };
+  const dayOf = assigned;
   const all = D.all('cmt').filter(c => D.live(D.val(c, 'parent')));
-  const list = all.filter(c => (!cFrom || dayOf(c) >= cFrom) && (!cTo || dayOf(c) <= cTo)).sort((a, b) => D.val(b, 'created', 0) - D.val(a, 'created', 0));
+  const list = all.filter(c => (!cFrom && !cTo) || (dayOf(c) && (!cFrom || dayOf(c) >= cFrom) && (!cTo || dayOf(c) <= cTo))).sort((a, b) => D.val(b, 'created', 0) - D.val(a, 'created', 0));
   const field = (label, val, set) => h('label', { class: 'dfield' }, h('span', {}, label), h('input', { type: 'date', class: 'field', value: val, onchange: e => { set(e.target.value); render(); } }));
   const filtered = cFrom || cTo;
   const sub = filtered ? `${list.length} of ${all.length} comments` + (cFrom || cTo ? ` · ${cFrom ? formatDate(cFrom, 'D/M/YYYY') : 'start'} – ${cTo ? formatDate(cTo, 'D/M/YYYY') : 'today'}` : '') : list.length + (list.length === 1 ? ' comment' : ' comments');
   return h('div', { class: 'wrap' }, head('Comments', sub, 'comment'),
-    h('div', { class: 'dfilter' }, icon('filter', 18),
+    h('div', { class: 'dfilter' }, h('span', { class: 'dftitle' }, icon('filter', 16), 'Date Assigned'),
       field('From', cFrom, v => { cFrom = v; if (cTo && v && v > cTo) cTo = v; }),
       field('To', cTo, v => { cTo = v; if (cFrom && v && v < cFrom) cFrom = v; }),
       filtered ? h('button', { class: 'btn', onclick: () => { cFrom = cTo = ''; render(); } }, 'Clear') : null),
@@ -31,9 +33,10 @@ export function commentsScreen() {
       return h('div', { class: 'hubitem', role: 'button', tabindex: '0', onclick: () => openTask(task.id) },
         h('span', { class: 'hi-ic' }, icon('comment', 20)),
         h('span', { class: 'hi-body' }, h('span', { class: 'hi-top' }, h('b', {}, title), h('small', {}, when(D.val(c, 'created', 0)))),
+          assigned(c) ? h('span', { class: 'asgd' }, icon('date', 13), 'Assigned ' + formatDate(assigned(c), 'D/M/YYYY')) : null,
           ecx ? h('a', { class: 'ecxlink', href: '#/r/' + task.id, onclick: e => { e.stopPropagation(); e.preventDefault(); openTask(task.id); } }, icon('filelink', 15), ecx) : null,
           h('span', { class: 'hi-text' }, strip(D.val(c, 'text', '')).slice(0, 240))));
-    })) : h('p', { class: 'empty' }, filtered ? 'No comments between these dates.' : 'No comments yet. Comments you add on a task show up here.'));
+    })) : h('p', { class: 'empty' }, filtered ? 'No comments on tasks assigned between these dates.' : 'No comments yet. Comments you add on a task show up here.'));
 }
 
 // ---------- Calendar: due dates and ECPAR amendments by month ----------

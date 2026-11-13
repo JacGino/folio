@@ -663,3 +663,194 @@ body[data-layout="rail"] #side { display: flex; flex-direction: column; padding:
 .dfield { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--ink2); flex: 1; min-width: 130px; }
 .dfield .field { height: 38px; font-size: 15px; background: var(--bg); }
 .dfilter .btn { height: 38px; }
+
+/* ================= opening animation (shown before the app and the passkey screen) ================= */
+#splash { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; background: var(--bg);
+  transition: opacity .5s ease, -webkit-backdrop-filter .5s ease, backdrop-filter .5s ease; }
+#splash .sp-stage { display: flex; flex-direction: column; align-items: center; gap: 18px; }
+#splash .sp-logo { position: relative; width: 92px; height: 92px; animation: spIn .62s cubic-bezier(.2,.9,.25,1.12) both; }
+#splash .sp-logo i, #splash .sp-logo b { position: absolute; inset: 0; border-radius: 22px; }
+#splash .sp-l3 { background: var(--logo3); animation: spL3 .5s .28s cubic-bezier(.2,.9,.3,1.2) both; }
+#splash .sp-l2 { background: var(--logo2); animation: spL2 .5s .2s cubic-bezier(.2,.9,.3,1.2) both; }
+#splash .sp-l1 { background: linear-gradient(145deg, #c4c4c4, var(--logo) 55%, #9a9a9a); display: flex; align-items: center; justify-content: center; overflow: hidden;
+  color: #fff; font: 800 52px/1 -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', sans-serif; letter-spacing: -1px;
+  box-shadow: inset 0 1px 1px rgba(255,255,255,0.55), inset 0 -2px 4px rgba(0,0,0,0.12); }
+#splash .sp-l1 span { animation: spF .5s .12s ease-out both; text-shadow: 0 1px 2px rgba(0,0,0,0.18); }
+#splash .sp-sheen { position: absolute; top: -20%; bottom: -20%; width: 45%; left: -60%; transform: skewX(-18deg);
+  background: linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,0.55), rgba(255,255,255,0)); animation: spSheen .7s .5s ease-in-out both; }
+#splash .sp-word { font: 700 24px/1 -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', sans-serif; letter-spacing: -0.4px; color: var(--ink);
+  animation: spWord .55s .48s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes spIn { from { opacity: 0; transform: scale(.72); filter: blur(10px); } to { opacity: 1; transform: none; filter: blur(0); } }
+@keyframes spL2 { from { transform: translate(0, 0); } to { transform: translate(5px, 5px); } }
+@keyframes spL3 { from { transform: translate(0, 0); } to { transform: translate(10px, 10px); } }
+@keyframes spF { from { opacity: 0; transform: translateY(6px) scale(.9); } to { opacity: 1; transform: none; } }
+@keyframes spSheen { from { left: -60%; } to { left: 130%; } }
+@keyframes spWord { from { opacity: 0; transform: translateY(10px); filter: blur(4px); } to { opacity: 1; transform: none; filter: blur(0); } }
+/* hand-over: the logo shrinks and fades, the app settles in behind it */
+#splash.out { opacity: 0; pointer-events: none; }
+#splash.out .sp-stage { transform: scale(.9); filter: blur(6px); transition: transform .5s cubic-bezier(.4,0,.2,1), filter .5s ease; }
+body.arrive #app, body.arrive #lock { animation: spArrive .55s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes spArrive { from { transform: scale(.985); opacity: .4; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  #splash *, body.arrive #app, body.arrive #lock { animation: none !important; }
+  #splash { transition: opacity .25s ease; } #splash.out .sp-stage { transform: none; filter: none; }
+}
+#splash { pointer-events: none; }
+
+/* opening logo: same size as Notion's (about 22% of the screen width, 148pt on the Duo inner screen) */
+#splash { --sp: clamp(120px, 22vw, 168px); }
+#splash .sp-logo { width: var(--sp); height: var(--sp); }
+#splash .sp-logo i, #splash .sp-logo b { border-radius: calc(var(--sp) * 0.24); }
+#splash .sp-l1 { font-size: calc(var(--sp) * 0.57); }
+#splash .sp-stage { gap: calc(var(--sp) * 0.2); }
+#splash .sp-word { font-size: calc(var(--sp) * 0.26); }
+@keyframes spL2 { from { transform: translate(0, 0); } to { transform: translate(calc(var(--sp) * 0.054), calc(var(--sp) * 0.054)); } }
+@keyframes spL3 { from { transform: translate(0, 0); } to { transform: translate(calc(var(--sp) * 0.108), calc(var(--sp) * 0.108)); } }
+
+/* ================= sharpest possible rendering on Retina / 4K screens ================= */
+html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; font-optical-sizing: auto; font-kerning: normal; }
+svg { shape-rendering: geometricPrecision; }
+/* icons on the glass buttons: pure vector lines, no picture-effect glow (it can soften them) */
+#fnav .b svg, .kbar .kb svg, .kbar .kt, .topbar .tb svg { filter: none !important; }
+#fnav .b, .topbar .tb, .kbar .kb { -webkit-font-smoothing: antialiased; }
+#fnav .b svg, .topbar .tb svg { stroke-width: 2.1; }
+#fnav .pill { transform: none; }
+/* hairline lines like iOS on high-resolution screens */
+@media (min-resolution: 2dppx), (-webkit-min-device-pixel-ratio: 2) {
+  .grid .tr, .grid .th, .grid .td { border-width: 0 0.5px 0.5px 0; }
+  .grid .tr { border-bottom-width: 0.5px; }
+  .grid { border-left-width: 0.5px; border-top-width: 0.5px; }
+  .task, .hubitem, .grid .addrow { border-bottom-width: 0.5px; }
+  body:not([data-layout="rail"]) #side { border-right-width: 0.5px; }
+  .glass, .kbar.glass, .cellpop { border-width: 0.5px; }
+  .props, .comments, hr.sep { border-width: 0.5px; }
+}
+
+/* ---------- round of fixes from the Duo screenshots ---------- */
+/* menu circles: icon only (no name), so all five always fit */
+#side .circ.on { width: 44px !important; padding: 0 !important; background: rgba(55,53,47,0.86) !important; color: #fff !important; }
+@media (prefers-color-scheme: dark) { #side .circ.on { background: rgba(255,255,255,0.9) !important; color: #000 !important; } }
+#side .srow { justify-content: flex-start; }
+/* menu footer: same size and height from the bottom as the page buttons (50pt glass) */
+#side { padding-bottom: 0 !important; }
+#side .sfoot { gap: 8px; padding: 10px 0 max(12px, calc(env(safe-area-inset-bottom) - 6px)); }
+#side .fcirc, #side .fpill { height: 50px; box-sizing: border-box; box-shadow: 0 0 0 0.5px var(--rule), 0 2px 10px rgba(0,0,0,0.08); }
+#side .fcirc { width: 50px; } #side .fcirc svg { width: 21px; height: 21px; }
+#side .fpill { font-size: 14px; padding: 0 14px; gap: 8px; } #side .fpill svg { width: 17px; height: 17px; }
+/* no blue focus box on fields (search, view name, settings); a soft grey edge instead */
+.field:focus, .field:focus-visible, input[type="search"]:focus, .sheet input:focus, .sheet input:focus-visible { outline: none !important; box-shadow: none !important; border-color: var(--ink3) !important; }
+/* tracker search sits in the toolbar row, in the empty space */
+.dbbar.searching { flex-wrap: nowrap; }
+.dbbar .dbsearch { flex: 1 1 120px; min-width: 0; width: auto; height: 36px; margin: 0; border-radius: 18px; background: var(--bg2); border: 0; padding: 0 14px; font-size: 15px; }
+.dbbar.searching .viewbtn { flex: 0 1 auto; min-width: 0; overflow: hidden; }
+.dbbar.searching .viewbtn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dbbar.searching .tools { margin-left: 0; flex: none; }
+/* calendar iCloud box: text gets the full width, button underneath on narrow screens */
+.icloud { flex-wrap: wrap; } .icloud span { flex: 1 1 220px; min-width: 0; }
+/* Duo outer screen: smaller titles so they fit */
+body[data-layout="rail"] .ptitle h1 { font-size: 22px !important; line-height: 1.2; }
+body[data-layout="rail"] .head h1 { font-size: 24px !important; }
+body[data-layout="rail"] .dbname { font-size: 18px !important; }
+body[data-layout="rail"] .avatar { width: 56px !important; height: 56px !important; }
+body[data-layout="rail"] .hubicon { width: 38px; height: 38px; }
+.viewbtn { white-space: nowrap; } .dbbar.searching .viewbtn { max-width: 42%; text-overflow: ellipsis; } .dbbar.searching .viewbtn > svg:last-child { flex: none; }
+
+/* zoom (⋯ → Zoom): the page content grows or shrinks; buttons and menus stay the same */
+#main > .wrap, #pane > .wrap, #pane > div > .wrap { zoom: var(--zoom, 1); }
+.zoomrow { display: flex; align-items: center; gap: 8px; padding: 6px 10px; color: var(--ink); font-size: 15px; }
+.zoomrow > svg { color: var(--ink2); } .zoomrow > span { flex: 1; }
+.zoomrow .zb { width: 34px; height: 30px; border: 0; border-radius: 8px; background: var(--bg2); font-size: 18px; line-height: 1; color: var(--ink); }
+.zoomrow .zr { font-size: 15px; } .zoomrow .zpct { min-width: 44px; text-align: center; font-variant-numeric: tabular-nums; font-weight: 600; }
+/* editable headings */
+.elabel { cursor: text; border-radius: 6px; outline: none; -webkit-user-select: text; user-select: text; }
+.elabel[contenteditable="true"], .elabel[contenteditable="plaintext-only"] { background: rgba(120,120,128,0.12); box-shadow: 0 0 0 4px rgba(120,120,128,0.12); }
+.bar .elabel, .bunit .elabel { display: inline-block; min-width: 1ch; }
+/* cover / photo reposition & resize */
+.adjust { cursor: grab; touch-action: none; }
+.cover.adjust { outline: 2px dashed rgba(255,255,255,0.9); outline-offset: -6px; }
+.avatar.adjust { box-shadow: 0 0 0 3px var(--blue); overflow: visible; }
+.adjust .chg { display: none; }
+.adjh { position: absolute; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.35); touch-action: none; }
+.adjh.edge { left: 50%; bottom: -7px; width: 64px; height: 14px; margin-left: -32px; border-radius: 7px; cursor: ns-resize; z-index: 3; }
+.adjh.corner { right: -6px; bottom: -6px; width: 22px; height: 22px; border-radius: 50%; border: 3px solid var(--blue); cursor: nwse-resize; }
+.adjbar { position: absolute; z-index: 5; display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 14px; border-radius: 22px; font-size: 13px; color: var(--ink); white-space: nowrap; }
+.cover .adjbar { left: 50%; top: calc(env(safe-area-inset-top) + 66px); transform: translateX(-50%); max-width: calc(100% - 20px); }
+.ptitle .adjbar { left: 0; top: calc(100% + 8px); }
+.adjbar span { overflow: hidden; text-overflow: ellipsis; } .adjbar .btn { height: 32px; } .adjbar .btn.primary { background: var(--blue); color: #fff; border: 0; }
+.ptitle { position: relative; }
+.asgd { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--ink2); }
+.dftitle { display: flex; align-items: center; gap: 6px; flex-basis: 100%; font-size: 13px; font-weight: 600; color: var(--ink2); }
+.dfilter > svg { display: none; }
+.cover .chg { bottom: auto; top: calc(env(safe-area-inset-top) + 66px); z-index: 2; } body[data-layout="rail"] .cover .chg { top: calc(env(safe-area-inset-top) + 64px); }
+.cover.adjust { z-index: 4; } .avatar.adjust { z-index: 4; position: relative; }
+.zoomrow { gap: 5px; padding: 6px 8px; } .zoomrow .zb { width: 30px; } .zoomrow .zpct { min-width: 40px; font-size: 14px; } .zoomrow > svg { display: none; }
+
+/* ---------- ⋯ Actions sheet, like Notion ---------- */
+.actions { display: flex; flex-direction: column; gap: 14px; padding-bottom: 10px; }
+.agrp { background: var(--bg); border-radius: 14px; overflow: hidden; }
+.agrp.fonts { display: grid; grid-template-columns: repeat(3, 1fr); padding: 10px 6px; }
+.agcard { display: flex; flex-direction: column; align-items: center; gap: 4px; border: 0; background: none; padding: 8px 0; color: var(--ink); border-radius: 10px; }
+.agcard b { font-size: 30px; font-weight: 400; line-height: 1.1; } .agcard small { font-size: 13px; color: var(--ink2); }
+.agcard.on b, .agcard.on small { color: var(--blue); }
+.arow { display: flex; align-items: center; gap: 14px; width: 100%; min-height: 50px; padding: 0 16px; border: 0; background: none; color: var(--ink); font-size: 16px; text-align: left; cursor: pointer; }
+.arow + .arow { box-shadow: inset 0 0.5px 0 var(--rule); }
+.arow > svg { color: var(--ink2); flex: none; } .arow > span { flex: 1; } .arow small { color: var(--ink2); font-size: 14px; }
+.arow.danger, .arow.danger > svg { color: var(--red); }
+.arow .achev { color: var(--ink3); } .arow:active { background: var(--bg2); }
+.agrp .zoomrow { min-height: 50px; padding: 0 12px 0 16px; font-size: 16px; } .agrp .zoomrow > svg { display: block; color: var(--ink2); }
+.ainfo { display: flex; flex-direction: column; gap: 3px; padding: 14px 16px; color: var(--ink2); font-size: 14px; } .ainfo b { font-weight: 600; }
+.locked-page .addprop, .locked-page .newc, .locked-page .chg, .locked-page .rz, .locked-page .colrz, .locked-page .rzr { display: none !important; }
+.locked-page .props, .locked-page .grid .td, .locked-page .doc { pointer-events: none; }
+.locked-page .doc a, .locked-page .grid .td .open, .locked-page .grid .td a { pointer-events: auto; }
+.menu .mhead { padding: 6px 12px 4px; font-size: 13px; color: var(--ink3); font-weight: 500; }
+
+/* press and hold a task */
+.task, .grid .tr[data-row] { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; transition: transform .25s ease, background .25s; }
+.task.pressing, .grid .tr.pressing { transform: scale(0.985); background: var(--bg2); }
+.asub { display: flex; flex-direction: column; gap: 2px; padding: 0 4px; font-size: 13px; color: var(--ink2); } .asub b { font-size: 17px; color: var(--ink); }
+.eplist { padding: 4px 0; } .eprow { display: grid; grid-template-columns: 150px minmax(0, 1fr); align-items: center; gap: 10px; padding: 8px 14px; min-height: 44px; }
+.eprow + .eprow { box-shadow: inset 0 0.5px 0 var(--rule); }
+.epname { display: flex; align-items: center; gap: 8px; color: var(--ink2); font-size: 14px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.epval .field { height: 38px; font-size: 15px; }
+@media (max-width: 500px) { .eprow { grid-template-columns: 1fr; gap: 4px; } }
+.epval { min-width: 0; } .epval .field { width: 100% !important; box-sizing: border-box; padding: 0 10px; border-radius: 8px; }
+/* list screens: "Days" label same size as the section title; thinner rail line; smaller station tag */
+.barrow .bunit { font-size: 16px !important; font-weight: 600; min-height: 0; padding: 2px 6px; line-height: 1.3; }
+.task .rail { border-right: 0.5px solid var(--rule) !important; }
+@media (max-resolution: 1.5dppx) { .task .rail { border-right-width: 1px !important; } }
+.task .tag.ebtn { font-size: 13px; padding: 2px 7px; border-radius: 5px; line-height: 1.35; }
+
+/* ================= speed on iPhone / iPad (Safari) ================= */
+/* "optimizeLegibility" makes Safari re-shape every line of text: very slow on long lists */
+html { text-rendering: auto !important; font-optical-sizing: auto; }
+/* zoom is only applied when it is not 100% */
+#main > .wrap, #pane > .wrap, #pane > div > .wrap { zoom: normal; }
+html.zoomed #main > .wrap, html.zoomed #pane > .wrap, html.zoomed #pane > div > .wrap { zoom: var(--zoom, 1); }
+/* glass: one light blur instead of blur + saturate + brightness, and one inner edge instead of four;
+   Safari redraws this behind every floating button on every scroll frame */
+.glass, .kbar.glass {
+  -webkit-backdrop-filter: blur(12px) saturate(160%) !important; backdrop-filter: blur(12px) saturate(160%) !important;
+  box-shadow: var(--lg-shadow), inset 0 0.5px 0 var(--lg-edge) !important;
+}
+/* each floating group is its own layer, so scrolling does not repaint it */
+.topbar .tpill, .topbar .tcirc, #fnav .pill, .kbar { will-change: transform; transform: translateZ(0); }
+/* rows: no idle transitions; only animate while pressed */
+.task, .grid .tr[data-row] { transition: none !important; }
+.task.pressing, .grid .tr.pressing { transition: transform .2s ease, background .2s ease !important; }
+/* the page scroller: smooth momentum, and pull-to-refresh/bounce does not drag the whole app */
+#main, #pane, #side .sscroll, .sheet-body { -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+/* off-screen list rows are skipped until you scroll to them */
+.task { content-visibility: auto; contain-intrinsic-size: auto 120px; }
+.hubitem { content-visibility: auto; contain-intrinsic-size: auto 70px; }
+/* buttons respond on touch-down with no 300ms wait, and no grey flash */
+button, a, .td, .task, .grid .tr, .arow, .circ, .sitem { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+.kbar, .kbar.glass { transform: translateX(-50%) translateZ(0) !important; }
+
+/* text boxes without Safari's ^ v ✓ bar: look like the fields they replace */
+.tbox { outline: none; white-space: pre-wrap; word-break: break-word; cursor: text; -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
+.tbox:empty::before { content: attr(data-ph); color: var(--ink3); pointer-events: none; }
+.tbox.field { display: flex; align-items: center; white-space: nowrap; overflow: hidden; overflow-x: auto; scrollbar-width: none; }
+.tbox.field::-webkit-scrollbar { display: none; }
+.tbox.field:empty::before { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cellpop .popin { min-height: 1.45em; max-height: 35vh; overflow-y: auto; }
+.cbox { flex: 1; min-height: 22px; max-height: 40vh; overflow-y: auto; padding: 6px 2px; line-height: 1.45; }
