@@ -1,7 +1,7 @@
 // Folio v2 — database views (table, board, calendar, list), toolbar, filter & settings sheets.
 import * as D from './data.js';
 import * as DB from './db.js';
-import { h, icon, menu, sheet, group, row, toast, promptBox, confirmBox, esc } from './ui.js';
+import { h, icon, menu, sheet, group, row, toast, promptBox, confirmBox, esc, later } from './ui.js';
 import { formatDate, parseDate, toISODate, dateAdd } from './dates.js';
 import { go, openTask, state, now, browserUrl } from './app.js';
 import { propEditor, chip } from './page.js';
@@ -55,37 +55,43 @@ export function renderDbBlock(dbId, { initialView } = {}) {
 // ---------- table ----------
 function visibleProps(dbr, v) { const hid = new Set(v.hidden || []); return DB.props(dbr).filter(p => !hid.has(p.id)); }
 const DEFAULT_W = { title: 220, text: 180, number: 110, select: 140, status: 140, multi: 200, date: 140, checkbox: 90, url: 200, files: 160, formula: 240, created: 140 };
+const colW = (p, v) => (v.widths || {})[p.id] || (/address/i.test(p.name) ? 300 : DEFAULT_W[p.type] || 160);
 function table(dbr, v, list, draw) {
-  const ps = visibleProps(dbr, v); const widths = v.widths || {};
-  const cols = ps.map(p => (widths[p.id] || (/address/i.test(p.name) ? 300 : DEFAULT_W[p.type] || 160)) + 'px').join(' ');
+  const ps = visibleProps(dbr, v);
+  const cols = ps.map(p => colW(p, v) + 'px').join(' ');
   const head = h('div', { class: 'tr', role: 'row', style: { gridTemplateColumns: cols } }, ps.map((p, i) => {
     const th = h('div', { class: 'th' + (i === 0 ? ' first' : ''), role: 'columnheader', tabindex: '0', onclick: e => { if (!e.target.classList.contains('rz')) colMenu(dbr, v, p, th, draw); } }, icon(DB.TYPE_ICON[p.type] || 'text', 14), h('span', {}, p.name),
-      h('span', { class: 'rz', 'aria-hidden': 'true', onpointerdown: e => resize(e, dbr, v, p, th) }));
+      h('span', { class: 'rz', 'aria-hidden': 'true', onpointerdown: e => resize(e, dbr, v, p) }));
     return th;
   }));
   const colors = v.colors || [];
+  const ccount = new Map(); for (const c of D.all('cmt')) { const k = D.val(c, 'parent'); ccount.set(k, (ccount.get(k) || 0) + 1); }
+  // rows go into blocks of 30; blocks off the screen are not drawn, which keeps scrolling smooth
+  const chunks = rs => { const blocks = []; for (let i = 0; i < rs.length; i += 30) blocks.push(rs.slice(i, i + 30)); return later(blocks, b => h('div', { class: 'chunk' }, b.map(rowEl)), { first: 2, step: 2 }); };
   const rowEl = r => {
     const c = colors.find(rule => DB.matches(r, rule, dbr, now()));
     const bg = c ? DB.COLORS[c.color]?.[0] : null;
-    return h('div', { class: 'tr', role: 'row', style: { gridTemplateColumns: cols, ...(bg ? { background: bg } : {}) } }, ps.map((p, i) => cell(r, p, dbr, i === 0, bg)));
+    const ht = (v.heights || {})[r.id];
+    return h('div', { class: 'tr' + (ht ? ' fixed' : ''), role: 'row', 'data-row': r.id, style: { gridTemplateColumns: ps.map(q => colW(q, v) + 'px').join(' '), ...(ht ? { height: ht + 'px' } : {}), ...(bg ? { background: bg } : {}) } }, ps.map((p, i) => cell(r, p, dbr, i === 0, bg, ccount.get(r.id) || 0)),
+      h('span', { class: 'rzr', 'aria-hidden': 'true', title: 'Drag to change row height. Double-tap to reset.', onpointerdown: e => resizeRow(e, dbr, v, r.id) }));
   };
   let body;
   if (v.group) {
     const gp = DB.props(dbr).find(p => p.id === v.group);
     const groups = new Map(); for (const r of list) { const k = gp ? (DB.display(r, gp, now()) || 'No ' + gp.name) : ''; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(r); }
-    body = [...groups].map(([k, rs]) => [h('div', { class: 'ghd' }, gp && gp.options?.find(o => o.name === k) ? chip(gp, k) : k, h('span', { class: 'muted', style: { fontWeight: 400, marginLeft: '8px' } }, rs.length)), rs.map(rowEl)]);
-  } else body = list.map(rowEl);
+    body = [...groups].map(([k, rs]) => [h('div', { class: 'ghd' }, gp && gp.options?.find(o => o.name === k) ? chip(gp, k) : k, h('span', { class: 'muted', style: { fontWeight: 400, marginLeft: '8px' } }, rs.length)), chunks(rs)]);
+  } else body = chunks(list);
   return h('div', {},
-    h('div', { class: 'tablewrap' }, h('div', { class: 'grid', role: 'table', 'aria-label': D.val(dbr, 'name', 'Database') + ': ' + v.name }, head, body,
+    h('div', { class: 'tablewrap' }, h('div', { class: 'grid', role: 'table', 'aria-label': D.val(dbr, 'name', 'Database') + ': ' + v.name }, head, body, colHandles(dbr, v, ps),
       D.val(dbr, 'locked') ? null : h('button', { class: 'addrow', onclick: () => { const r = DB.newRow(dbr); openTask(r.id); } }, '+ New'))),
     h('div', { class: 'gfoot' }, list.length + (list.length === 1 ? ' task' : ' tasks')));
 }
-function cell(r, p, dbr, first, bg) {
+function cell(r, p, dbr, first, bg, ncom = 0) {
   const td = h('div', { class: 'td' + (first ? ' first' : '') + (/ecx/i.test(p.name) ? ' mono' : ''), role: 'cell', tabindex: '0', style: bg ? { background: bg } : null });
   const v = DB.value(r, p, now());
   const fill = () => {
     td.replaceChildren();
-    if (first) { td.append(h('span', { style: { flex: 1 } }, DB.raw(r, p) || h('span', { class: 'muted' }, 'Untitled')), h('button', { class: 'open', onclick: e => { e.stopPropagation(); openTask(r.id); } }, 'Open')); return; }
+    if (first) { td.append(icon('page', 18, 'pgi'), h('span', { class: 'nmtxt' }, DB.raw(r, p) || h('span', { class: 'muted' }, 'Untitled'), ncom ? h('span', { class: 'ccount', 'aria-label': ncom + (ncom === 1 ? ' comment' : ' comments') }, icon('comment', 15), ncom) : null), h('button', { class: 'open', onclick: e => { e.stopPropagation(); openTask(r.id); } }, 'Open')); return; }
     if (p.type === 'checkbox') { td.append(h('input', { type: 'checkbox', checked: v ? true : null, 'aria-label': p.name, style: { width: '16px', height: '16px', accentColor: 'var(--blue)' }, onclick: e => e.stopPropagation(), onchange: e => D.update(r.id, { ['p:' + p.id]: e.target.checked }) })); return; }
     if (p.type === 'select' || p.type === 'status') { if (v) td.append(chip(p, v)); return; }
     if (p.type === 'multi') { for (const x of v) td.append(chip(p, x)); return; }
@@ -97,23 +103,77 @@ function cell(r, p, dbr, first, bg) {
   };
   fill();
   const edit = () => {
-    if (first) { const inp = h('input', { class: 'field', value: DB.raw(r, p) || '', style: { height: '30px' }, onblur: e => { D.update(r.id, { ['p:' + p.id]: e.target.value }); fill(); }, onkeydown: e => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') fill(); } }); td.replaceChildren(inp); inp.focus(); return; }
+    if (first || ['text', 'number', 'url'].includes(p.type)) return popEdit(td, r, p, fill);
     if (['checkbox', 'formula', 'created'].includes(p.type) || D.val(dbr, 'locked') && false) return;
     const ed = propEditor(r, p, dbr, { compact: true }); td.replaceChildren(ed);
-    const f = ed.matches?.('input,button') ? ed : ed.querySelector('input,button'); f && f.focus(); if (f && f.tagName === 'BUTTON') f.click();
+    const f = ed.matches?.('input,button') ? ed : ed.querySelector('input,button'); f && f.focus(); if (f && f.tagName === 'INPUT' && /text|url|search|number/.test(f.type)) try { const n = f.value.length; f.setSelectionRange(n, n); } catch {} if (f && f.tagName === 'BUTTON') f.click();
     if (f && f.tagName === 'INPUT') f.addEventListener('blur', () => setTimeout(fill, 0), { once: true });
   };
-  td.addEventListener('click', e => { if (e.target.closest('a,input,.open')) return; edit(); });
+  td.addEventListener('click', e => { if (e.target.closest('a,input,.open,.rz,.rzr,.colrz')) return; edit(); });
   td.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target === td) { e.preventDefault(); edit(); } });
   return td;
 }
-function resize(e, dbr, v, p, th) {
-  e.preventDefault(); const x0 = e.clientX, w0 = th.getBoundingClientRect().width; const grid = th.closest('.grid');
-  const move = ev => { const w = Math.max(70, Math.round(w0 + ev.clientX - x0)); const widths = { ...(v.widths || {}), [p.id]: w }; v.widths = widths;
-    const cols = visibleProps(dbr, v).map(q => (widths[q.id] || (/address/i.test(q.name) ? 300 : DEFAULT_W[q.type] || 160)) + 'px').join(' ');
-    grid.querySelectorAll('.tr').forEach(tr => tr.style.gridTemplateColumns = cols); };
-  const up = () => { removeEventListener('pointermove', move); removeEventListener('pointerup', up); saveView(dbr, v); };
-  addEventListener('pointermove', move); addEventListener('pointerup', up);
+// ---------- resizing: drag a vertical line for column width, a horizontal line for row height ----------
+// Works with mouse, finger and pencil. Double-tap a line to put it back to the default size.
+let lastTap = { key: '', t: 0 };
+// only a tap (pressed and let go without moving) counts toward a double-tap
+const doubleTap = key => lastTap.key === key && Date.now() - lastTap.t < 400;
+const noteTap = (key, moved) => { lastTap = moved ? { key: '', t: 0 } : { key, t: Date.now() }; };
+function drag(e, onMove, onEnd) {
+  e.preventDefault(); e.stopPropagation();
+  const el = e.currentTarget; el.classList.add('on'); try { el.setPointerCapture(e.pointerId); } catch {}
+  const x0 = e.clientX, y0 = e.clientY; let moved = false;
+  const move = ev => { if (Math.abs(ev.clientX - x0) + Math.abs(ev.clientY - y0) > 2) moved = true; onMove(ev.clientX - x0, ev.clientY - y0); };
+  const up = () => { el.classList.remove('on'); el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up); el.removeEventListener('pointercancel', up); onEnd(moved); };
+  el.addEventListener('pointermove', move); el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+}
+function applyCols(grid, dbr, v) {
+  const ps = visibleProps(dbr, v); const cols = ps.map(q => colW(q, v) + 'px').join(' ');
+  grid.querySelectorAll('.tr').forEach(tr => tr.style.gridTemplateColumns = cols);
+  let x = 0; grid.querySelectorAll(':scope > .colrz').forEach((hd, i) => { x += colW(ps[i], v); hd.style.left = (x - 6) + 'px'; });
+}
+function colHandles(dbr, v, ps) {
+  let x = 0;
+  return ps.map(p => { x += colW(p, v); return h('span', { class: 'colrz', 'aria-hidden': 'true', title: 'Drag to change column width. Double-tap to reset.', style: { left: (x - 6) + 'px' }, onpointerdown: e => resize(e, dbr, v, p) }); });
+}
+// Notion-style editing: a white floating card over the cell, the text grows downward as you type.
+export function popEdit(td, r, p, fill) {
+  document.querySelector('.cellpop')?.dispatchEvent(new Event('commit'));
+  const rc = td.getBoundingClientRect(), num = p.type === 'number';
+  const inp = h('textarea', { class: 'popin', rows: 1, 'aria-label': p.name, inputmode: num ? 'decimal' : p.type === 'url' ? 'url' : null, autocapitalize: p.type === 'url' ? 'off' : null, spellcheck: p.type === 'text' ? null : 'false' });
+  inp.value = DB.raw(r, p) ?? '';
+  const left = Math.max(8, Math.min(rc.left - 1, innerWidth - 248));
+  const box = h('div', { class: 'cellpop', style: { left: left + 'px', top: (rc.top - 1) + 'px', minWidth: Math.min(Math.max(rc.width + 2, 240), innerWidth - left - 8) + 'px', maxWidth: Math.max(240, Math.min(440, innerWidth - left - 8)) + 'px' } }, inp);
+  const grow = () => { inp.style.height = 'auto'; inp.style.height = Math.min(inp.scrollHeight, innerHeight * 0.4) + 'px'; };
+  let done = false;
+  const close = save => {
+    if (done) return; done = true;
+    if (save) { let val = inp.value.replace(/\n+$/, ''); if (num) val = val.trim() === '' ? null : +val; else if (p.type === 'url') val = val.trim(); if (val !== (DB.raw(r, p) ?? (num ? null : ''))) D.update(r.id, { ['p:' + p.id]: val }); }
+    box.remove(); removeEventListener('scroll', onScroll, true); fill(); td.classList.remove('editing');
+  };
+  // the keyboard sliding up scrolls the page: follow the cell, close only when it has left the screen
+  const onScroll = e => { if (box.contains(e.target)) return; const b = td.getBoundingClientRect(); const vh = window.visualViewport ? visualViewport.height + visualViewport.offsetTop : innerHeight;
+    if (b.bottom < 0 || b.top > vh) return close(true); box.style.top = (b.top - 1) + 'px'; box.style.left = Math.max(8, Math.min(b.left - 1, innerWidth - 248)) + 'px'; };
+  inp.addEventListener('input', grow);
+  inp.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); close(true); } if (e.key === 'Escape') { e.preventDefault(); close(false); td.focus(); } });
+  inp.addEventListener('blur', () => setTimeout(() => close(true), 0));
+  box.addEventListener('commit', () => close(true));
+  document.body.append(box); td.classList.add('editing'); grow();
+  inp.focus({ preventScroll: true }); const n = inp.value.length; try { inp.setSelectionRange(n, n); } catch {}
+  addEventListener('scroll', onScroll, true);
+}
+function resize(e, dbr, v, p) {
+  const grid = e.currentTarget.closest('.grid');
+  if (doubleTap('c' + p.id)) { lastTap = { key: '', t: 0 }; const w = { ...(v.widths || {}) }; delete w[p.id]; v.widths = w; applyCols(grid, dbr, v); saveView(dbr, v); return; }
+  const w0 = colW(p, v);
+  drag(e, dx => { v.widths = { ...(v.widths || {}), [p.id]: Math.max(70, Math.min(900, Math.round(w0 + dx))) }; applyCols(grid, dbr, v); }, moved => { noteTap('c' + p.id, moved); if (moved) saveView(dbr, v); });
+}
+function resizeRow(e, dbr, v, rowId) {
+  const tr = e.currentTarget.closest('.tr');
+  const reset = () => { const hs = { ...(v.heights || {}) }; delete hs[rowId]; v.heights = hs; tr.style.height = ''; tr.classList.remove('fixed'); saveView(dbr, v); };
+  if (doubleTap('r' + rowId)) { lastTap = { key: '', t: 0 }; return reset(); }
+  const h0 = tr.getBoundingClientRect().height;
+  drag(e, (dx, dy) => { const ht = Math.max(32, Math.min(800, Math.round(h0 + dy))); v.heights = { ...(v.heights || {}), [rowId]: ht }; tr.style.height = ht + 'px'; tr.classList.add('fixed'); }, moved => { noteTap('r' + rowId, moved); if (moved) saveView(dbr, v); });
 }
 function colMenu(dbr, v, p, anchor, draw) {
   menu(anchor, [
@@ -176,7 +236,7 @@ export function filterSheet(dbr, v, draw) {
     body.replaceChildren(
       group(row({ icon: 'sort', label: 'Sort', value: sortTxt || 'None', active: true, onclick: sortSheet })),
       h('div', { class: 'group' }, h('label', { class: 'grow' }, icon('filter', 20), q), list),
-      (v.filter || []).length > 1 ? group(row({ icon: 'settings', label: 'Match', value: v.filterMode === 'or' ? 'Any rule' : 'All rules', onclick: () => { saveView(dbr, { ...v, filterMode: v.filterMode === 'or' ? 'and' : 'or' }); paint(); } })) : null);
+      group(row({ icon: 'settings', label: 'Advanced filter', value: (v.filter || []).length > 1 ? (v.filterMode === 'or' ? 'Match any rule' : 'Match all rules') : '', onclick: () => { if ((v.filter || []).length < 2) { toast('Add two or more filters, then choose to match all or any of them'); return; } saveView(dbr, { ...v, filterMode: v.filterMode === 'or' ? 'and' : 'or' }); paint(); } })));
   };
   const ruleText = (r, p) => r.op === 'is checked' ? 'Checked' : r.op === 'is unchecked' ? 'Unchecked' : r.op === 'is empty' ? 'Empty' : r.op === 'is not empty' ? 'Not empty' : `${r.op} ${p.type === 'date' && r.value ? formatDate(r.value, 'D MMM YYYY') : r.value}`;
   function ruleSheet(p) {

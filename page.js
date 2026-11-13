@@ -5,7 +5,7 @@ import * as Sync from './sync.js';
 import { h, icon, toast, menu, sheet, group, row, confirmBox, promptBox, esc } from './ui.js';
 import { mountEditor, blocksToMd, nb } from './editor.js';
 import { formatDate, toISODate, parseDate } from './dates.js';
-import { state, go, renderNav, download, layoutMode, browserUrl, now } from './app.js';
+import { state, go, renderNav, download, layoutMode, browserUrl, now, moreMenu } from './app.js';
 import { renderDbBlock } from './table.js';
 
 let editor = null; // only one main editor at a time
@@ -24,16 +24,16 @@ async function addFile(file) {
 async function warnSize() { const n = await Sync.totalBlobBytes(); if (n > 950 * 1048576) toast(`Attachments use ${(n / 1073741824).toFixed(2)} GB. GitHub works best under 1 GB.`, 5000); }
 
 export function newPage(parent = null) { return D.create('page', 'ws', { title: '', parent, blocks: [nb()], created: Date.now(), edited: Date.now(), order: Date.now() }); }
-const fontClass = r => 'font-' + (D.val(r, 'font', 'default'));
+const fontClass = () => ''; // the font is now one setting for the whole app (⋯ → Font)
 
 // ---------- cover + photo ----------
 function coverAndPhoto(rec) {
   const cover = D.val(rec, 'cover'), photo = D.val(rec, 'icon');
   const pick = (field) => { const inp = h('input', { type: 'file', accept: 'image/*' }); inp.onchange = async () => { const f = inp.files[0]; if (!f) return; const ref = await addFile(f); D.update(rec.id, { [field]: ref }); go(location.hash); }; inp.click(); };
   const out = [];
-  if (cover) {
-    const c = h('div', { class: 'cover', role: 'img', 'aria-label': 'Cover photo' }, h('button', { class: 'chg', onclick: () => menu(c.querySelector('.chg'), [{ label: 'Change cover', icon: 'paint', run: () => pick('cover') }, { label: 'Remove cover', icon: 'trash', danger: true, run: () => { D.update(rec.id, { cover: null }); go(location.hash); } }]) }, 'Change cover'));
-    fileUrl(cover.id).then(u => { if (u) c.style.backgroundImage = `url("${u}")`; }); out.push(c);
+  if (cover || D.val(rec, 'db')) { // pages holding a database always show a cover; a soft default until one is picked
+    const c = h('div', { class: 'cover' + (cover ? '' : ' default'), role: 'img', 'aria-label': 'Cover photo' }, h('button', { class: 'chg', onclick: () => menu(c.querySelector('.chg'), [{ label: 'Change cover', icon: 'paint', run: () => pick('cover') }, { label: 'Remove cover', icon: 'trash', danger: true, run: () => { D.update(rec.id, { cover: null }); go(location.hash); } }]) }, 'Change cover'));
+    if (cover) fileUrl(cover.id).then(u => { if (u) c.style.backgroundImage = `url("${u}")`; }); out.push(c);
   }
   const av = h('button', { class: 'avatar', 'aria-label': photo ? 'Change profile photo' : 'Add profile photo', onclick: () => menu(av, [
     { label: photo ? 'Change photo' : 'Add photo', icon: 'person', run: () => pick('icon') }, ...(photo ? [{ label: 'Remove photo', icon: 'trash', danger: true, run: () => { D.update(rec.id, { icon: null }); go(location.hash); } }] : []),
@@ -73,13 +73,7 @@ function exportPage(anchor, rec, md) {
     { label: 'Print or save as PDF', icon: 'export', run: () => window.print() }]);
 }
 function pageMore(anchor, rec) {
-  const f = D.val(rec, 'font', 'default');
-  menu(anchor, [
-    { label: 'Font: Default', icon: 'text', checked: f === 'default', run: () => { D.update(rec.id, { font: 'default' }); go(location.hash); } },
-    { label: 'Font: Serif', icon: 'text', checked: f === 'serif', run: () => { D.update(rec.id, { font: 'serif' }); go(location.hash); } },
-    { label: 'Font: Mono', icon: 'text', checked: f === 'mono', run: () => { D.update(rec.id, { font: 'mono' }); go(location.hash); } }, '-',
-    { label: 'Copy link', icon: 'link', run: () => navigator.clipboard.writeText(location.href.split('#')[0] + '#/' + (rec.k === 'row' ? 'r/' : 'p/') + rec.id).then(() => toast('Link copied')) },
-    { label: 'Move to Trash', icon: 'trash', danger: true, run: async () => { if (await confirmBox('Move this page to Trash? You can restore it from Trash.', 'Move to Trash')) { D.trash(rec.id); go('#/today'); toast('Moved to Trash'); } } }]);
+  moreMenu(anchor, { rec, onTrash: async () => { if (await confirmBox('Move this page to Trash? You can restore it from Trash.', 'Move to Trash')) { D.trash(rec.id); go('#/today'); toast('Moved to Trash'); } } });
 }
 
 // ---------- task page (database row) ----------

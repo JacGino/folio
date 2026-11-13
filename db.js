@@ -8,6 +8,9 @@ export const COLORS = { default: ['#E3E2E0', '#9B9A97'], gray: ['#E3E2E0', '#9B9
   yellow: ['#FBF3DB', '#CB912F'], green: ['#DBEDDB', '#6C9B7D'], blue: ['#D3E5EF', '#5B97BD'], purple: ['#E8DEEE', '#9A6DD7'], pink: ['#F5E0E9', '#C14C8A'], red: ['#FFE2DD', '#E16259'] };
 export const COLOR_NAMES = Object.keys(COLORS).filter(c => c !== 'default');
 export const TYPES = { title: 'Title', text: 'Text', number: 'Number', select: 'Select', multi: 'Multi-select', status: 'Status', date: 'Date', checkbox: 'Checkbox', url: 'URL', files: 'Files & media', formula: 'Formula', created: 'Created time' };
+// a formula is prepared once and reused for every task (it used to be re-read for each one)
+const FORMULAS = new Map();
+const compiled = src => { let f = FORMULAS.get(src); if (!f) { f = compile(src); FORMULAS.set(src, f); } return f; };
 export const TYPE_ICON = { title: 'title', text: 'text', number: 'number', select: 'list', multi: 'list', status: 'status', date: 'date', checkbox: 'checkbox', url: 'link', files: 'clip', formula: 'formula', created: 'date' };
 
 export const ALERT_FORMULA = `if(prop("Status") == "Rejected","❌ REJECTED",if(prop("Status") == "Done","✅ COMPLETED",if(prop("Status") == "To Amend",if(dateBetween(dateAdd(prop("ECPAR Rejected"), 1, "days"), today(), "days") < 0,"🚨 AMENDMENT OVERDUE","🟠 AMENDMENT DUE (" + format(dateBetween(dateAdd(prop("ECPAR Rejected"), 1, "days"), today(), "days")) + " days left)"),if(dateBetween(prop("Due Date"), today(), "days") < 0,"🔴 OVERDUE (" + format(abs(dateBetween(prop("Due Date"), today(), "days"))) + " days)",if(dateBetween(prop("Due Date"), today(), "days") <= 2,"🟠 " + format(dateBetween(prop("Due Date"), today(), "days")) + " days left","🔵 " + format(dateBetween(prop("Due Date"), today(), "days")) + " days left")))))`;
@@ -28,7 +31,7 @@ export function value(row, p, now = Date.now(), depth = 0) {
   if (p.type === 'formula') {
     if (depth > 4) return null;
     const dbr = db(D.val(row, 'db'));
-    try { return compile(p.formula || '""')(name => value(row, propByName(dbr, name), now, depth + 1), { now, rowId: row.id }); } catch { return null; }
+    try { return compiled(p.formula || '""')(name => value(row, propByName(dbr, name), now, depth + 1), { now, rowId: row.id }); } catch { return null; }
   }
   if (p.type === 'created') return new Date(D.val(row, 'created', 0));
   const v = raw(row, p);

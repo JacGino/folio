@@ -1,5 +1,6 @@
 /* Folio v2 — calm, Apple-system colours, glass navigation over opaque content. */
 :root {
+  --cellsel: #EDEDEF;
   --bg: #FFFFFF; --bg2: #F2F2F7; --bg3: #E5E5EA; --ink: #37352F; --ink2: #73726E; --ink3: #9B9A97; --rule: #E9E9E7;
   --blue: #1F72C4; --red: #C4403B; --orange: #B35A0C; --orange-n: #D9730D;
   --red-bg: #FFE2DD; --orange-bg: #FADEC9; --blue-bg: #D3E5EF;
@@ -34,7 +35,6 @@ a { color: inherit; text-decoration: none; }
 #pane { display: none; overflow-y: auto; min-width: 0; background: var(--bg); }
 .wrap.wide-page { max-width: none; }
 .wrap { max-width: 900px; margin: 0 auto; padding: calc(env(safe-area-inset-top) + 64px) 20px 120px; }
-body[data-layout="rail"] .wrap { padding-right: 72px; padding-top: calc(env(safe-area-inset-top) + 26px); padding-bottom: 40px; }
 
 body[data-layout="split"] #app.has-pane { grid-template-columns: 1fr 1fr; }
 body[data-layout="split"][data-orient="portrait"] #app.has-pane { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
@@ -75,11 +75,26 @@ body[data-layout="phone"] #fnav .bottom { position: absolute; bottom: calc(env(s
 body[data-layout="phone"] #fnav .bottom.spread { justify-content: space-between; }
 /* rail (iPhone Duo outer, and split screens): one column on the right */
 body[data-layout="rail"] #fnav, body[data-layout="split"] #fnav { right: 8px; top: calc(env(safe-area-inset-top) + 172px); bottom: calc(env(safe-area-inset-bottom) + 20px); display: flex; flex-direction: column; align-items: center; gap: 12px; }
-body[data-layout="split"][data-orient="portrait"] #fnav { top: calc(env(safe-area-inset-top) + 360px); }
 body[data-layout="rail"] #fnav .cl, body[data-layout="split"] #fnav .cl { flex-direction: column; }
 body[data-layout="rail"] #fnav .pill, body[data-layout="split"] #fnav .pill { flex-direction: column; }
 body[data-layout="rail"] #fnav .b, body[data-layout="split"] #fnav .b { width: 40px; height: 40px; }
 body[data-layout="rail"] #fnav .bottom, body[data-layout="split"] #fnav .bottom { margin-top: auto; }
+/* rail = iPhone Duo outer screen: full-width content, actions top-right, menu bar at the bottom */
+body[data-nav="bar"] #fnav { left: 10px; right: 10px; top: 0; bottom: 0; display: block; }
+body[data-nav="bar"] #fnav .cl, body[data-nav="bar"] #fnav .pill { flex-direction: row; }
+body[data-nav="bar"] #fnav .top { position: absolute; top: calc(env(safe-area-inset-top) + 6px); right: 0; }
+body[data-nav="bar"] #fnav .bottom { position: absolute; bottom: calc(env(safe-area-inset-bottom) + 12px); left: 0; right: 0; justify-content: center; margin: 0; }
+body[data-nav="bar"] #fnav .bottom.spread { justify-content: space-between; }
+body[data-nav="bar"] .wrap { padding-left: 14px; padding-right: 14px; padding-top: calc(env(safe-area-inset-top) + 60px); padding-bottom: calc(env(safe-area-inset-bottom) + 84px); }
+body[data-nav="bar"] .wrap .cover { margin: calc(-1 * (env(safe-area-inset-top) + 60px)) -14px 0; height: 170px; }
+body[data-nav="bar"][data-orient="landscape"] .wrap .cover { height: 120px; }
+.cover.default { background-image: linear-gradient(135deg, #E8E8ED 0%, #D1D1D6 55%, #C7C7CC 100%); }
+@media (prefers-color-scheme: dark) { .cover.default { background-image: linear-gradient(135deg, #2C2C2E 0%, #3A3A3C 55%, #48484A 100%); } }
+body[data-layout="rail"] .ptitle h1, body[data-layout="rail"] .head h1 { font-size: 22px; letter-spacing: -0.3px; }
+body[data-layout="rail"] .avatar { width: 64px; height: 64px; }
+body[data-layout="rail"] .dbname { font-size: 16px; margin-top: 10px; }
+body[data-layout="rail"] .viewbtn { height: 30px; font-size: 13px; padding: 0 8px; }
+body[data-layout="rail"] .grid { font-size: 14px; }
 body[data-layout="wide"] #fnav { right: 16px; top: 14px; } body[data-layout="wide"] #fnav .bottom { display: none; }
 body[data-layout="wide"] #fnav .menuonly { display: none; }
 
@@ -95,7 +110,7 @@ body[data-layout="wide"] #fnav .menuonly { display: none; }
 
 /* ---------- task rows (Today / Survey / ECPAR) ---------- */
 .task { display: grid; grid-template-columns: 64px minmax(0, 1fr); column-gap: 12px; border-bottom: 1px solid var(--rule); min-height: 76px; content-visibility: auto; contain-intrinsic-size: auto 96px; }
-.task .rail { border-right: 2px solid var(--rule); padding: 12px 10px 0 0; text-align: right; }
+.task .rail { border: 0; border-right: 2px solid var(--rule); background: none; padding: 12px 10px 0 0; text-align: right; display: block; color: inherit; font: inherit; cursor: pointer; }
 .task .rail b { display: block; font-size: 30px; font-weight: 700; line-height: 0.95; font-variant-numeric: tabular-nums; }
 .task .rail small { display: block; font-size: 12px; color: var(--ink2); margin-top: 3px; }
 .task.red .rail b { color: var(--red); } .task.orange .rail b { color: var(--orange-n); } .task.blue .rail b { color: var(--blue); }
@@ -107,6 +122,21 @@ body[data-layout="wide"] #fnav .menuonly { display: none; }
 .task .lnk { font-size: 14px; color: var(--blue); white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; min-height: 24px; }
 .task .due { font-size: 13px; color: var(--ink2); white-space: nowrap; }
 .task.sel { background: var(--bg2); }
+/* tap-to-edit parts of a row: look like plain text, show a soft tile when pressed */
+.task .ebtn { font: inherit; color: inherit; background: none; border: 0; padding: 1px 4px; margin: -1px -4px; border-radius: 5px; text-align: left; cursor: text; -webkit-tap-highlight-color: transparent; }
+.task .ebtn:active, .task .ebtn.editing { background: var(--bg2); }
+.task .ebtn.empty { color: var(--ink3); }
+.task .addr.ebtn { font-size: 14px; color: var(--ink2); line-height: 1.35; align-self: flex-start; }
+.task .addr.ebtn.empty, .task .due.ebtn.empty, .task .lnk.ebtn.empty { color: var(--ink3); }
+.task .tag.ebtn, .task .pill.ebtn { margin: 0; cursor: pointer; flex: none; } .task .pill.ebtn.empty, .task .tag.ebtn.empty { background: var(--bg2); }
+.task .due.ebtn { font-size: 13px; color: var(--ink2); white-space: nowrap; cursor: pointer; }
+.task .nm { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
+.task .name.ebtn { font-size: 16px; font-weight: 500; }
+.task .rt { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex: none; }
+.task .openbtn { flex: none; border: 0; background: var(--bg2); color: var(--ink2); border-radius: 6px; font-size: 12px; padding: 2px 7px; margin-top: 1px; }
+.task .links { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+.task .lnk { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+.task .l3 { align-items: flex-start; }
 
 /* tags & pills */
 .tag { display: inline-flex; align-items: center; font-size: 13px; padding: 1px 7px; border-radius: 4px; white-space: nowrap; color: #37352F; margin: 1px 4px 1px 0; }
@@ -152,7 +182,7 @@ textarea.field { height: auto; min-height: 120px; padding: 10px 12px; font-famil
 /* ---------- database page ---------- */
 .cover { position: relative; z-index: 0; height: 150px; margin: calc(-1 * (env(safe-area-inset-top) + 64px)) -20px 0; background: var(--bg2) center/cover no-repeat; }
 body:not([data-layout="phone"]) .cover { margin-top: -28px; }
-body[data-layout="rail"] .cover, body[data-layout="split"] .cover { margin-right: -72px; }
+body[data-layout="split"] .cover { margin-right: -72px; }
 .cover .chg { position: absolute; right: 14px; bottom: 12px; height: 30px; padding: 0 12px; border: 0; border-radius: 6px; background: rgba(255,255,255,0.85); color: #37352F; font-size: 13px; }
 .ptitle { position: relative; z-index: 1; display: flex; align-items: flex-end; gap: 14px; }
 .cover + .ptitle { margin-top: -28px; }
@@ -167,15 +197,31 @@ body[data-layout="rail"] .cover, body[data-layout="split"] .cover { margin-right
 .split button + button { width: 32px; border-left: 1px solid rgba(255,255,255,0.35); }
 .dbsearch { flex-basis: 100%; }
 .tablewrap { margin-top: 14px; overflow-x: auto; border-top: 1px solid var(--rule); border-left: 1px solid var(--rule); }
-.grid { width: max-content; min-width: 100%; font-size: 15px; }
+.grid { width: max-content; min-width: 100%; font-size: 15px; position: relative; }
+/* resize handles: wide enough for a finger, show a blue line while dragging */
+.grid .colrz { position: absolute; top: 0; bottom: 0; width: 12px; z-index: 3; cursor: col-resize; touch-action: none; }
+.grid .rzr { position: absolute; left: 0; right: 0; bottom: -6px; height: 12px; z-index: 2; cursor: row-resize; touch-action: none; }
+.grid .colrz::after, .grid .rzr::after { content: ''; position: absolute; background: var(--blue); opacity: 0; transition: opacity .12s; }
+.grid .colrz::after { left: 5px; width: 2px; top: 0; bottom: 0; } .grid .rzr::after { top: 5px; height: 2px; left: 0; right: 0; }
+.grid .colrz:hover::after, .grid .rzr:hover::after { opacity: .5; } .grid .colrz.on::after, .grid .rzr.on::after { opacity: 1; }
+.grid .tr { position: relative; } .grid .tr.fixed .td { overflow: hidden; align-items: flex-start; }
 .grid .tr { display: grid; border-bottom: 1px solid var(--rule); }
 .blk > * { min-width: 0; } .blk.db { display: block; } .dbblock { min-width: 0; width: 100%; }
 .grid .th { position: relative; padding: 8px 10px; font-size: 13px; color: var(--ink2); border-right: 1px solid var(--rule); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px; background: var(--bg); }
-.grid .th .rz { position: absolute; right: -4px; top: 0; bottom: 0; width: 8px; cursor: col-resize; z-index: 2; }
+.grid .th .rz { position: absolute; right: -6px; top: 0; bottom: 0; width: 12px; cursor: col-resize; z-index: 4; touch-action: none; }
 .grid .td { padding: 10px; border-right: 1px solid var(--rule); min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 0; cursor: default; background: var(--bg); }
 .grid .td.first { flex-wrap: nowrap; position: sticky; left: 0; z-index: 1; font-weight: 500; }
 .grid .th.first { position: sticky; left: 0; z-index: 2; }
-.grid .td:focus-within, .grid .td:focus { outline: 2px solid var(--blue); outline-offset: -2px; }
+.grid .td:focus, .grid .td:focus-within { outline: none; }
+.grid .td.editing { box-shadow: inset 0 0 0 1px var(--rule); }
+/* floating edit card, like Notion */
+.cellpop { position: fixed; z-index: 60; background: var(--bg); border-radius: 6px; box-shadow: 0 0 0 1px rgba(15,15,15,0.05), 0 3px 6px rgba(15,15,15,0.1), 0 9px 24px rgba(15,15,15,0.2); padding: 8px 10px; }
+.cellpop .popin { display: block; width: 100%; border: 0; outline: none; resize: none; background: transparent; color: var(--ink); font: 15px/1.45 var(--sans); padding: 0; margin: 0; overflow-y: auto; }
+@media (prefers-color-scheme: dark) { .cellpop { background: #252525; box-shadow: 0 0 0 1px rgba(255,255,255,0.08), 0 3px 6px rgba(0,0,0,0.3), 0 9px 24px rgba(0,0,0,0.5); } }
+/* editing inside a cell: no blue box, just the light grey tile */
+.grid .td input, .grid .td .field, .grid .td select, .grid .td textarea { border: 0 !important; outline: none !important; box-shadow: none !important; background: transparent !important; padding: 0 !important; border-radius: 0 !important; font: inherit; color: inherit; width: 100%; }
+.grid .td input[type=checkbox] { width: 16px; }
+.grid .td :focus-visible { outline: none; }
 .grid .td.mono { font-family: var(--mono); font-size: 13px; }
 .grid .td .open { margin-left: auto; opacity: 0; border: 0; background: var(--bg2); border-radius: 6px; font-size: 12px; padding: 2px 6px; }
 .grid .tr:hover .td .open, .grid .td .open:focus { opacity: 1; }
@@ -268,3 +314,119 @@ hr.sep { margin: 18px 0; border: 0; border-top: 1px solid var(--rule); }
   body, #app, #main { position: static; overflow: visible; height: auto; display: block; }
   .wrap { padding: 0; max-width: none; }
 }
+/* list rows: name and address on the left, Open above the station/status on the right */
+.task .body { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 10px; row-gap: 3px; align-content: start; }
+.task .l1 { display: contents; }
+.task .nm { grid-column: 1; grid-row: 1; }
+.task .rt { grid-column: 2; grid-row: 1 / span 2; }
+.task .body > .addr { grid-column: 1; grid-row: 2; }
+.task .l3 { grid-column: 1 / -1; grid-row: 3; }
+.task .l3 { align-items: flex-end; } /* due date lines up with "Open in browser" */
+.task .due.ebtn { min-height: 24px; display: inline-flex; align-items: center; margin-bottom: 0; }
+
+/* app-wide font (⋯ → Font) */
+body.font-serif { --sans: var(--serif); }
+body.font-mono { --sans: var(--mono); }
+body.font-mono .grid, body.font-mono .task, body.font-mono .cellpop .popin { letter-spacing: -0.2px; }
+
+/* ---------- Notion look: database title, view pill, OPEN button ---------- */
+.dbname { font-size: 22px; font-weight: 700; letter-spacing: -0.3px; gap: 8px; color: var(--ink); }
+.dbname svg { color: var(--ink3); }
+.viewbtn { height: 38px; padding: 0 14px 0 12px; gap: 10px; border-radius: 19px; background: var(--bg2); color: var(--ink); font-size: 15px; font-weight: 400; letter-spacing: 0.1px; }
+.viewbtn svg { color: var(--ink2); }
+.viewbtn svg:last-child { color: var(--ink3); margin-left: 2px; }
+body[data-layout="rail"] .dbname { font-size: 18px; }
+body[data-layout="rail"] .viewbtn { height: 32px; font-size: 13px; padding: 0 10px; border-radius: 16px; }
+/* cells sit at the top, like Notion */
+.grid .td { align-items: flex-start; }
+/* OPEN: small white button with a hairline border, top-right of the name cell */
+.grid .td .open, .task .openbtn { text-transform: uppercase; letter-spacing: 0.6px; font-size: 11px; font-weight: 500; color: var(--ink2); background: var(--bg); border: 1px solid var(--rule); box-shadow: 0 1px 2px rgba(15,15,15,0.06); border-radius: 6px; padding: 3px 7px; line-height: 1.2; align-self: flex-start; flex: none; }
+.grid .td .open { margin: 1px 0 0 8px; }
+@media (prefers-color-scheme: dark) { .grid .td .open, .task .openbtn { background: #252525; border-color: #3a3a3a; } }
+.grid .td .open { opacity: 1 !important; }
+
+/* name cell like Notion: page icon, name, comment count, OPEN on the right */
+.grid .td.first { gap: 6px; }
+.grid .td .pgi { flex: none; color: var(--ink3); margin-top: 1px; }
+.grid .td .nmtxt { flex: 1; min-width: 0; white-space: normal; }
+.grid .td .ccount { display: inline-flex; align-items: center; gap: 3px; margin-left: 8px; color: var(--ink2); font-size: 13px; white-space: nowrap; vertical-align: 1px; }
+.grid .td.first { flex-wrap: nowrap; align-items: flex-start; }
+.grid .th svg, .sheet .row svg, .props svg { color: var(--ink2); }
+
+/* comment count right after the name, on the same line when it fits */
+.grid .td .nmtxt { display: block; }
+.grid .td .ccount { display: inline-flex; vertical-align: -2px; margin-left: 6px; }
+.task .nm { flex-wrap: wrap; align-items: baseline; column-gap: 6px; }
+.task .ccount { display: inline-flex; align-items: center; gap: 3px; border: 0; background: none; padding: 0; color: var(--ink2); font-size: 13px; }
+.task .nm { align-items: center; } .task .ccount { line-height: 1; margin-top: 1px; }
+/* speed: rows outside the screen are not drawn until you scroll to them */
+.grid .chunk { content-visibility: auto; contain-intrinsic-size: auto 2000px; }
+
+/* no tap delay on iPhone; a held-in-place layer for the floating buttons */
+button, a, [role="button"], .td, .task .ebtn { touch-action: manipulation; }
+#fnav .pill { transform: translateZ(0); }
+.later { display: contents; }
+
+/* ---------- shortcut bar above the keyboard (like Notion) ---------- */
+.kbar { position: fixed; left: 10px; right: 10px; z-index: 90; display: flex; align-items: center; height: 50px; padding: 0 6px; border-radius: 25px;
+  background: var(--bg); box-shadow: 0 0 0 1px rgba(15,15,15,0.06), 0 4px 18px rgba(15,15,15,0.16); max-width: 620px; margin: 0 auto; }
+.kbar[hidden] { display: none; }
+.kbar .kscroll { flex: 1; min-width: 0; display: flex; align-items: center; gap: 2px; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.kbar .kscroll::-webkit-scrollbar { display: none; }
+.kbar .kb { flex: none; width: 44px; height: 44px; border: 0; background: none; border-radius: 22px; color: var(--ink2); display: inline-flex; align-items: center; justify-content: center; touch-action: manipulation; }
+.kbar .kb:active { background: var(--bg2); }
+.kbar .kt { font: 500 20px/1 var(--sans-ui, -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif); color: inherit; }
+.kbar .ksep { width: 1px; height: 26px; background: var(--rule); margin: 0 4px; flex: none; }
+.kbar .dim { opacity: .55; }
+.kbar.plain .kb.rich { opacity: .3; }
+body.typing #fnav { display: none; }
+@media (prefers-color-scheme: dark) { .kbar { background: #252525; box-shadow: 0 0 0 1px rgba(255,255,255,0.08), 0 4px 18px rgba(0,0,0,0.5); } }
+.kbar .kpick { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.kbar .kpick::-webkit-scrollbar { display: none; }
+.kbar .kchip { flex: none; height: 34px; padding: 0 12px; border: 0; border-radius: 17px; background: var(--bg2); color: var(--ink); font-size: 14px; white-space: nowrap; }
+.kbar .kscroll[hidden] { display: none; }
+
+/* ---------- Liquid Glass, "Clear" style (iOS 26): floating buttons and the keyboard shortcut bar ---------- */
+:root { --lg-tint: rgba(255,255,255,0.14); --lg-edge: rgba(255,255,255,0.75); --lg-edge2: rgba(255,255,255,0.18); --lg-shadow: 0 6px 22px rgba(0,0,0,0.12), 0 1px 3px rgba(0,0,0,0.08); --lg-ink: #1d1d1f; }
+@media (prefers-color-scheme: dark) { :root { --lg-tint: rgba(255,255,255,0.06); --lg-edge: rgba(255,255,255,0.32); --lg-edge2: rgba(255,255,255,0.06); --lg-shadow: 0 6px 22px rgba(0,0,0,0.45), 0 1px 3px rgba(0,0,0,0.3); --lg-ink: #f5f5f7; } }
+.glass, .kbar.glass {
+  background: linear-gradient(160deg, rgba(255,255,255,0.22) 0%, var(--lg-tint) 45%, rgba(255,255,255,0.04) 100%);
+  -webkit-backdrop-filter: blur(10px) saturate(190%) brightness(1.06); backdrop-filter: blur(10px) saturate(190%) brightness(1.06);
+  border: 1px solid var(--lg-edge2);
+  box-shadow: var(--lg-shadow), inset 0 1px 1px var(--lg-edge), inset 0 -1px 1px rgba(255,255,255,0.12), inset 1px 0 1px rgba(255,255,255,0.18), inset -1px 0 1px rgba(255,255,255,0.18);
+}
+#fnav .b, .kbar .kb { color: var(--lg-ink); }
+#fnav .b svg, .kbar .kb svg, .kbar .kt { filter: drop-shadow(0 0 1px rgba(255,255,255,0.55)); }
+@media (prefers-color-scheme: dark) { #fnav .b svg, .kbar .kb svg, .kbar .kt { filter: drop-shadow(0 0 1px rgba(0,0,0,0.6)); } }
+#fnav .b[aria-current="page"], #fnav .b.on { background: rgba(60,60,67,0.78); color: #fff; box-shadow: inset 0 1px 1px rgba(255,255,255,0.25); }
+@media (prefers-color-scheme: dark) { #fnav .b[aria-current="page"], #fnav .b.on { background: rgba(255,255,255,0.88); color: #000; } }
+.kbar .kb:active, #fnav .b:active { background: rgba(120,120,128,0.2); }
+.kbar .kchip { background: rgba(120,120,128,0.16); }
+.kbar .ksep { background: rgba(120,120,128,0.3); }
+/* follow the iPhone's Accessibility settings: Reduce Transparency / Increase Contrast make the glass solid */
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .glass, .kbar.glass { background: var(--bg); -webkit-backdrop-filter: none; backdrop-filter: none; border: 1px solid var(--rule); box-shadow: 0 2px 10px rgba(0,0,0,0.15); }
+  #fnav .b svg, .kbar .kb svg, .kbar .kt { filter: none; }
+}
+
+/* bigger floating buttons: same size as the iPhone's Wi-Fi circle (about 50pt) */
+#fnav .b, body[data-layout] #fnav .b { width: 50px; height: 50px; }
+#fnav .b svg { width: 24px; height: 24px; }
+#fnav .pill { padding: 4px; gap: 3px; border-radius: 30px; }
+#fnav .cl { gap: 12px; }
+.kbar { height: 58px; border-radius: 29px; padding: 0 7px; }
+.kbar .kb { width: 48px; height: 48px; border-radius: 24px; }
+.kbar .kb svg { width: 23px; height: 23px; }
+.kbar .kt { font-size: 22px; }
+.kbar .kchip { height: 38px; padding: 0 14px; font-size: 15px; border-radius: 19px; }
+/* keep content clear of the taller bar */
+body[data-nav="bar"] .wrap { padding-bottom: calc(env(safe-area-inset-bottom) + 96px); padding-top: calc(env(safe-area-inset-top) + 70px); }
+body[data-layout="phone"] .wrap { padding-bottom: calc(env(safe-area-inset-bottom) + 96px); }
+/* regular iPhone width: 48pt so the menu and + still fit on one row */
+@media (max-width: 419px) {
+  body[data-layout="phone"] #fnav { left: 8px; right: 8px; }
+  #fnav .b, body[data-layout] #fnav .b { width: 48px; height: 48px; }
+  #fnav .pill { gap: 2px; padding: 3px; }
+  #fnav .cl { gap: 8px; }
+}
+@media (max-width: 379px) { #fnav .b, body[data-layout] #fnav .b { width: 46px; height: 46px; } }

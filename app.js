@@ -3,16 +3,40 @@ import * as D from './data.js';
 import * as DB from './db.js';
 import * as Sync from './sync.js';
 import * as S from './store.js';
-import { h, icon, logo, $, toast, menu } from './ui.js';
-import { formatDate } from './dates.js';
+import { h, icon, logo, $, toast, menu, sheet, promptBox, later } from './ui.js';
+import { formatDate, toISODate } from './dates.js';
 import { renderPage, renderRow, newPage } from './page.js';
-import { renderDb } from './table.js';
+import { renderDb, popEdit } from './table.js';
 import { renderSettings, startupSync } from './settings.js';
 import { initLock } from './lock.js';
 import { renderSearch } from './search.js';
 import { startNotifier } from './notify.js';
+import { initKeyboardBar } from './kbar.js';
 
 export const state = { route: [], pane: null, ctx: {} };
+
+// ---------- app-wide font (synced with the workspace settings) ----------
+let appFont = 'default';
+export async function loadFont() {
+  const ws = (await S.meta.get('ws-settings')) || {};
+  let f = ws.font;
+  if (!f) { const p = D.all().find(r => r.k === 'page' && ['serif', 'mono'].includes(D.val(r, 'font'))); f = p ? D.val(p, 'font') : 'default'; } // keep a font chosen earlier on a page
+  setFontClass(f);
+}
+function setFontClass(f) { appFont = f; document.body.classList.remove('font-default', 'font-serif', 'font-mono'); document.body.classList.add('font-' + f); }
+async function chooseFont(f) { setFontClass(f); await Sync.saveSettings({ font: f }); Sync.soon(500); }
+/** The ⋯ menu, the same on every screen. `extra` goes on top; `rec` adds Copy link / Move to Trash for that page. */
+export function moreMenu(anchor, { extra = [], rec = null, onTrash = null } = {}) {
+  const link = location.href.split('#')[0] + (rec ? '#/' + (rec.k === 'row' ? 'r/' : 'p/') + rec.id : location.hash);
+  menu(anchor, [
+    ...extra, ...(extra.length ? ['-'] : []),
+    { label: 'Font: Default', icon: 'text', checked: appFont === 'default', run: () => chooseFont('default') },
+    { label: 'Font: Serif', icon: 'text', checked: appFont === 'serif', run: () => chooseFont('serif') },
+    { label: 'Font: Mono', icon: 'text', checked: appFont === 'mono', run: () => chooseFont('mono') }, '-',
+    { label: 'Copy link', icon: 'link', run: () => navigator.clipboard.writeText(link).then(() => toast('Link copied'), () => toast('Could not copy the link')) },
+    ...(state.route[0] === 'settings' ? [] : [{ label: 'Settings', icon: 'settings', run: () => go('#/settings') }]),
+    ...(rec && onTrash ? [{ label: 'Move to Trash', icon: 'trash', danger: true, run: onTrash }] : [])]);
+}
 const NOW = () => (window.FOLIO_NOW ? +window.FOLIO_NOW : Date.now()); // FOLIO_NOW lets tests pin the date
 export const now = NOW;
 
@@ -24,7 +48,9 @@ function layout() {
   const sai = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sair')) || 0;
   if (mode === 'phone' && sai > 40) mode = 'rail';
   if (b.dataset.layout !== mode || b.dataset.orient !== (hgt > w ? 'portrait' : 'landscape')) {
-    b.dataset.layout = mode; b.dataset.orient = hgt > w ? 'portrait' : 'landscape'; render();
+    b.dataset.layout = mode; b.dataset.orient = hgt > w ? 'portrait' : 'landscape';
+    // Duo outer screen and Duo inner screen held upright: actions top-right, menu as a bar at the bottom
+    b.dataset.nav = mode === 'rail' || mode === 'split' ? 'bar' : 'column'; render();
   }
 }
 export const layoutMode = () => document.body.dataset.layout;
@@ -108,7 +134,7 @@ export function renderNav() {
     nb('Pages', 'pages', () => go('#/pages'), r === 'pages'), nb('Search', 'search', () => go('#/search'), r === 'search'));
   const newPill = pill(nb('New page', 'plus', () => go('#/p/' + newPage().id)));
   const ctx = state.ctx;
-  const actions = pill(nb('Export: PDF, Markdown or share', 'export', e => ctx.export ? ctx.export(e.currentTarget) : window.print()), nb('More options', 'more', e => ctx.more && ctx.more(e.currentTarget)));
+  const actions = pill(nb('Export: PDF, Markdown or share', 'export', e => ctx.export ? ctx.export(e.currentTarget) : window.print()), nb('More options', 'more', e => (ctx.more || (a => moreMenu(a)))(e.currentTarget)));
   const backPill = pill(nb(r === 'settings' ? 'Close' : 'Back', r === 'settings' ? 'close' : 'back', back));
   let top = [], bottom = [], bottomSplit = false;
   if (mode === 'phone') {
@@ -116,7 +142,11 @@ export function renderNav() {
     else { bottom = [menuPill, newPill]; }
   } else if (mode === 'wide') {
     if (isPage && r !== 'settings') top = [actions];
-  } else { // rail + split: one column on the right
+  } else if (document.body.dataset.nav === 'bar') { // iPhone Duo outer: actions in the top-right corner, menu as a floating bar at the bottom
+    top = isPage ? [actions] : [actions];
+    if (isPage) { bottom = [ctx.tools ? pill(...ctx.tools) : h('span'), backPill]; bottomSplit = true; }
+    else bottom = [menuPill, newPill];
+  } else { // split: one column on the right
     top = isPage ? [backPill, actions] : [actions];
     bottom = [menuPill, newPill];
   }
@@ -125,35 +155,79 @@ export function renderNav() {
 
 // ---------- list screens: Today, To Site Survey, Rejected ECPAR ----------
 const TITLES = { today: 'Today', survey: 'To Site Survey', ecpar: 'Rejected ECPAR' };
+let commentCount = new Map(); // task id -> number of comments, built once per list screen
 function listScreen(kind) {
-  const n = NOW(); state.ctx = { export: a => exportList(kind, a), more: a => menu(a, [{ label: 'Open Planning KPI Tracker', icon: 'table', run: () => go('#/tracker') }, { label: 'Settings', icon: 'settings', run: () => go('#/settings') }]) };
+  commentCount = new Map(); for (const c of D.all('cmt')) { const k = D.val(c, 'parent'); commentCount.set(k, (commentCount.get(k) || 0) + 1); }
+  const n = NOW(); state.ctx = { export: a => exportList(kind, a), more: a => moreMenu(a, { extra: [{ label: 'Open Planning KPI Tracker', icon: 'table', run: () => go('#/tracker') }] }) };
   const head = h('div', { class: 'head' }, logo(40), h('div', {}, h('h1', {}, TITLES[kind]), h('p', { class: 'date' }, formatDate(new Date(n), 'dddd, D MMMM YYYY'))));
   const wrap = h('div', { class: 'wrap' }, head);
   if (!DB.kpiDb()) { wrap.append(emptyTracker(true)); return wrap; }
   const g = kind === 'today' ? DB.todayGroups(n) : kind === 'survey' ? DB.surveyGroups(n) : DB.ecparGroups(n);
   const names = kind === 'ecpar' ? ['Overdue Amendment', 'Pending Amendment'] : ['Overdue', 'Today', 'Upcoming'];
-  const sec = (label, color, list, numColor) => list.length ? [h('h2', { class: 'bar ' + color }, label), ...list.map(t => taskRow(t, numColor, kind))] : [];
+  const sec = (label, color, list, numColor) => list.length ? [h('h2', { class: 'bar ' + color }, label), ...later(list, t => taskRow(t, numColor, kind), { first: 15, step: 30 })] : [];
   wrap.append(...sec(names[0], 'red', g.overdue, 'red'), ...sec(names[1], 'orange', g.today, 'orange'), ...(g.upcoming ? sec(names[2], 'blue', g.upcoming, 'blue') : []));
   if (!g.overdue.length && !g.today.length && !(g.upcoming || []).length)
     wrap.append(h('p', { class: 'empty' }, kind === 'today' ? 'Nothing due in the next 2 days. Nice.' : kind === 'survey' ? 'No tasks are waiting for a site survey.' : 'No rejected ECPAR to amend.'));
   return wrap;
 }
+// Every part of a row can be edited right here: tap the name, address, status/station or date.
+// "Open" (or the day number) opens the full task page. Press and hold a map link to change it.
+function rowEdit(t) {
+  const dbr = DB.kpiDb(), rec = D.getRec(t.id), P = n => DB.propByName(dbr, n);
+  const set = (p, val) => { D.update(t.id, { ['p:' + p.id]: val }); document.dispatchEvent(new CustomEvent('folio-row', { detail: t.id })); render(); };
+  const text = (el, name) => { const p = P(name); if (p) popEdit(el, D.getRec(t.id), p, () => render()); };
+  const choose = (el, name) => {
+    const p = P(name); if (!p) return; const v = DB.raw(D.getRec(t.id), p);
+    menu(el, [...(p.options || []).map(o => ({ label: o.name, checked: o.name === v, run: () => set(p, o.name) })), '-',
+      { label: 'New option…', icon: 'plus', run: async () => { const n = (await promptBox('New ' + p.name.toLowerCase()))?.trim(); if (n) { DB.addOption(dbr, p, n); set(p, n); } } },
+      ...(v ? [{ label: 'Clear', icon: 'close', run: () => set(p, null) }] : [])]);
+  };
+  const date = name => {
+    const p = P(name); if (!p) return; const inp = h('input', { type: 'date', class: 'field', value: toISODate(DB.raw(D.getRec(t.id), p)) || '' });
+    const s = sheet(p.name, h('div', {}, inp, h('button', { class: 'btn block', onclick: () => { inp.value = toISODate(new Date(NOW())); } }, 'Today'),
+      h('button', { class: 'btn block danger', onclick: () => { inp.value = ''; s.close(); } }, 'Clear')), { onDone: () => set(p, inp.value || null) });
+    setTimeout(() => inp.focus(), 50);
+  };
+  return { rec, text, choose, date, P };
+}
+function holdToEdit(a, onHold) { // press and hold a link to edit it; a normal tap still opens it
+  let timer = 0, held = false;
+  a.addEventListener('pointerdown', () => { held = false; timer = setTimeout(() => { held = true; onHold(); }, 550); });
+  for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) a.addEventListener(ev, () => clearTimeout(timer));
+  a.addEventListener('click', e => { if (held) { e.preventDefault(); held = false; } });
+  a.addEventListener('contextmenu', e => e.preventDefault());
+  return a;
+}
 function taskRow(t, color, kind) {
   const d = t.days;
   const unit = d == null ? (kind === 'ecpar' ? 'no date' : 'no due date') : d < 0 ? (d === -1 ? 'day late' : 'days late') : d === 0 ? 'due today' : d === 1 ? 'day left' : 'days left';
   const dbr = DB.kpiDb(); const sp = DB.propByName(dbr, 'Status'), stn = DB.propByName(dbr, 'Station');
-  const right = kind === 'survey' ? (t.station ? h('span', { class: 'tag', style: { background: DB.optColor(stn, t.station)[0] } }, t.station) : null)
-    : t.status ? h('span', { class: 'pill', style: { background: DB.optColor(sp, t.status)[0] } }, h('i', { style: { background: DB.optColor(sp, t.status)[1] } }), t.status) : null;
-  const meta = kind === 'ecpar' ? (t.rejected ? 'Rejected ' + formatDate(t.rejected, 'D MMM YYYY') : 'Rejected —') : (t.due ? 'Due ' + formatDate(t.due, 'D MMM YYYY') : '');
+  const ed = rowEdit(t);
+  const stationOrStatus = kind === 'survey' ? 'Station' : 'Status';
+  const right = kind === 'survey'
+    ? h('button', { class: 'tag ebtn' + (t.station ? '' : ' empty'), 'aria-label': 'Station: ' + (t.station || 'Empty'), style: t.station ? { background: DB.optColor(stn, t.station)[0] } : null, onclick: e => ed.choose(e.currentTarget, 'Station') }, t.station || 'Station')
+    : h('button', { class: 'pill ebtn' + (t.status ? '' : ' empty'), 'aria-label': 'Status: ' + (t.status || 'Empty'), style: t.status ? { background: DB.optColor(sp, t.status)[0] } : null, onclick: e => ed.choose(e.currentTarget, 'Status') },
+      t.status ? [h('i', { style: { background: DB.optColor(sp, t.status)[1] } }), t.status] : 'Status');
+  // the date shown is the one that sets the countdown: ECPAR Rejected for amendments, Due Date otherwise
+  const dateProp = kind === 'ecpar' || t.amend ? 'ECPAR Rejected' : 'Due Date';
+  const meta = kind === 'ecpar' ? (t.rejected ? 'Rejected ' + formatDate(t.rejected, 'D MMM YYYY') : 'Add rejected date') : (t.due ? 'Due ' + formatDate(t.due, 'D MMM YYYY') : 'Add due date');
+  const dueBtn = h('button', { class: 'due ebtn' + (/^Add/.test(meta) ? ' empty' : ''), 'aria-label': 'Change ' + dateProp, onclick: () => ed.date(dateProp) }, meta);
   const map = t.map && /^https?:/i.test(t.map) ? t.map : '';
+  const editMap = () => ed.text(mapRow, 'Pin Location');
+  const mapRow = map ? h('div', { class: 'links' },
+      holdToEdit(h('a', { class: 'lnk', href: mapsUrl(map), target: '_blank', rel: 'noopener', title: 'Press and hold to change the link' }, icon('pin', 14), 'Open in Google Maps'), editMap),
+      holdToEdit(h('a', { class: 'lnk', href: browserUrl(map), target: '_blank', rel: 'noopener', title: 'Press and hold to change the link' }, icon('globe', 14), 'Open in browser'), editMap))
+    : h('div', { class: 'links' }, h('button', { class: 'lnk ebtn empty', onclick: editMap }, icon('pin', 14), 'Add map link'));
+  let addrEl;
+  addrEl = h('button', { class: 'addr ebtn' + (t.address ? '' : ' empty'), onclick: () => ed.text(addrEl, 'Address') }, t.address || 'Add address');
+  let nameEl;
+  nameEl = h('button', { class: 'name ebtn', onclick: () => ed.text(nameEl, DB.titleProp(dbr)?.name || 'Customer Name') }, t.title || 'Untitled');
   return h('div', { class: 'task ' + color + (state.pane === t.id ? ' sel' : '') },
-    h('div', { class: 'rail' }, h('b', {}, d == null ? '–' : Math.abs(d)), h('small', {}, unit)),
+    h('button', { class: 'rail', 'aria-label': 'Open ' + (t.title || 'task'), onclick: () => openTask(t.id) }, h('b', {}, d == null ? '–' : Math.abs(d)), h('small', {}, unit)),
     h('div', { class: 'body' },
-      h('div', { class: 'l1' }, h('button', { class: 'name', onclick: () => openTask(t.id) }, t.title), right),
-      t.address ? h('span', { class: 'addr' }, t.address) : null,
-      map ? h('div', { class: 'l3' }, h('a', { class: 'lnk', href: mapsUrl(map), target: '_blank', rel: 'noopener' }, icon('pin', 14), 'Open in Google Maps'), h('span', { class: 'due' }, meta))
-        : (meta ? h('div', { class: 'l3' }, h('span'), h('span', { class: 'due' }, meta)) : null),
-      map ? h('a', { class: 'lnk', href: browserUrl(map), target: '_blank', rel: 'noopener' }, icon('globe', 14), 'Open in browser') : null));
+      h('div', { class: 'l1' }, h('span', { class: 'nm' }, nameEl, commentCount.get(t.id) ? h('button', { class: 'ccount', 'aria-label': commentCount.get(t.id) + ' comments, open task', onclick: () => openTask(t.id) }, icon('comment', 15), commentCount.get(t.id)) : null), h('div', { class: 'rt' }, h('button', { class: 'openbtn', onclick: () => openTask(t.id) }, 'Open'), right)),
+      addrEl,
+      h('div', { class: 'l3' }, mapRow, dueBtn)));
 }
 // Maps app on iPhone; plain web elsewhere
 const isIOS = () => /iP(hone|ad|od)/.test(navigator.platform) || (navigator.userAgent.includes('Mac') && 'ontouchend' in document);
@@ -196,11 +270,12 @@ function trashScreen() {
 // ---------- boot ----------
 export async function boot() {
   document.body.append(h('div', { id: 'app' }, h('nav', { id: 'side', 'aria-label': 'Workspace' }), h('main', { id: 'main' }), h('section', { id: 'pane', 'aria-label': 'Selected task' })), h('div', { id: 'fnav' }));
-  window.__folioStep = 'storage'; await D.load(); S.persist();
+  window.__folioStep = 'storage'; await D.load(); S.persist(); await loadFont();
   D.onChange(info => { if (info.type === 'sync' || info.type === 'create' || info.type === 'delete' || info.type === 'wipe') render(); if (info.type !== 'sync') Sync.soon(); });
-  Sync.onStatus(() => renderSide());
+  Sync.onStatus(() => { renderSide(); loadFont(); });
   addEventListener('hashchange', () => { state.pane = null; render(); });
   addEventListener('resize', layout); layout();
+  initKeyboardBar();
   window.__folioStep = 'lock'; await initLock();
   window.__folioStep = 'sync'; await startupSync(); window.__folioStep = 'ready';
   startNotifier();
