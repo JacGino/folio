@@ -87,6 +87,9 @@ export function render() {
       default: main.append(listScreen('today'));
     }
   } catch (e) { console.error(e); main.append(h('div', { class: 'wrap' }, h('p', { class: 'empty' }, 'Something went wrong showing this screen: ' + e.message))); }
+  if (layoutMode() !== 'rail') main.prepend(topbar());
+  if (layoutMode() !== 'wide') document.body.classList.remove('side-open');
+  if (['p', 'r'].includes(r[0]) && r[1]) noteRecent(r[1]);
   if (same) main.scrollTop = scroll;
   // side pane
   const pane = $('#pane'), m = layoutMode();
@@ -97,28 +100,76 @@ export function render() {
 }
 
 // ---------- sidebar (wide) ----------
+// ---------- recents & favourites ----------
+let recents = [];
+S.meta.get('recents').then(v => { if (Array.isArray(v)) recents = v; });
+function noteRecent(id) { recents = [id, ...recents.filter(x => x !== id)].slice(0, 8); S.meta.set('recents', recents); }
+const recTitle = rec => rec.k === 'row' ? DB.title(rec) : (D.val(rec, 'title') || 'Untitled');
+const recHash = rec => { const kp = DB.kpiDb() && D.val(DB.kpiDb(), 'page'); return rec.id === kp ? '#/tracker' : (rec.k === 'row' ? '#/r/' : '#/p/') + rec.id; };
+function recIcon(rec, size = 20) {
+  const photo = D.val(rec, 'icon');
+  if (photo && photo.id) { const im = h('span', { class: 'ricon photo', style: { width: size + 'px', height: size + 'px' } }); import('./page.js').then(m => m.fileUrl(photo.id)).then(u => { if (u) im.style.backgroundImage = `url("${u}")`; }); return im; }
+  return icon(rec.k === 'page' && D.val(rec, 'db') ? 'table' : 'page', size, 'ricon');
+}
+
+// ---------- left menu (Notion style); the Duo outer screen has none ----------
+const sideOpenSecs = { recents: false, favs: true, private: true };
+export function toggleSide(force) {
+  const b = document.body;
+  if (layoutMode() === 'wide') { b.classList.toggle('side-closed', force === undefined ? undefined : !force); try { localStorage.setItem('folio-side', b.classList.contains('side-closed') ? 'closed' : 'open'); } catch {} }
+  else b.classList.toggle('side-open', force);
+}
 function renderSide() {
-  const side = $('#side'); if (layoutMode() !== 'wide') { side.replaceChildren(); return; }
-  const cur = state.route[0]; const t = DB.todayGroups(NOW());
-  const link = (hash, ic, label, n, on) => h('a', { href: hash, 'aria-current': on ? 'page' : null }, icon(ic, 18), label, n != null ? h('span', { class: 'n' }, n) : null);
-  const s = DB.surveyGroups(NOW()), e = DB.ecparGroups(NOW());
-  const pages = D.all('page', p => !D.val(p, 'parent') && !D.val(p, 'db'));
+  const side = $('#side'); if (layoutMode() === 'rail') { side.replaceChildren(); return; }
+  const cur = state.route[0], kp = DB.kpiDb() && D.val(DB.kpiDb(), 'page');
+  const circ = (hash, content, label, on) => h('a', { class: 'circ' + (on ? ' on' : ''), href: hash, 'aria-label': label, title: label, 'aria-current': on ? 'page' : null }, content);
+  const item = rec => { const hsh = recHash(rec); const on = location.hash === hsh || (hsh === '#/tracker' && (cur === 'tracker' || cur === 'archive'));
+    return h('a', { class: 'sitem' + (on ? ' on' : ''), href: hsh, 'aria-current': on ? 'page' : null }, recIcon(rec), h('span', { class: 'st' }, recTitle(rec))); };
+  const sec = (key, label, items, extra) => h('div', { class: 'ssec' },
+    h('div', { class: 'shead' }, h('button', { class: 'stog', 'aria-expanded': String(sideOpenSecs[key]), onclick: () => { sideOpenSecs[key] = !sideOpenSecs[key]; renderSide(); } }, label, icon(key === 'recents' ? 'chevr' : 'chevd', 16, 'sch' + (sideOpenSecs[key] ? ' open' : ''))), extra || null),
+    sideOpenSecs[key] ? (items.length ? items : h('div', { class: 'sempty' }, key === 'favs' ? 'Tap ★ on a page or task to add it here.' : 'Nothing yet.')) : null);
+  const rec = recents.map(id => D.live(id)).filter(Boolean).slice(0, 6);
+  const favs = [...D.all('page', p => D.val(p, 'fav')), ...D.all('row', r => D.val(r, 'fav'))];
+  const pages = D.all('page', p => !D.val(p, 'parent')).sort((a, b) => (b.id === kp) - (a.id === kp) || recTitle(a).localeCompare(recTitle(b)));
   const st = Sync.getStatus();
+  const syncText = Sync.connected() ? (st.state === 'error' ? 'Sync problem' : st.state === 'syncing' ? 'Syncing…' : st.at ? 'Synced ' + ago(st.at) : 'Not synced yet') : 'Sync is off';
   side.replaceChildren(
-    h('div', { class: 'brand' }, logo(28), 'Folio'),
-    link('#/search', 'search', 'Search', null, cur === 'search'),
-    link('#/today', 'today', 'Today', t.overdue.length + t.today.length, cur === 'today'),
-    link('#/survey', 'pin', 'To Site Survey', s.overdue.length + s.today.length + s.upcoming.length, cur === 'survey'),
-    link('#/ecpar', 'ecpar', 'Rejected ECPAR', e.overdue.length + e.today.length, cur === 'ecpar'),
-    link('#/tracker', 'table', 'Planning KPI Tracker', null, cur === 'tracker'),
-    link('#/archive', 'archive', 'Archive', null, cur === 'archive'),
-    h('div', { class: 'sh' }, 'Pages'),
-    pages.slice(0, 40).map(p => link('#/p/' + p.id, 'pages', D.val(p, 'title') || 'Untitled', null, cur === 'p' && state.route[1] === p.id)),
-    h('button', { class: 'si', onclick: () => go('#/p/' + newPage().id) }, icon('plus', 18), 'New page'),
-    h('div', { class: 'grow-fill' }),
-    h('a', { href: '#/settings', class: 'sync' }, icon('sync', 16), Sync.connected() ? (st.state === 'error' ? 'Sync problem' : st.state === 'syncing' ? 'Syncing…' : st.at ? 'Synced ' + ago(st.at) : 'Not synced yet') : 'Sync is off'),
-    link('#/trash', 'trash', 'Trash', null, cur === 'trash'),
-    link('#/settings', 'settings', 'Settings', null, cur === 'settings'));
+    h('div', { class: 'srow' },
+      circ('#/settings', logo(24), 'Settings', cur === 'settings'),
+      circ('#/today', icon('today', 21), 'Today', cur === 'today'),
+      circ('#/survey', icon('pin', 21), 'To Site Survey', cur === 'survey'),
+      circ('#/ecpar', icon('ecpar', 21), 'Rejected ECPAR', cur === 'ecpar'),
+      circ('#/tracker', icon('table', 21), 'Planning KPI Tracker', cur === 'tracker' || cur === 'archive')),
+    h('div', { class: 'sscroll' },
+      sec('recents', 'Recents', rec.map(item)),
+      sec('favs', 'Favourites', favs.map(item)),
+      sec('private', 'Private', [...pages.map(item),
+        h('button', { class: 'sitem', onclick: () => go('#/p/' + newPage().id) }, icon('plus', 20, 'ricon'), h('span', { class: 'st muted' }, 'New page')),
+        h('a', { class: 'sitem' + (cur === 'trash' ? ' on' : ''), href: '#/trash' }, icon('trash', 20, 'ricon'), h('span', { class: 'st muted' }, 'Trash'))],
+        h('button', { class: 'smore', 'aria-label': 'Pages', onclick: () => go('#/pages') }, icon('more', 18)))),
+    h('div', { class: 'sfoot' },
+      h('a', { class: 'fcirc', href: '#/search', 'aria-label': 'Search', title: 'Search' }, icon('search', 22)),
+      h('a', { class: 'fpill' + (st.state === 'error' ? ' bad' : ''), href: '#/settings', title: 'Sync with GitHub' }, icon('sync', 18), h('span', {}, syncText)),
+      h('button', { class: 'fcirc', 'aria-label': 'New page', title: 'New page', onclick: () => go('#/p/' + newPage().id) }, icon('compose', 22))));
+}
+
+// ---------- top bar (Notion style): menu, back, forward, title, share, favourite, more ----------
+const SCREEN = { today: ['Today', 'today'], survey: ['To Site Survey', 'pin'], ecpar: ['Rejected ECPAR', 'ecpar'], pages: ['Pages', 'pages'], search: ['Search', 'search'], settings: ['Settings', 'settings'], trash: ['Trash', 'trash'] };
+function topbar() {
+  const r = state.route[0], ctx = state.ctx;
+  const kp = DB.kpiDb() && D.val(DB.kpiDb(), 'page');
+  const rec = r === 'p' || r === 'r' ? D.live(state.route[1]) : (r === 'tracker' || r === 'archive') && kp ? D.live(kp) : null;
+  const [title, ic] = rec ? [recTitle(rec), null] : r === 'db' ? [D.val(DB.db(state.route[1]) || {}, 'name', 'Database'), 'table'] : (SCREEN[r] || SCREEN.today);
+  const fav = rec && D.val(rec, 'fav');
+  const tb = (label, content, onclick, cls = '') => h('button', { class: 'tb ' + cls, 'aria-label': label, title: label, onclick }, content);
+  return h('header', { class: 'topbar' },
+    tb('Show or hide the menu', icon('sidebar', 24), () => toggleSide()),
+    tb('Back', icon('arrowl', 24), () => back()),
+    tb('Forward', icon('arrowr', 24), () => history.forward()),
+    h('div', { class: 'tt' }, rec ? recIcon(rec, 22) : icon(ic, 20), h('span', {}, title)),
+    tb('Share or export', icon('export', 24), e => ctx.export ? ctx.export(e.currentTarget) : window.print()),
+    rec ? tb(fav ? 'Remove from Favourites' : 'Add to Favourites', icon(fav ? 'starf' : 'star', 24), () => { D.update(rec.id, { fav: !fav }); toast(fav ? 'Removed from Favourites' : 'Added to Favourites'); render(); }, fav ? 'fav' : '') : null,
+    tb('More options', icon('more', 24), e => (ctx.more || (a => moreMenu(a)))(e.currentTarget)));
 }
 const ago = t => { const s = (Date.now() - t) / 1000; return s < 60 ? 'just now' : s < 3600 ? Math.round(s / 60) + ' min ago' : Math.round(s / 3600) + ' h ago'; };
 
@@ -137,19 +188,12 @@ export function renderNav() {
   const actions = pill(nb('Export: PDF, Markdown or share', 'export', e => ctx.export ? ctx.export(e.currentTarget) : window.print()), nb('More options', 'more', e => (ctx.more || (a => moreMenu(a)))(e.currentTarget)));
   const backPill = pill(nb(r === 'settings' ? 'Close' : 'Back', r === 'settings' ? 'close' : 'back', back));
   let top = [], bottom = [], bottomSplit = false;
-  if (mode === 'phone') {
-    if (isPage) { top = [actions]; bottom = [ctx.tools ? pill(...ctx.tools) : h('span'), backPill]; bottomSplit = true; }
-    else { bottom = [menuPill, newPill]; }
-  } else if (mode === 'wide') {
-    if (isPage && r !== 'settings') top = [actions];
-  } else if (document.body.dataset.nav === 'bar') { // iPhone Duo outer: actions in the top-right corner, menu as a floating bar at the bottom
-    top = isPage ? [actions] : [actions];
-    if (isPage) { bottom = [ctx.tools ? pill(...ctx.tools) : h('span'), backPill]; bottomSplit = true; }
-    else bottom = [menuPill, newPill];
-  } else { // split: one column on the right
-    top = isPage ? [backPill, actions] : [actions];
-    bottom = [menuPill, newPill];
-  }
+  const tools = ctx.tools ? [pill(...ctx.tools)] : [];
+  if (mode === 'rail') { // iPhone Duo outer screen: actions in the corner, menu bar at the bottom
+    top = [actions];
+    if (isPage) { bottom = [ctx.tools ? pill(...ctx.tools) : h('span'), backPill]; bottomSplit = true; } else bottom = [menuPill, newPill];
+  } else if (mode === 'wide') { bottom = isPage ? tools : []; }
+  else { bottom = isPage ? tools : [menuPill, newPill]; } // phone, Duo inner screen, iPad upright
   nav.replaceChildren(h('div', { class: 'cl top' }, top), h('div', { class: 'cl bottom' + (bottomSplit ? ' spread' : '') }, bottom));
 }
 
@@ -269,7 +313,8 @@ function trashScreen() {
 
 // ---------- boot ----------
 export async function boot() {
-  document.body.append(h('div', { id: 'app' }, h('nav', { id: 'side', 'aria-label': 'Workspace' }), h('main', { id: 'main' }), h('section', { id: 'pane', 'aria-label': 'Selected task' })), h('div', { id: 'fnav' }));
+  try { if (localStorage.getItem('folio-side') === 'closed') document.body.classList.add('side-closed'); } catch {}
+  document.body.append(h('div', { id: 'app' }, h('div', { id: 'scrim', onclick: () => toggleSide(false) }), h('nav', { id: 'side', 'aria-label': 'Workspace' }), h('main', { id: 'main' }), h('section', { id: 'pane', 'aria-label': 'Selected task' })), h('div', { id: 'fnav' }));
   window.__folioStep = 'storage'; await D.load(); S.persist(); await loadFont();
   D.onChange(info => { if (info.type === 'sync' || info.type === 'create' || info.type === 'delete' || info.type === 'wipe') render(); if (info.type !== 'sync') Sync.soon(); });
   Sync.onStatus(() => { renderSide(); loadFont(); });

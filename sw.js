@@ -1,5 +1,5 @@
-// Folio v2 service worker: works offline. Cache 026ce1c6a9
-const CACHE='folio2-026ce1c6a9';
+// Folio v2 service worker: works offline. Cache 3aa88141c5
+const CACHE='folio2-3aa88141c5';
 const FILES=["./", "boot-check.js", "icon-180.png", "icon-192.png", "icon-512.png", "index.html", "manifest.json", "app.js", "crypto.js", "data.js", "dates.js", "db.js", "editor.js", "formula.js", "github.js", "import.js", "kbar.js", "lock.js", "main.js", "model.js", "notify.js", "page.js", "search.js", "settings.js", "store.js", "sync.js", "table.js", "ui.js", "styles.css"];
 self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(FILES)).then(()=>self.skipWaiting()))});
 self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim()))});

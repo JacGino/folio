@@ -430,3 +430,64 @@ body[data-layout="phone"] .wrap { padding-bottom: calc(env(safe-area-inset-botto
   #fnav .cl { gap: 8px; }
 }
 @media (max-width: 379px) { #fnav .b, body[data-layout] #fnav .b { width: 46px; height: 46px; } }
+
+/* ================= Notion-style top bar (everywhere except the Duo outer screen) ================= */
+:root { --side-bg: #F7F7F5; --side-hover: rgba(55,53,47,0.08); --side-on: rgba(55,53,47,0.1); }
+@media (prefers-color-scheme: dark) { :root { --side-bg: #1E1E1E; --side-hover: rgba(255,255,255,0.07); --side-on: rgba(255,255,255,0.11); } }
+.topbar { position: sticky; top: 0; z-index: 25; display: flex; align-items: center; gap: 2px;
+  height: calc(54px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) max(8px, var(--sair, 0px)) 0 8px;
+  background: color-mix(in srgb, var(--bg) 90%, transparent); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
+.topbar .tb { flex: none; width: 44px; height: 44px; border: 0; background: none; border-radius: 10px; color: var(--ink); display: inline-flex; align-items: center; justify-content: center; }
+.topbar .tb:active { background: var(--side-hover); }
+.topbar .tb.fav svg { color: #F5B400; }
+.topbar .tt { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 0 6px; font-size: 17px; color: var(--ink); }
+.topbar .tt span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.topbar .tt svg { flex: none; color: var(--ink2); }
+.ricon { flex: none; color: var(--ink2); }
+.ricon.photo { display: inline-block; border-radius: 4px; background: var(--bg3) center/cover no-repeat; }
+/* content starts right under the top bar */
+body:not([data-layout="rail"]) #main .wrap { padding-top: 18px; }
+body:not([data-layout="rail"]) #main .wrap .cover { margin-top: -18px; }
+@media (max-width: 419px) { .topbar .tb { width: 40px; } .topbar .tt { font-size: 16px; padding: 0 4px; } }
+
+/* ================= left menu ================= */
+#side { display: none; }
+body:not([data-layout="rail"]) #side { display: flex; flex-direction: column; gap: 0; padding: calc(env(safe-area-inset-top) + 14px) 10px calc(env(safe-area-inset-bottom) + 12px); background: var(--side-bg); -webkit-backdrop-filter: none; backdrop-filter: none; border-right: 1px solid var(--rule); overflow: hidden; }
+/* phone, Duo inner screen, iPad upright: slides in from the left */
+body[data-layout="phone"] #side, body[data-layout="split"] #side { position: fixed; z-index: 70; top: 0; bottom: 0; left: 0; width: min(340px, 86vw); transform: translateX(-104%); transition: transform .26s cubic-bezier(.2,.8,.2,1); box-shadow: none; }
+body.side-open[data-layout="phone"] #side, body.side-open[data-layout="split"] #side { transform: none; box-shadow: 8px 0 30px rgba(0,0,0,0.18); }
+#scrim { position: fixed; inset: 0; z-index: 69; background: rgba(0,0,0,0.28); opacity: 0; pointer-events: none; transition: opacity .26s; }
+body.side-open:not([data-layout="wide"]) #scrim { opacity: 1; pointer-events: auto; }
+/* iPad landscape / computer: stays open, ☰ hides it */
+body[data-layout="wide"] #app { grid-template-columns: 296px minmax(0, 1fr); }
+body[data-layout="wide"] #app.has-pane { grid-template-columns: 296px minmax(0, 1fr) minmax(340px, 34%); }
+body.side-closed[data-layout="wide"] #app { grid-template-columns: 0 minmax(0, 1fr); }
+body.side-closed[data-layout="wide"] #app.has-pane { grid-template-columns: 0 minmax(0, 1fr) minmax(340px, 34%); }
+body.side-closed[data-layout="wide"] #side { padding: 0; border: 0; }
+#side .srow { display: flex; gap: 10px; padding: 2px 4px 14px; }
+#side .circ { flex: none; width: 46px; height: 46px; border-radius: 50%; background: var(--side-hover); color: var(--ink); display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
+#side .circ.on { background: rgba(55,53,47,0.86); color: #fff; }
+@media (prefers-color-scheme: dark) { #side .circ.on { background: rgba(255,255,255,0.9); color: #000; } }
+#side .circ .logo { transform: scale(.82); }
+#side .sscroll { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; margin: 0 -4px; padding: 0 4px; }
+#side .ssec { margin-top: 10px; }
+#side .shead { display: flex; align-items: center; justify-content: space-between; }
+#side .stog { display: inline-flex; align-items: center; gap: 4px; border: 0; background: none; padding: 8px 6px; font-size: 15px; color: var(--ink2); font-weight: 500; }
+#side .sch { color: var(--ink3); transition: transform .15s; }
+#side .smore { border: 0; background: none; color: var(--ink3); width: 36px; height: 32px; border-radius: 8px; }
+#side .sitem { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 44px; padding: 0 8px; border: 0; background: none; border-radius: 8px; color: var(--ink); text-decoration: none; text-align: left; font-size: 17px; }
+#side .sitem:active, #side .sitem:hover { background: var(--side-hover); }
+#side .sitem.on { background: var(--side-on); font-weight: 600; }
+#side .sitem .st { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#side .sitem .ricon { width: 24px; height: 24px; }
+#side .sempty { padding: 4px 8px 6px; font-size: 13px; color: var(--ink3); }
+#side .sfoot { display: flex; align-items: center; gap: 10px; padding-top: 10px; }
+#side .fcirc { flex: none; width: 50px; height: 50px; border-radius: 50%; border: 0; background: var(--bg); color: var(--ink); display: inline-flex; align-items: center; justify-content: center; box-shadow: 0 0 0 1px var(--rule), 0 2px 8px rgba(0,0,0,0.06); }
+#side .fpill { flex: 1; min-width: 0; height: 50px; border-radius: 25px; background: var(--bg); color: var(--ink2); display: flex; align-items: center; gap: 8px; padding: 0 16px; font-size: 15px; text-decoration: none; box-shadow: 0 0 0 1px var(--rule), 0 2px 8px rgba(0,0,0,0.06); }
+#side .fpill span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#side .fpill.bad { color: var(--red); }
+/* the old sidebar bits are not used any more */
+#side .brand, #side .sh, #side .grow-fill { display: none; }
+
+body.side-open:not([data-layout="wide"]) #fnav { display: none; }
+#scrim { grid-area: 1 / 1; }
