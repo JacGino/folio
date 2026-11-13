@@ -1,0 +1,7 @@
+// Folio v2 service worker: works offline. Cache f263227cde
+const CACHE='folio2-f263227cde';
+const FILES=["./", "boot-check.js", "icon-180.png", "icon-192.png", "icon-512.png", "index.html", "manifest.json", "app.js", "crypto.js", "data.js", "dates.js", "db.js", "editor.js", "formula.js", "github.js", "import.js", "lock.js", "main.js", "model.js", "notify.js", "page.js", "search.js", "settings.js", "store.js", "sync.js", "table.js", "ui.js", "styles.css"];
+self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(FILES)).then(()=>self.skipWaiting()))});
+self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim()))});
+self.addEventListener('fetch',e=>{const u=new URL(e.request.url);if(e.request.method!=='GET'||u.origin!==location.origin)return;
+  e.respondWith(fetch(e.request,{cache:'no-cache'}).then(res=>{if(res.ok){const c=res.clone();caches.open(CACHE).then(x=>x.put(e.request,c))}return res}).catch(()=>caches.match(e.request,{ignoreSearch:true}).then(r=>r||caches.match('./'))))});
