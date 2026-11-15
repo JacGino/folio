@@ -5,6 +5,7 @@ import { h, icon, logo, strip, textbox } from './ui.js';
 import { state, openTask, now, elabel } from './app.js';
 
 let last = '';
+export function presetSearch(q) { last = String(q || ''); }
 export function renderSearch() {
   state.ctx = {};
   const res = h('div', { role: 'list' });

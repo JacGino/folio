@@ -143,7 +143,9 @@ export function kpiInfo(row, dbr, now = Date.now()) {
   if (due) days = dateBetween(due, today, 'days');
   const g = n => { const p = P(n); return p ? value(row, p) : null; };
   return { id: row.id, row, status, closed, amend, due, days, title: title(row), address: g('Address') || '', map: g('Pin Location') || '',
-    station: g('Station') || '', ecx: g('ECX & WBS NO') || '', rejected: g('ECPAR Rejected'), alert: P('Alert') ? formulaToText(value(row, P('Alert'), now)) : '' };
+    station: g('Station') || '', ecx: g('ECX & WBS NO') || '', rejected: g('ECPAR Rejected'), alert: P('Alert') ? formulaToText(value(row, P('Alert'), now)) : '',
+    category: [].concat(g('Project Category') || []), priority: g('Priority') || '', next: g('Next Task') || '', ecxRejected: g('ECX Rejected'),
+    assigned: g('Date Assigned'), completed: g('Date Completed'), archived };
 }
 export function kpiTasks(now = Date.now()) { const d = kpiDb(); if (!d) return []; return rows(d.id).map(r => kpiInfo(r, d, now)).filter(t => !t.closed); }
 const byDays = (a, b) => (a.days ?? 9999) - (b.days ?? 9999);
@@ -154,6 +156,30 @@ export function todayGroups(now) {
 export function surveyGroups(now) {
   const t = kpiTasks(now).filter(x => x.status === 'Site Survey');
   return { overdue: t.filter(x => x.days != null && x.days < 0).sort(byDays), today: t.filter(x => x.days != null && x.days >= 0 && x.days <= 2).sort(byDays), upcoming: t.filter(x => x.days == null || x.days > 2).sort(byDays) };
+}
+// Rejected ECX: has an ECX Rejected date and is still open; due the day after it was rejected (same rule as ECPAR)
+export function ecxGroups(now) {
+  const today = startOfDay(new Date(now));
+  const t = kpiTasks(now).filter(x => x.ecxRejected).map(x => { const due = dateAdd(x.ecxRejected, 1, 'days'); return { ...x, due, days: dateBetween(due, today, 'days'), ecxDue: true }; });
+  return { overdue: t.filter(x => x.days < 0).sort(byDays), today: t.filter(x => x.days >= 0).sort(byDays) };
+}
+// the 8 Project Categories from the brief, and the 3 Home fields; added once, never removes anything you have
+export const CATEGORIES = ['SAL100KW', 'Substation Site Enquiry', 'Turnkey Stage 1', 'Turnkey Stage 2', 'NEM Solar', 'Temporary Supply', 'Upgrading of Supply', 'Non Turnkey'];
+export const REPORT_ONLY = ['NEM Solar', 'Substation Site Enquiry', 'Turnkey Stage 1'];
+export function ensureHomeFields() {
+  const d = kpiDb(); if (!d) return false;
+  let list = props(d).map(x => ({ ...x })), changed = false;
+  const cat = list.find(x => x.name === 'Project Category');
+  if (cat) { const have = new Set((cat.options || []).map(o => o.name.toLowerCase()));
+    const colors = { 'SAL100KW': 'brown', 'Substation Site Enquiry': 'purple', 'Turnkey Stage 1': 'green', 'Turnkey Stage 2': 'green', 'NEM Solar': 'orange', 'Temporary Supply': 'yellow', 'Upgrading of Supply': 'blue', 'Non Turnkey': 'gray' };
+    const add = CATEGORIES.filter(n => !have.has(n.toLowerCase())).map(n => ({ name: n, color: colors[n] }));
+    if (add.length) { cat.options = [...(cat.options || []), ...add]; changed = true; } }
+  const want = [{ id: 'p_nexttask', name: 'Next Task', type: 'text' },
+    { id: 'p_priority', name: 'Priority', type: 'select', options: [{ name: 'High', color: 'red' }, { name: 'Medium', color: 'orange' }, { name: 'Low', color: 'blue' }] },
+    { id: 'p_ecxrejected', name: 'ECX Rejected', type: 'date' }];
+  for (const w of want) if (!list.some(x => x.id === w.id || x.name === w.name)) { list.push(w); changed = true; }
+  if (changed) saveProps(d, list);
+  return changed;
 }
 export function ecparGroups(now) {
   const t = kpiTasks(now).filter(x => x.amend);

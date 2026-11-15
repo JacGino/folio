@@ -14,6 +14,7 @@ import { renderSearch } from './search.js';
 import { startNotifier } from './notify.js';
 import { initKeyboardBar } from './kbar.js';
 import { commentsScreen, calendarScreen, inboxScreen } from './hub.js';
+import { homeScreen, activityScreen, soonScreen } from './home.js';
 
 export const state = { route: [], pane: null, ctx: {} };
 
@@ -207,7 +208,7 @@ export function openTask(id) {
   if ((m === 'split' || m === 'wide') && ['today', 'survey', 'ecpar', 'db', 'archive', 'tracker'].includes(state.route[0])) { state.pane = id; render(); }
   else go('#/r/' + id);
 }
-export function back() { if (history.length > 1) history.back(); else go('#/today'); }
+export function back() { if (history.length > 1) history.back(); else go('#/home'); }
 
 // While you are typing (edit card, a field, page text), background redraws (sync, layout changes) wait until you finish,
 // so the card or the text you are editing never disappears. Going to another screen still redraws straight away.
@@ -219,11 +220,20 @@ document.addEventListener('focusout', () => setTimeout(() => { if (renderLater &
 export function render() {
   const app = $('#app'); if (!app) return;
   if (typingNow() && $('#main')?.dataset.route === location.hash) { renderLater = true; renderSide(); return; }
-  const r = (location.hash.replace(/^#\/?/, '') || 'today').split('/'); state.route = r;
+  const r = (location.hash.replace(/^#\/?/, '') || 'home').split('/'); state.route = r;
   const main = $('#main'); const scroll = main.scrollTop; const same = main.dataset.route === location.hash;
   main.replaceChildren(); main.dataset.route = location.hash;
   try {
     switch (r[0]) {
+      case 'home': main.append(homeScreen()); break;
+      case 'activity': main.append(activityScreen()); break;
+      case 'ecx': main.append(listScreen('ecx')); break;
+      case 'customers': main.append(soonScreen('Customers')); break;
+      case 'tasks': main.append(soonScreen('Tasks')); break;
+      case 'kpi': main.append(soonScreen('KPI')); break;
+      case 'timeline': main.append(soonScreen('Timeline')); break;
+      case 'board': main.append(soonScreen('Board')); break;
+      case 'reports': main.append(soonScreen('Reports')); break;
       case 'today': main.append(listScreen('today')); break;
       case 'survey': main.append(listScreen('survey')); break;
       case 'ecpar': main.append(listScreen('ecpar')); break;
@@ -244,6 +254,7 @@ export function render() {
     }
   } catch (e) { console.error(e); main.append(h('div', { class: 'wrap' }, h('p', { class: 'empty' }, 'Something went wrong showing this screen: ' + e.message))); }
   main.prepend(topbar());
+  document.body.classList.toggle('on-home', r[0] === 'home' || r[0] === 'activity');
   if (layoutMode() !== 'wide') document.body.classList.remove('side-open');
   applyLock();
   if (['p', 'r'].includes(r[0]) && r[1]) noteRecent(r[1]);
@@ -294,10 +305,18 @@ export function toggleSide(force) {
 // the F logo opens a menu like Notion's workspace menu
 function workspaceMenu(anchor) {
   menu(anchor, [
+    { label: 'Edit profile', icon: 'users', run: editProfile },
+    { label: 'Inbox', icon: 'inbox', run: () => go('#/inbox') },
     { label: 'Settings', icon: 'settings', run: () => go('#/settings') },
     { label: 'Trash', icon: 'trash', run: () => go('#/trash') },
     { label: 'Import from Notion', icon: 'import', run: () => go('#/settings/import') }, '-',
     { label: 'Help and support', icon: 'help', run: () => helpSheet() }]);
+}
+// Name, role and workspace name live in the menu, so the menu buttons themselves stay tap-only
+async function editProfile() {
+  const ask = async (key, title, def) => { const v = await promptBox(title, L(key, def)); if (v == null) return; const next = { ...labels }; const t = v.replace(/\s+/g, ' ').trim().slice(0, 80); if (!t || t === def) delete next[key]; else next[key] = t; labels = next; };
+  await ask('profile.name', 'Your name', 'Your name'); await ask('profile.role', 'Your role', 'Planning Technician'); await ask('brand', 'Workspace name', 'Planning KPI Workspace');
+  renderSide(); await Sync.saveSettings({ labels }); Sync.soon(500);
 }
 function helpSheet() {
   const tip = (t, d) => h('div', { class: 'tip' }, h('b', {}, t), h('p', { class: 'muted' }, d));
@@ -326,43 +345,60 @@ function privateMenu(anchor) {
 }
 function renderSide() {
   const side = $('#side');
-  const cur = state.route[0], kp = DB.kpiDb() && D.val(DB.kpiDb(), 'page');
-  const circ = (hash, content, label, on) => h('a', { class: 'circ' + (on ? ' on' : ''), href: hash, 'aria-label': label, title: label, 'aria-current': on ? 'page' : null }, content);
-  const item = rec => { const hsh = recHash(rec); const on = location.hash === hsh || (hsh === '#/tracker' && (cur === 'tracker' || cur === 'archive'));
-    return h('a', { class: 'sitem' + (on ? ' on' : ''), href: hsh, 'aria-current': on ? 'page' : null }, recIcon(rec), h('span', { class: 'st' }, recTitle(rec))); };
-  const sec = (key, label, items, extra) => h('div', { class: 'ssec' },
-    h('div', { class: 'shead' }, h('button', { class: 'stog', 'aria-expanded': String(sideOpenSecs[key]), onclick: () => { sideOpenSecs[key] = !sideOpenSecs[key]; renderSide(); } }, label, icon(key === 'recents' ? 'chevr' : 'chevd', 16, 'sch' + (sideOpenSecs[key] ? ' open' : ''))), extra || null),
-    sideOpenSecs[key] ? (items.length ? items : h('div', { class: 'sempty' }, key === 'favs' ? 'Tap ★ on a page or task to add it here.' : 'Nothing yet.')) : null);
-  const rec = recents.map(id => D.live(id)).filter(Boolean).slice(0, 6);
-  const favs = [...D.all('page', p => D.val(p, 'fav')), ...D.all('row', r => D.val(r, 'fav'))];
+  const cur = state.route[0], kp = DB.kpiDb() && D.val(DB.kpiDb(), 'page'), n = NOW();
+  const has = !!DB.kpiDb();
+  const count = g => has ? (g.overdue || []).length + (g.today || []).length + (g.upcoming || []).length : 0;
+  const counts = has ? { today: count(DB.todayGroups(n)), survey: count(DB.surveyGroups(n)), ecpar: count(DB.ecparGroups(n)), ecx: count(DB.ecxGroups(n)) } : {};
+  const nav = (hash, ic, label, on, badge) => h('a', { class: 'nitem' + (on ? ' on' : ''), href: hash, 'aria-label': label, 'aria-current': on ? 'page' : null },
+    icon(ic, 18), h('span', { class: 'nl' }, label), badge ? h('span', { class: 'nbadge' }, badge) : null);
+  const head = (key, label, extra) => h('div', { class: 'nhead' }, h('span', {}, label), extra || null);
+  const item = rec => { const hsh = recHash(rec); const on = location.hash === hsh;
+    return h('a', { class: 'nitem sm' + (on ? ' on' : ''), href: hsh }, recIcon(rec, 18), h('span', { class: 'nl' }, recTitle(rec))); };
   const edited = r => { let t = 0; for (const f of Object.values(r.f || {})) { const w = parseInt(String(f.ts).split(':')[0], 36); if (w > t) t = w; } return t; };
-  const pages = D.all('page', p => !D.val(p, 'parent')).sort(privSort === 'edited' ? (a, b) => edited(b) - edited(a)
-    : (a, b) => (b.id === kp) - (a.id === kp) || (D.val(a, 'order', 0) - D.val(b, 'order', 0)) || recTitle(a).localeCompare(recTitle(b))).slice(0, privShow || Infinity);
+  const favs = [...D.all('page', p => D.val(p, 'fav')), ...D.all('row', r => D.val(r, 'fav'))];
+  const pages = D.all('page', p => !D.val(p, 'parent') && p.id !== kp).sort(privSort === 'edited' ? (a, b) => edited(b) - edited(a)
+    : (a, b) => (D.val(a, 'order', 0) - D.val(b, 'order', 0)) || recTitle(a).localeCompare(recTitle(b))).slice(0, privShow || Infinity);
   const st = Sync.getStatus();
   const syncText = Sync.connected() ? (st.state === 'error' ? 'Sync problem' : st.state === 'syncing' ? 'Syncing…' : st.at ? 'Synced ' + ago(st.at) : 'Not synced yet') : 'Sync is off';
+  const name = L('profile.name', 'Your name'), initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('') || 'F';
   side.replaceChildren(
-    h('div', { class: 'srow' },
-      h('button', { class: 'circ avatar', 'aria-label': 'Folio menu', title: 'Folio menu', onclick: e => workspaceMenu(e.currentTarget) }, logo(24)),
-      circ('#/today', icon('home', 21), 'Home', cur === 'today'),
-      circ('#/comments', icon('comment', 21), 'Comments', cur === 'comments'),
-      circ('#/calendar', icon('date', 21), 'Calendar', cur === 'calendar'),
-      circ('#/inbox', icon('inbox', 21), 'Inbox', cur === 'inbox'),
-      layoutMode() === 'rail' ? h('button', { class: 'circ sclose', 'aria-label': 'Close the menu', onclick: () => toggleSide(false) }, icon('close', 20)) : null),
-    h('div', { class: 'sscroll' },
-      sec('recents', 'Recents', rec.map(item)),
-      sec('favs', 'Favourites', favs.map(item)),
-      sec('private', 'Private', [...pages.map(item),
-        h('button', { class: 'sitem', onclick: () => go('#/p/' + newPage().id) }, icon('plus', 20, 'ricon'), h('span', { class: 'st muted' }, 'New page')),
-        h('a', { class: 'sitem' + (cur === 'trash' ? ' on' : ''), href: '#/trash' }, icon('trash', 20, 'ricon'), h('span', { class: 'st muted' }, 'Trash'))],
-        h('button', { class: 'smore', 'aria-label': 'Private options', onclick: e => privateMenu(e.currentTarget) }, icon('more', 18)))),
-    h('div', { class: 'sfoot' },
-      h('a', { class: 'fcirc', href: '#/search', 'aria-label': 'Search', title: 'Search' }, icon('search', 22)),
-      h('a', { class: 'fpill' + (st.state === 'error' ? ' bad' : ''), href: '#/settings', title: 'Sync with GitHub' }, icon('sync', 18), h('span', {}, syncText)),
-      h('button', { class: 'fcirc', 'aria-label': 'New page', title: 'New page', onclick: () => go('#/p/' + newPage().id) }, icon('compose', 22))));
+    h('div', { class: 'nbrand' }, logo(30), h('b', {}, L('brand', 'Planning KPI Workspace')),
+      layoutMode() === 'wide' ? null : h('button', { class: 'nclose', 'aria-label': 'Close the menu', onclick: () => toggleSide(false) }, icon('close', 18))),
+    h('nav', { class: 'nscroll' },
+      h('div', { class: 'ngroup' },
+        nav('#/home', 'home', 'Home', cur === 'home'),
+        nav('#/tracker', 'folder', 'Projects', cur === 'tracker' || cur === 'archive' || cur === 'db'),
+        nav('#/customers', 'users', 'Customers', cur === 'customers'),
+        nav('#/tasks', 'listcheck', 'Tasks', cur === 'tasks'),
+        nav('#/kpi', 'barchart', 'KPI', cur === 'kpi')),
+      head('focus', 'Focus'),
+      h('div', { class: 'ngroup' },
+        nav('#/today', 'today', 'Due Today', cur === 'today', counts.today),
+        nav('#/survey', 'target', 'Pending Site Survey', cur === 'survey', counts.survey),
+        nav('#/ecpar', 'ecpar', 'Rejected ECPAR', cur === 'ecpar', counts.ecpar),
+        nav('#/ecx', 'filex', 'Rejected ECX', cur === 'ecx', counts.ecx)),
+      head('views', 'Views'),
+      h('div', { class: 'ngroup' },
+        nav('#/timeline', 'timeline', 'Timeline', cur === 'timeline'),
+        nav('#/calendar', 'date', 'Calendar', cur === 'calendar'),
+        nav('#/board', 'columns', 'Board', cur === 'board'),
+        nav('#/reports', 'linechart', 'Reports', cur === 'reports')),
+      favs.length ? [head('favs', 'Favourites'), h('div', { class: 'ngroup nfavs' }, favs.map(item))] : null,
+      head('pages', 'Pages', h('button', { class: 'smore', 'aria-label': 'Private options', onclick: e => privateMenu(e.currentTarget) }, icon('more', 16))),
+      h('div', { class: 'ngroup npages' }, pages.map(item),
+        h('button', { class: 'nitem sm muted', onclick: () => go('#/p/' + newPage().id) }, icon('plus', 18), h('span', { class: 'nl' }, 'New page')),
+        nav('#/comments', 'comment', 'Comments', cur === 'comments'),
+        nav('#/trash', 'trash', 'Trash', cur === 'trash'))),
+    h('div', { class: 'nfoot' },
+      h('button', { class: 'nprofile', 'aria-label': 'Profile and settings', onclick: e => workspaceMenu(e.currentTarget) },
+        h('span', { class: 'nav-av' }, initials),
+        h('span', { class: 'npn' }, h('b', {}, L('profile.name', 'Your name')), h('small', {}, L('profile.role', 'Planning Technician'))),
+        icon('chevd', 16)),
+      h('a', { class: 'nsync' + (st.state === 'error' ? ' bad' : ''), href: '#/settings', title: syncText }, icon('sync', 14), h('span', {}, syncText))));
 }
 
 // ---------- top bar (Notion style): menu, back, forward, title, share, favourite, more ----------
-const SCREEN = { comments: ['Comments', 'comment'], calendar: ['Calendar', 'date'], inbox: ['Inbox', 'inbox'], today: ['Today', 'today'], survey: ['To Site Survey', 'pin'], ecpar: ['Rejected ECPAR', 'ecpar'], pages: ['Pages', 'pages'], search: ['Search', 'search'], settings: ['Settings', 'settings'], trash: ['Trash', 'trash'] };
+const SCREEN = { home: ['Home', 'home'], activity: ['Recent Activity', 'history'], ecx: ['Rejected ECX', 'filex'], customers: ['Customers', 'users'], tasks: ['Tasks', 'listcheck'], kpi: ['KPI', 'barchart'], timeline: ['Timeline', 'timeline'], board: ['Board', 'columns'], reports: ['Reports', 'linechart'], comments: ['Comments', 'comment'], calendar: ['Calendar', 'date'], inbox: ['Inbox', 'inbox'], today: ['Due Today', 'today'], survey: ['Pending Site Survey', 'target'], ecpar: ['Rejected ECPAR', 'ecpar'], pages: ['Pages', 'pages'], search: ['Search', 'search'], settings: ['Settings', 'settings'], trash: ['Trash', 'trash'] };
 function topbar() {
   const r = state.route[0], ctx = state.ctx;
   const kp = DB.kpiDb() && D.val(DB.kpiDb(), 'page');
@@ -396,10 +432,10 @@ export function renderNav() {
   const pill = (...b) => h('div', { class: 'pill glass' }, b);
   const isPage = r === 'r' || r === 'p' || r === 'settings' || r === 'trash';
   const menuPill = pill(
-    nb('Today', 'today', () => go('#/today'), r === 'today'), nb('To Site Survey', 'pin', () => go('#/survey'), r === 'survey'),
-    nb('Rejected ECPAR', 'ecpar', () => go('#/ecpar'), r === 'ecpar'), nb('Tracker', 'table', () => go('#/tracker'), r === 'tracker' || r === 'archive' || r === 'db'),
-    nb('Pages', 'pages', () => go('#/pages'), r === 'pages'), nb('Search', 'search', () => go('#/search'), r === 'search'));
-  const newPill = pill(nb('New page', 'plus', () => go('#/p/' + newPage().id)));
+    nb('Home', 'home', () => go('#/home'), r === 'home'), nb('Due Today', 'today', () => go('#/today'), r === 'today'), nb('Pending Site Survey', 'target', () => go('#/survey'), r === 'survey'),
+    nb('Rejected ECPAR', 'ecpar', () => go('#/ecpar'), r === 'ecpar'), nb('Projects', 'folder', () => go('#/tracker'), r === 'tracker' || r === 'archive' || r === 'db'),
+    nb('Search', 'search', () => go('#/search'), r === 'search'));
+  const newPill = pill(nb('New project', 'plus', () => { const d = DB.kpiDb(); if (d) openTask(DB.newRow(d).id); else go('#/p/' + newPage().id); }));
   const ctx = state.ctx;
   const actions = pill(nb('Export: PDF, Markdown or share', 'export', e => ctx.export ? ctx.export(e.currentTarget) : window.print()), nb('More options', 'more', e => (ctx.more || (a => moreMenu(a)))(e.currentTarget)));
   const backPill = pill(nb(r === 'settings' ? 'Close' : 'Back', r === 'settings' ? 'close' : 'back', back));
@@ -414,7 +450,7 @@ export function renderNav() {
 }
 
 // ---------- list screens: Today, To Site Survey, Rejected ECPAR ----------
-const TITLES = { today: 'Today', survey: 'To Site Survey', ecpar: 'Rejected ECPAR' };
+const TITLES = { today: 'Due Today', survey: 'Pending Site Survey', ecpar: 'Rejected ECPAR', ecx: 'Rejected ECX' };
 let commentCount = new Map(); // task id -> number of comments, built once per list screen
 function listScreen(kind) {
   commentCount = new Map(); for (const c of D.all('cmt')) { const k = D.val(c, 'parent'); commentCount.set(k, (commentCount.get(k) || 0) + 1); }
@@ -422,13 +458,13 @@ function listScreen(kind) {
   const head = h('div', { class: 'head' }, logo(40), h('div', {}, elabel('title.' + kind, TITLES[kind], 'h1'), h('p', { class: 'date' }, formatDate(new Date(n), 'dddd, D MMMM YYYY'))));
   const wrap = h('div', { class: 'wrap' }, head);
   if (!DB.kpiDb()) { wrap.append(emptyTracker(true)); return wrap; }
-  const g = kind === 'today' ? DB.todayGroups(n) : kind === 'survey' ? DB.surveyGroups(n) : DB.ecparGroups(n);
-  const names = kind === 'ecpar' ? ['Overdue Amendment', 'Pending Amendment'] : ['Overdue', 'Today', 'Upcoming'];
+  const g = kind === 'today' ? DB.todayGroups(n) : kind === 'survey' ? DB.surveyGroups(n) : kind === 'ecx' ? DB.ecxGroups(n) : DB.ecparGroups(n);
+  const names = kind === 'ecpar' || kind === 'ecx' ? ['Overdue Amendment', 'Pending Amendment'] : ['Overdue', 'Today', 'Upcoming'];
   const unitFor = () => 'Days';
   const sec = (label, color, list, numColor) => list.length ? [h('div', { class: 'barrow' }, h('span', { class: 'bunit ' + color }, elabel('unit.' + kind + '.' + label, unitFor(label))), h('h2', { class: 'bar ' + color }, elabel('sec.' + kind + '.' + label, label))), ...later(list, t => taskRow(t, numColor, kind), { first: 15, step: 30 })] : [];
   wrap.append(...sec(names[0], 'red', g.overdue, 'red'), ...sec(names[1], 'orange', g.today, 'orange'), ...(g.upcoming ? sec(names[2], 'blue', g.upcoming, 'blue') : []));
   if (!g.overdue.length && !g.today.length && !(g.upcoming || []).length)
-    wrap.append(h('p', { class: 'empty' }, kind === 'today' ? 'Nothing due in the next 2 days. Nice.' : kind === 'survey' ? 'No tasks are waiting for a site survey.' : 'No rejected ECPAR to amend.'));
+    wrap.append(h('p', { class: 'empty' }, kind === 'today' ? 'Nothing due in the next 2 days. Nice.' : kind === 'survey' ? 'No tasks are waiting for a site survey.' : kind === 'ecx' ? 'No rejected ECX. Add an ECX Rejected date to a project to track it here.' : 'No rejected ECPAR to amend.'));
   return wrap;
 }
 // Every part of a row can be edited right here: tap the name, address, status/station or date.
@@ -512,7 +548,7 @@ const isIOS = () => /iP(hone|ad|od)/.test(navigator.platform) || (navigator.user
 export const mapsUrl = u => u;
 export const browserUrl = u => isIOS() ? u.replace(/^https:\/\//i, 'x-safari-https://').replace(/^http:\/\//i, 'x-safari-http://') : u;
 
-function exportList(kind, anchor) {
+export function exportList(kind, anchor) {
   const g = kind === 'today' ? DB.todayGroups(NOW()) : kind === 'survey' ? DB.surveyGroups(NOW()) : DB.ecparGroups(NOW());
   const lines = [`# ${TITLES[kind]} — ${formatDate(new Date(NOW()))}`, ''];
   for (const [k, list] of Object.entries(g)) { if (!list.length) continue; lines.push(`## ${k[0].toUpperCase() + k.slice(1)}`); for (const t of list) lines.push(`- ${t.title}${t.address ? ' — ' + t.address : ''}${t.map ? ' ' + t.map : ''}`); lines.push(''); }
@@ -549,8 +585,9 @@ function trashScreen() {
 export async function boot() {
   try { if (localStorage.getItem('folio-side') === 'closed') document.body.classList.add('side-closed'); } catch {}
   document.body.append(h('div', { id: 'app' }, h('div', { id: 'scrim', onclick: () => toggleSide(false) }), h('nav', { id: 'side', 'aria-label': 'Workspace' }), h('main', { id: 'main' }), h('div', { id: 'divider', role: 'separator', 'aria-label': 'Drag to resize. Drag to the edge to open full.', onpointerdown: dragDivider }), h('section', { id: 'pane', 'aria-label': 'Selected task' })), h('div', { id: 'fnav' }));
-  window.__folioStep = 'storage'; await D.load(); S.persist(); await loadFont();
-  D.onChange(info => { if (info.type === 'sync' || info.type === 'create' || info.type === 'delete' || info.type === 'wipe') render(); if (info.type !== 'sync') Sync.soon(); });
+  window.__folioStep = 'storage'; await D.load(); S.persist(); await loadFont(); try { DB.ensureHomeFields(); } catch {}
+  D.onChange(info => { if (info.type === 'sync') { try { DB.ensureHomeFields(); } catch {} }
+    if (info.type === 'sync' || info.type === 'create' || info.type === 'delete' || info.type === 'wipe') render(); if (info.type !== 'sync') Sync.soon(); });
   Sync.onStatus(() => { renderSide(); loadFont(); });
   addEventListener('hashchange', () => { state.pane = null; render(); });
   addEventListener('resize', layout); layout();
