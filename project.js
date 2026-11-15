@@ -8,6 +8,7 @@ import { formatDate, toISODate, parseDate, dateAdd, startOfDay } from './dates.j
 import { state, now as NOW, render, go, moreMenu, elabel, longPress, rowActions, browserUrl, exportList } from './app.js';
 import { popEdit } from './popedit.js';
 import { propEditor } from './page.js';
+import { ccTab, ccEligible } from './cc.js';
 
 const { g } = E;
 const P = n => { const d = DB.kpiDb(); return d && DB.propByName(d, n); };
@@ -294,7 +295,7 @@ export function projectScreen(id, tab = 'overview') {
   const dueDate = DB.value(row, P('Due Date')), dueDays = dueDate ? Math.round((startOfDay(dueDate) - startOfDay(new Date(n))) / 864e5) : null;
   const tasks = E.tasksOf(row.id), xs = E.ecxOf(row.id), pct = E.progress(row, info), kd = E.kpiDays(info, n);
   const TABS = [['overview', 'Overview', 'home'], ['tasks', 'Tasks', 'listcheck', tasks.filter(E.taskOpen).length], ['survey', 'Site Survey', 'target'],
-    ...(rep ? [] : [['ecpar', 'ECPAR', 'ecpar'], ['ecx', 'ECX', 'filex', xs.length]]), ['docs', 'Documents', 'clip'], ['log', 'Activity Log', 'history']];
+    ...(rep ? [] : [['ecpar', 'ECPAR', 'ecpar']]), ...(ccEligible(info.category) ? [['cc', 'Connection Charge', 'table']] : []), ...(rep ? [] : [['ecx', 'ECX', 'filex', xs.length]]), ['docs', 'Documents', 'clip'], ['log', 'Activity Log', 'history']];
   if (!TABS.some(t => t[0] === tab)) tab = 'overview';
   state.ctx = { export: a => exportList('today', a), more: a => projectMenu(a, row) };
   const ref = P('Project Ref') ? DB.value(row, P('Project Ref')) : '';
@@ -317,7 +318,7 @@ export function projectScreen(id, tab = 'overview') {
         h('small', { class: 'kd' + (kd != null && kd > 7 ? ' late' : '') }, kd == null ? 'Set Date Assigned for KPI' : (info.completed ? 'Done in ' : 'Day ') + kd + (info.completed ? ' days' : ' of 7') + (kd > 7 ? ' · over KPI' : ' · within KPI'))))),
     h('div', { class: 'ptabs htabs', role: 'tablist' }, TABS.map(([k, l, ic, c]) => h('a', { class: 'htab' + (tab === k ? ' on' : ''), role: 'tab', 'aria-selected': tab === k ? 'true' : 'false', href: `#/project/${id}/${k}`, onclick: e => { e.preventDefault(); go(`#/project/${id}/${k}`, { replace: true }); } },
       icon(ic, 16), h('span', {}, l), c ? h('span', { class: 'hcount' }, c) : null))),
-    h('div', { class: 'pbody' }, ({ overview, tasks: tasksTab, survey: surveyTab, ecpar: ecparTab, ecx: ecxTab, docs: docsTab, log: logTab })[tab](row, info, n)));
+    h('div', { class: 'pbody' }, ({ overview, tasks: tasksTab, survey: surveyTab, ecpar: ecparTab, cc: (r, i) => ccTab(r, i), ecx: ecxTab, docs: docsTab, log: logTab })[tab](row, info, n)));
   return wrap;
 }
 
@@ -418,8 +419,8 @@ function ecparTab(row, info, n) {
       kv('text', 'Rejection Reason', ef('reason', 'Rejection reason')), kv('date', 'Resubmission Date', ef('resubmitted', 'Resubmission date', { type: 'date' })),
       kv('list', 'Reason Category', ef('rcat', 'Reason category', { type: 'select', options: E.ECPAR_REASONS })), kv('pencil', 'Required Correction', ef('correction', 'Required correction')),
       kv('text', 'Remarks', ef('remarks', 'Remarks')),
-      kv('page', 'Connection Charge Bill Ref.', field(w || E.work(row), { key: 'ccb', label: 'Connection Charge Bill reference', mono: true }))),
-    h('p', { class: 'muted small note' }, 'The budget is prepared in the company system and the Connection Charge Bill is issued by your supervisor. Record their numbers here.'),
+    ),
+    h('p', { class: 'muted small note' }, 'The ECPAR budget is prepared in the company system; record its reference and amount here. Connection charges are estimated separately in the Connection Charge tab.'),
     historyBlock('Revision history', hist));
   var rejectBtn, approveBtn, resubBtn;
   function ecparButtons() {
