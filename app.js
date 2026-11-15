@@ -223,7 +223,15 @@ let renderLater = false;
 function softRender() { setTimeout(() => { if (document.querySelector('.cellpop') || typingNow()) renderLater = true; else render(); }, 0); }
 const typingNow = () => { const a = document.activeElement; return !!a && a !== document.body && (a.isContentEditable || a.tagName === 'TEXTAREA' || (a.tagName === 'INPUT' && !/^(checkbox|radio|range|button|submit|file|date)$/.test(a.type))) && !!a.closest('#main, #pane, .cellpop'); };
 document.addEventListener('focusout', () => setTimeout(() => { if (renderLater && !typingNow()) { renderLater = false; render(); } }, 120));
+// a screen that saves while it is being built (e.g. making a missing record) must not redraw inside the redraw
+let rendering = false, renderAgain = false;
 export function render() {
+  if (rendering) { renderAgain = true; return; }
+  rendering = true;
+  try { renderNow(); } finally { rendering = false; }
+  if (renderAgain) { renderAgain = false; setTimeout(render, 0); }
+}
+function renderNow() {
   const app = $('#app'); if (!app) return;
   if (typingNow() && $('#main')?.dataset.route === location.hash) { renderLater = true; renderSide(); return; }
   const r = (location.hash.replace(/^#\/?/, '') || 'home').split('/'); state.route = r;

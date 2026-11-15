@@ -28,11 +28,11 @@ export function newPage(parent = null) { return D.create('page', 'ws', { title: 
 const fontClass = () => ''; // the font is now one setting for the whole app (⋯ → Font)
 
 // ---------- cover + photo ----------
-function coverAndPhoto(rec) {
+export function coverAndPhoto(rec, { always = false } = {}) {
   const cover = D.val(rec, 'cover'), photo = D.val(rec, 'icon');
   const pick = (field) => { const inp = h('input', { type: 'file', accept: 'image/*' }); inp.onchange = async () => { const f = inp.files[0]; if (!f) return; const ref = await addFile(f); D.update(rec.id, { [field]: ref }); go(location.hash); }; inp.click(); };
   const out = [];
-  if (cover || D.val(rec, 'db')) { // pages holding a database always show a cover; a soft default until one is picked
+  if (cover || always || D.val(rec, 'db')) { // pages holding a database always show a cover; a soft default until one is picked
     const c = h('div', { class: 'cover' + (cover ? '' : ' default'), role: 'img', 'aria-label': 'Cover photo' }, h('button', { class: 'chg', onclick: () => menu(c.querySelector('.chg'), [{ label: 'Change cover', icon: 'paint', run: () => pick('cover') }, ...(cover ? [{ label: 'Reposition & resize', icon: 'expand', run: () => adjust(c, rec, 'cover') }] : []), { label: 'Remove cover', icon: 'trash', danger: true, run: () => { D.update(rec.id, { cover: null }); go(location.hash); } }]) }, 'Change cover'));
     if (cover) fileUrl(cover.id).then(u => { if (u) c.style.backgroundImage = `url("${u}")`; });
     c.style.backgroundPosition = D.val(rec, 'coverPos', '50% 50%'); if (D.val(rec, 'coverH')) c.style.setProperty('height', D.val(rec, 'coverH') + 'px', 'important');

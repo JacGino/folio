@@ -84,6 +84,7 @@ export function glassModal({ title, dateLabel = 'Date', textLabel = 'Remarks', o
 // =====================================================================================
 // Projects page
 // =====================================================================================
+export function setProjectFilter({ cat = '' } = {}) { pcat = cat; ptab = 'all'; pq = ''; pstat = ''; pdue = ''; }
 let pq = '', ptab = 'all', pcat = '', pstat = '', pdue = '', psort = 'due', pshow = 50;
 const sel = new Set();
 const PTABS = [['all', 'All Projects'], ['progress', 'In Progress'], ['completed', 'Completed'], ['overdue', 'Overdue'], ['archived', 'Archived']];
