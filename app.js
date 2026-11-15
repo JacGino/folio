@@ -15,6 +15,7 @@ import { startNotifier } from './notify.js';
 import { initKeyboardBar } from './kbar.js';
 import { commentsScreen, calendarScreen, inboxScreen } from './hub.js';
 import * as E from './entities.js';
+import { focusScreen, focusCounts } from './focus.js';
 import { projectsScreen, projectScreen, newProjectSheet, dueTaskList } from './project.js';
 import { homeScreen, activityScreen, soonScreen } from './home.js';
 
@@ -208,10 +209,10 @@ export function go(hash, { replace = false } = {}) { if (location.hash === hash)
 export function openTask(id) {
   const rec = D.live(id), kd = DB.kpiDb();
   // a project opens its Project Details; the Focus lists keep their own task page / side panel (with a link to the details)
-  const focus = ['today', 'survey', 'ecpar', 'ecx', 'db', 'archive', 'tracker'].includes(state.route[0]);
+  const focus = ['list', 'db', 'archive', 'tracker'].includes(state.route[0]);
   if (!focus && rec && kd && rec.k === 'row' && D.val(rec, 'db') === kd.id) { go('#/project/' + id); return; }
   const m = layoutMode();
-  if ((m === 'split' || m === 'wide') && ['today', 'survey', 'ecpar', 'ecx', 'db', 'archive', 'tracker'].includes(state.route[0])) { state.pane = id; render(); }
+  if ((m === 'split' || m === 'wide') && ['list', 'db', 'archive', 'tracker'].includes(state.route[0])) { state.pane = id; render(); }
   else go('#/r/' + id);
 }
 export function back() { if (history.length > 1) history.back(); else go('#/home'); }
@@ -241,16 +242,17 @@ function renderNow() {
     switch (r[0]) {
       case 'home': main.append(homeScreen()); break;
       case 'activity': main.append(activityScreen()); break;
-      case 'ecx': main.append(listScreen('ecx')); break;
+      case 'ecx': main.append(focusScreen('ecx')); break;
+      case 'list': main.append(listScreen(['today', 'survey', 'ecpar', 'ecx'].includes(r[1]) ? r[1] : 'today')); break;
       case 'projects': main.append(projectsScreen()); break;
       case 'project': main.append(projectScreen(r[1], r[2])); break;
       case 'kpi': main.append(soonScreen('KPI')); break;
       case 'timeline': main.append(soonScreen('Timeline')); break;
       case 'board': main.append(soonScreen('Board')); break;
       case 'reports': main.append(soonScreen('Reports')); break;
-      case 'today': main.append(listScreen('today')); break;
-      case 'survey': main.append(listScreen('survey')); break;
-      case 'ecpar': main.append(listScreen('ecpar')); break;
+      case 'today': main.append(focusScreen('today')); break;
+      case 'survey': main.append(focusScreen('survey')); break;
+      case 'ecpar': main.append(focusScreen('ecpar')); break;
       case 'tracker': case 'archive': {
         const d = DB.kpiDb(); if (!d) { main.append(emptyTracker()); break; }
         const pg = D.val(d, 'page'); main.append(renderPage(pg, { view: r[0] === 'archive' ? 1 : 0 })); break; }
@@ -264,11 +266,11 @@ function renderNow() {
       case 'comments': main.append(commentsScreen()); break;
       case 'calendar': main.append(calendarScreen()); break;
       case 'inbox': main.append(inboxScreen()); break;
-      default: main.append(listScreen('today'));
+      default: main.append(homeScreen());
     }
   } catch (e) { console.error(e); main.append(h('div', { class: 'wrap' }, h('p', { class: 'empty' }, 'Something went wrong showing this screen: ' + e.message))); }
   main.prepend(topbar());
-  document.body.classList.toggle('on-home', ['home', 'activity', 'projects', 'project'].includes(r[0]));
+  document.body.classList.toggle('on-home', ['home', 'activity', 'projects', 'project', 'today', 'survey', 'ecpar', 'ecx'].includes(r[0]));
   if (layoutMode() !== 'wide') document.body.classList.remove('side-open');
   applyLock();
   if (['p', 'r'].includes(r[0]) && r[1]) noteRecent(r[1]);
@@ -361,8 +363,7 @@ function renderSide() {
   const side = $('#side');
   const cur = state.route[0], kp = DB.kpiDb() && D.val(DB.kpiDb(), 'page'), n = NOW();
   const has = !!DB.kpiDb();
-  const count = g => has ? (g.overdue || []).length + (g.today || []).length + (g.upcoming || []).length : 0;
-  const counts = has ? { today: count(DB.todayGroups(n)) + E.dueTasks(n).length, survey: count(DB.surveyGroups(n)), ecpar: count(DB.ecparGroups(n)), ecx: count(DB.ecxGroups(n)) } : {};
+  const counts = has ? focusCounts(n) : {};
   const nav = (hash, ic, label, on, badge) => h('a', { class: 'nitem' + (on ? ' on' : ''), href: hash, 'aria-label': label, 'aria-current': on ? 'page' : null },
     icon(ic, 18), h('span', { class: 'nl' }, label), badge ? h('span', { class: 'nbadge' }, badge) : null);
   const head = (key, label, extra) => h('div', { class: 'nhead' }, h('span', {}, label), extra || null);

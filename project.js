@@ -17,7 +17,8 @@ const today = () => toISODate(new Date(NOW()));
 // ---------- small pieces ----------
 const TONES = { gray: ['#EFEEEC', '#6F6E69'], blue: ['#E3EEF7', '#2F6FA3'], green: ['#E4F1E6', '#3B7A4B'], red: ['#FBE6E3', '#C2443A'], orange: ['#FBEBDD', '#B4610F'], yellow: ['#FAF1D7', '#9A7414'], purple: ['#EEE6F6', '#7650B0'] };
 const STATE_TONE = { 'Not Started': 'gray', Pending: 'gray', 'In Progress': 'blue', Completed: 'green', 'On Hold': 'orange', High: 'red', Medium: 'orange', Low: 'blue',
-  Draft: 'gray', Submitted: 'blue', 'In Revision': 'purple', Rejected: 'red', Resubmitted: 'yellow', Approved: 'green' };
+  Draft: 'gray', Submitted: 'blue', 'In Revision': 'purple', Rejected: 'red', Resubmitted: 'purple', Approved: 'green', 'Pending Revision': 'red', 'Ready to Resubmit': 'green', 'Pending Action': 'blue', 'In Review': 'yellow', Closed: 'gray',
+  'To Schedule': 'blue', Scheduled: 'green', Overdue: 'red', 'Not categorised': 'gray' };
 export function badge(text, tone = STATE_TONE[text] || 'gray', dot = true) {
   const [bg, fg] = TONES[tone] || TONES.gray;
   return h('span', { class: 'hp' + (dot ? ' dot' : ''), style: { background: bg, color: fg } }, dot ? h('i', { style: { background: fg } }) : null, text);
@@ -79,6 +80,69 @@ export function glassModal({ title, dateLabel = 'Date', textLabel = 'Remarks', o
     document.body.append(back); document.addEventListener('keydown', key);
     requestAnimationFrame(() => back.classList.add('open'));
   });
+}
+
+/** Liquid Glass form: a few fields (date, text, long text, choice); Cancel / confirm. Shown only after a button is pressed. */
+export function formModal({ title, fields, ok = 'Save', danger = false }) {
+  return new Promise(res => {
+    const els = {};
+    const back = h('div', { class: 'gmodal-back', onclick: e => { if (e.target === back) done(null); } });
+    const done = v => { back.classList.remove('open'); setTimeout(() => back.remove(), 180); document.removeEventListener('keydown', key); res(v); };
+    const key = e => { if (e.key === 'Escape') done(null); };
+    const body = fields.map(f => {
+      let el;
+      if (f.type === 'date') el = h('input', { type: 'date', class: 'field', value: f.value ?? today(), 'aria-label': f.label });
+      else if (f.type === 'select') el = h('select', { class: 'field', 'aria-label': f.label }, h('option', { value: '' }, f.placeholder || 'Choose…'), f.options.map(o => h('option', { value: o, selected: o === f.value ? true : null }, o)));
+      else { el = textbox({ multiline: f.type === 'long', cls: 'field' + (f.type === 'long' ? ' gtext' : ''), label: f.label, placeholder: f.placeholder || f.label }); el.value = f.value || ''; }
+      els[f.key] = el; return [h('label', { class: 'glabel' }, f.label + (f.required ? '' : f.type === 'date' ? '' : ' (optional)')), el];
+    });
+    const okBtn = h('button', { class: 'gbtn ' + (danger ? 'danger' : 'primary'), onclick: () => {
+      const out = {}; for (const f of fields) { const v = String(els[f.key].value || '').trim(); if (f.required && !v) { els[f.key].focus(); toast('Please fill in ' + f.label.toLowerCase() + '.'); return; } out[f.key] = v; }
+      done(out); } }, ok);
+    back.append(h('section', { class: 'gmodal glass', role: 'dialog', 'aria-modal': 'true', 'aria-label': title }, h('h2', {}, title), ...body.flat(),
+      h('div', { class: 'gacts' }, h('button', { class: 'gbtn', onclick: () => done(null) }, 'Cancel'), okBtn)));
+    document.body.append(back); document.addEventListener('keydown', key);
+    requestAnimationFrame(() => back.classList.add('open'));
+  });
+}
+// ---------- ECPAR / ECX workflow steps (used by Project Details and the Focus pages) ----------
+const rejectFields = (reasons, rec) => [
+  { key: 'date', type: 'date', label: 'Rejection date', value: today(), required: true },
+  { key: 'cat', type: 'select', label: 'Reason category', options: reasons, value: rec ? g(rec, 'rcat') : '', placeholder: 'Choose a category' },
+  { key: 'reason', type: 'long', label: 'Rejection reason / remarks', required: true },
+  { key: 'correction', type: 'long', label: 'Required correction' }];
+export async function rejectEcparFlow(row) {
+  const r = await formModal({ title: 'Reject ECPAR', fields: rejectFields(E.ECPAR_REASONS), ok: 'Confirm Reject', danger: true }); if (!r) return false;
+  E.rejectEcpar(row, r.date, r.reason, { cat: r.cat, correction: r.correction }); toast('ECPAR rejected. It is now in Rejected ECPAR.'); return true;
+}
+export async function resubmitEcparFlow(row) {
+  const r = await formModal({ title: 'Resubmit revised ECPAR', fields: [{ key: 'date', type: 'date', label: 'Resubmission date', required: true }, { key: 'note', type: 'long', label: 'What changed' }], ok: 'Resubmit' }); if (!r) return false;
+  E.resubmitEcpar(row, r.date, r.note); toast('ECPAR resubmitted. Its rejection history is kept.'); return true;
+}
+export async function approveEcparFlow(row) {
+  const r = await formModal({ title: 'Mark ECPAR approved', fields: [{ key: 'date', type: 'date', label: 'Approval date', required: true }], ok: 'Mark Approved' }); if (!r) return false;
+  E.approveEcpar(row, r.date); return true;
+}
+export async function rejectEcxFlow(row, x) {
+  const r = await formModal({ title: 'Reject ' + (g(x, 'number') || 'ECX application'), fields: rejectFields(E.ECX_REASONS), ok: 'Confirm Reject', danger: true }); if (!r) return false;
+  E.rejectEcx(row, x, r.date, r.reason, { cat: r.cat, correction: r.correction }); toast('ECX rejected. It is now in Rejected ECX.'); return true;
+}
+export async function resubmitEcxFlow(row, x) {
+  const r = await formModal({ title: 'Resubmit ' + (g(x, 'number') || 'ECX application'), fields: [{ key: 'date', type: 'date', label: 'Resubmission date', required: true }, { key: 'note', type: 'long', label: 'What changed' }], ok: 'Resubmit' }); if (!r) return false;
+  E.resubmitEcx(row, x, r.date, r.note); toast('ECX resubmitted. Its rejection history is kept.'); return true;
+}
+export async function approveEcxFlow(row, x) {
+  const r = await formModal({ title: 'Mark ECX approved', fields: [{ key: 'date', type: 'date', label: 'Approval date', required: true }], ok: 'Mark Approved' }); if (!r) return false;
+  E.approveEcx(row, x, r.date); return true;
+}
+/** edit the details of the current rejection (category, reason, correction, remarks) without making a new one */
+export async function editRejectionFlow(rec, reasons) {
+  const r = await formModal({ title: 'Rejection details', fields: [
+    { key: 'cat', type: 'select', label: 'Reason category', options: reasons, value: g(rec, 'rcat') || '' },
+    { key: 'reason', type: 'long', label: 'Rejection reason', value: g(rec, 'reason', ''), required: true },
+    { key: 'correction', type: 'long', label: 'Required correction', value: g(rec, 'correction', '') },
+    { key: 'remarks', type: 'long', label: 'Remarks', value: g(rec, 'remarks', '') }], ok: 'Save' }); if (!r) return false;
+  D.update(rec.id, { 'p:rcat': r.cat || null, 'p:reason': r.reason, 'p:correction': r.correction, 'p:remarks': r.remarks }); return true;
 }
 
 // =====================================================================================
@@ -345,22 +409,25 @@ function ecparTab(row, info, n) {
   const hist = E.revisions(row);
   return h('section', { class: 'hcard pcard' },
     h('div', { class: 'phbar' }, h('h3', { class: 'ph' }, icon('ecpar', 17), 'ECPAR',
-      h('button', { class: 'val fv', 'aria-label': 'ECPAR status: ' + s, onclick: ev => pick(ev.currentTarget, E.ECPAR_STATUS, s, v => { if (v === 'Rejected') rejectBtn.click(); else if (v === 'Approved') approveBtn.click(); else { E.setEcparStatus(row, v); render(); } }) }, badge(s), icon('chevd', 14))),
+      h('button', { class: 'val fv', 'aria-label': 'ECPAR status: ' + s, onclick: ev => pick(ev.currentTarget, E.ECPAR_STATUS, s, v => { if (v === 'Pending Revision' && !E.ECPAR_ACTIVE.includes(s)) rejectBtn.click(); else if (v === 'Approved') approveBtn.click(); else if (v === 'Resubmitted') resubBtn.click(); else { E.setEcparStatus(row, v); render(); } }) }, badge(s), icon('chevd', 14))),
       h('div', { class: 'wfacts' }, ...ecparButtons())),
     h('div', { class: 'kvs two' },
       kv('text', 'Reference No.', ef('ref', 'ECPAR reference number', { mono: true })), kv('date', 'Submission Date', ef('submitted', 'Submission date', { type: 'date' })),
       kv('number', 'Budget Amount', ef('budget', 'Budget amount (RM)', { type: 'money' })), kv('layers', 'Version', h('span', {}, 'v' + (g(e, 'version') || 1))),
       kv('date', 'Approval Date', ef('approved', 'Approval date', { type: 'date' })), kv('date', 'Rejection Date', ef('rejected', 'Rejection date', { type: 'date' })),
       kv('text', 'Rejection Reason', ef('reason', 'Rejection reason')), kv('date', 'Resubmission Date', ef('resubmitted', 'Resubmission date', { type: 'date' })),
+      kv('list', 'Reason Category', ef('rcat', 'Reason category', { type: 'select', options: E.ECPAR_REASONS })), kv('pencil', 'Required Correction', ef('correction', 'Required correction')),
+      kv('text', 'Remarks', ef('remarks', 'Remarks')),
       kv('page', 'Connection Charge Bill Ref.', field(w || E.work(row), { key: 'ccb', label: 'Connection Charge Bill reference', mono: true }))),
     h('p', { class: 'muted small note' }, 'The budget is prepared in the company system and the Connection Charge Bill is issued by your supervisor. Record their numbers here.'),
     historyBlock('Revision history', hist));
-  var rejectBtn, approveBtn;
+  var rejectBtn, approveBtn, resubBtn;
   function ecparButtons() {
-    rejectBtn = h('button', { class: 'rbtn', onclick: async () => { const r = await glassModal({ title: 'Reject ECPAR', dateLabel: 'Rejection date', textLabel: 'Rejection reason / remarks', ok: 'Confirm Reject', danger: true, needText: true }); if (r) { E.rejectEcpar(row, r.date, r.text); toast('ECPAR rejected. It is now in Rejected ECPAR.'); render(); } } }, icon('close', 13), 'Reject');
-    approveBtn = h('button', { class: 'sbtn', onclick: async () => { const r = await glassModal({ title: 'Mark ECPAR approved', dateLabel: 'Approval date', textLabel: 'Remarks (optional)', ok: 'Mark Approved' }); if (r) { E.approveEcpar(row, r.date); render(); } } }, icon('check', 13), 'Approve');
-    const resub = h('button', { class: 'sbtn', onclick: async () => { const r = await glassModal({ title: 'Resubmit revised ECPAR', dateLabel: 'Resubmission date', textLabel: 'What changed (optional)', ok: 'Resubmit' }); if (r) { E.resubmitEcpar(row, r.date, r.text); render(); } } }, icon('redo', 13), 'Resubmit');
-    return [s === 'Rejected' || s === 'In Revision' ? resub : null, s !== 'Approved' ? approveBtn : null, s !== 'Rejected' ? rejectBtn : null].filter(Boolean);
+    rejectBtn = h('button', { class: 'rbtn', onclick: async () => { if (await rejectEcparFlow(row)) render(); } }, icon('close', 13), 'Reject');
+    approveBtn = h('button', { class: 'sbtn', onclick: async () => { if (await approveEcparFlow(row)) render(); } }, icon('check', 13), 'Approve');
+    resubBtn = h('button', { class: 'sbtn', onclick: async () => { if (await resubmitEcparFlow(row)) render(); } }, icon('redo', 13), 'Resubmit');
+    const act = E.ECPAR_ACTIVE.includes(s);
+    return [act ? resubBtn : null, s !== 'Approved' ? approveBtn : null, !act ? rejectBtn : null].filter(Boolean);
   }
 }
 function historyBlock(title, hist) {
@@ -381,21 +448,23 @@ function ecxTab(row, info, n) {
 }
 function ecxCard(row, x) {
   const s = g(x, 'status') || 'Draft', xf = (key, label, extra = {}) => field(x, { key, label, ...extra });
-  const reject = async () => { const r = await glassModal({ title: 'Reject ' + (g(x, 'number') || 'ECX application'), dateLabel: 'Rejection date', textLabel: 'Rejection reason / remarks', ok: 'Confirm Reject', danger: true, needText: true }); if (r) { E.rejectEcx(row, x, r.date, r.text); toast('ECX rejected. It is now in Rejected ECX.'); render(); } };
-  const approve = async () => { const r = await glassModal({ title: 'Mark ECX approved', dateLabel: 'Approval date', textLabel: 'Remarks (optional)', ok: 'Mark Approved' }); if (r) { E.approveEcx(row, x, r.date); render(); } };
-  const resub = async () => { const r = await glassModal({ title: 'Resubmit ECX application', dateLabel: 'Resubmission date', textLabel: 'What changed (optional)', ok: 'Resubmit' }); if (r) { E.resubmitEcx(row, x, r.date, r.text); render(); } };
+  const reject = async () => { if (await rejectEcxFlow(row, x)) render(); };
+  const approve = async () => { if (await approveEcxFlow(row, x)) render(); };
+  const resub = async () => { if (await resubmitEcxFlow(row, x)) render(); };
+  const act = E.ECX_ACTIVE.includes(s);
   return h('section', { class: 'hcard pcard xcard' },
     h('div', { class: 'phbar' }, h('div', { class: 'ph' }, icon('filex', 17), xf('number', 'ECX number', { mono: true, ph: 'ECX number' }),
-      h('button', { class: 'val fv', 'aria-label': 'ECX status: ' + s, onclick: ev => pick(ev.currentTarget, E.ECX_STATUS, s, v => { if (v === 'Rejected') reject(); else if (v === 'Approved') approve(); else { E.setEcxStatus(row, x, v); render(); } }) }, badge(s), icon('chevd', 14))),
+      h('button', { class: 'val fv', 'aria-label': 'ECX status: ' + s, onclick: ev => pick(ev.currentTarget, E.ECX_STATUS, s, v => { if (v === 'Pending Action' && !act) reject(); else if (v === 'Approved') approve(); else if (v === 'Resubmitted') resub(); else if (v === 'Closed') { E.closeEcx(row, x); render(); } else { E.setEcxStatus(row, x, v); render(); } }) }, badge(s), icon('chevd', 14))),
       h('div', { class: 'wfacts' },
-        s === 'Rejected' || s === 'In Revision' ? h('button', { class: 'sbtn', onclick: resub }, icon('redo', 13), 'Resubmit') : null,
-        s !== 'Approved' ? h('button', { class: 'sbtn', onclick: approve }, icon('check', 13), 'Approve') : null,
-        s !== 'Rejected' ? h('button', { class: 'rbtn', onclick: reject }, icon('close', 13), 'Reject') : null,
+        act ? h('button', { class: 'sbtn', onclick: resub }, icon('redo', 13), 'Resubmit') : null,
+        s !== 'Approved' && s !== 'Closed' ? h('button', { class: 'sbtn', onclick: approve }, icon('check', 13), 'Approve') : null,
+        !act ? h('button', { class: 'rbtn', onclick: reject }, icon('close', 13), 'Reject') : null,
         h('button', { class: 'c-act ebtn', 'aria-label': 'More for this ECX application', onclick: e => menu(e.currentTarget, [{ label: 'Delete application', icon: 'trash', danger: true, run: async () => { if (await confirmBox('Delete this ECX application? Its log entries stay in the Activity Log.', 'Delete')) { D.trash(x.id); E.log(row, 'ECX', (g(x, 'number') || 'ECX application') + ' deleted.'); render(); } } }]) }, icon('more', 18)))),
     h('div', { class: 'kvs two' },
       kv('text', 'Application ID', xf('appid', 'Application ID', { mono: true })), kv('date', 'Submission Date', xf('submitted', 'Submission date', { type: 'date' })),
       kv('date', 'Rejection Date', xf('rejected', 'Rejection date', { type: 'date' })), kv('text', 'Rejection Reason', xf('reason', 'Rejection reason')),
       kv('date', 'Resubmission Date', xf('resubmitted', 'Resubmission date', { type: 'date' })), kv('date', 'Approval Date', xf('approved', 'Approval date', { type: 'date' })),
+      kv('list', 'Reason Category', xf('rcat', 'Reason category', { type: 'select', options: E.ECX_REASONS })), kv('pencil', 'Required Correction', xf('correction', 'Required correction')),
       kv('text', 'Remarks', xf('remarks', 'Remarks'))),
     historyBlock('Rejection history', E.revisions(row, x.id)));
 }

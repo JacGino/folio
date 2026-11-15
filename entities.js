@@ -9,8 +9,15 @@ import { parseDate, dateAdd, dateBetween, startOfDay, toISODate } from './dates.
 
 export const TASK_STATUS = ['Not Started', 'Pending', 'In Progress', 'Completed', 'On Hold'];
 export const PRIORITY = ['High', 'Medium', 'Low'];
-export const ECPAR_STATUS = ['Draft', 'Submitted', 'In Revision', 'Rejected', 'Resubmitted', 'Approved'];
-export const ECX_STATUS = ['Draft', 'Submitted', 'In Revision', 'Rejected', 'Resubmitted', 'Approved'];
+export const ECPAR_STATUS = ['Draft', 'Submitted', 'Pending Revision', 'In Revision', 'Ready to Resubmit', 'Resubmitted', 'Approved'];
+export const ECPAR_ACTIVE = ['Pending Revision', 'In Revision', 'Ready to Resubmit']; // rejected, corrective action still outstanding
+export const ECX_STATUS = ['Draft', 'Submitted', 'Pending Action', 'In Review', 'Ready to Resubmit', 'Resubmitted', 'Approved', 'Closed'];
+export const ECX_ACTIVE = ['Pending Action', 'In Review', 'Ready to Resubmit'];
+// rejection reason categories are picked when a rejection is recorded (never guessed from the text)
+export const ECPAR_REASONS = ['Technical data issues', 'Drawing / layout issues', 'Load summary issues', 'Other'];
+export const ECX_REASONS = ['Incomplete documents', 'Drawing not compliant', 'Additional information required', 'Revised documents required', 'Other'];
+export const TASK_TYPES = ['ECX', 'ECPAR', 'Site Survey', 'Report', 'Other'];
+const OLD_STATUS = { ecpar: { Rejected: 'Pending Revision' }, ecx: { Rejected: 'Pending Action', 'In Revision': 'In Review' } };
 export const ACT_TYPES = ['Note', 'Site survey', 'Document check', 'ECPAR', 'ECX', 'Customer follow-up', 'Report'];
 
 export const g = (r, k, d = null) => D.val(r, 'p:' + k, d);
@@ -99,6 +106,22 @@ export function surveyState(row, info = DB.kpiInfo(row, DB.kpiDb())) {
   if (['Estimation', 'To Amend', 'Done'].includes(info.status)) return 'done';
   return 'none';
 }
+/** survey state for the Pending Site Survey queue: Completed, Overdue (past the project's Due Date or a missed planned date), Scheduled or To Schedule */
+export function surveyInfo(row, info, now = Date.now()) {
+  const w = workOf(row), done = w && g(w, 'survey'), plan = w && g(w, 'scheduled');
+  const t0 = startOfDay(new Date(now)), due = info.due, planD = parseDate(plan);
+  const state = done ? 'Completed' : (due && due < t0) || (planD && planD < t0) ? 'Overdue' : plan ? 'Scheduled' : 'To Schedule';
+  return { state, scheduled: plan || null, done: done || null, due, findings: w ? g(w, 'findings', '') : '' };
+}
+export function scheduleSurvey(row, date, note = '') {
+  const w = work(row), was = g(w, 'scheduled');
+  D.update(w.id, { 'p:scheduled': date });
+  log(row, 'Site survey', (was ? 'Site survey rescheduled to ' : 'Site survey scheduled for ') + date.split('-').reverse().map(Number).join('/') + '.' + (note ? ' ' + note : ''), { ev: was ? 'rescheduled' : 'scheduled', date });
+}
+export function surveyFindings(row, text) {
+  if (!text) return; const w = work(row); D.update(w.id, { 'p:findings': [g(w, 'findings'), text].filter(Boolean).join('\n') });
+  log(row, 'Site survey', 'Site survey findings recorded. ' + text);
+}
 export function completeSurvey(row, date, now = Date.now()) {
   const w = work(row); D.update(w.id, { 'p:survey': date || today(now) });
   if (rowVal(row, 'Status') === 'Site Survey') setRow(row, 'Status', 'Estimation');
@@ -111,13 +134,14 @@ export const ecpar = row => ensure('ecpar', 'ep' + row.id, { project: row.id, 'p
 /** what to show for ECPAR on a project (also understands rows rejected before ECPAR records existed) */
 export function ecparStatus(row, info) {
   const e = ecparOf(row); if (e && g(e, 'status')) return g(e, 'status');
-  return info && info.amend ? 'Rejected' : '';
+  return info && info.amend ? 'Pending Revision' : '';
 }
-export function rejectEcpar(row, date, reason) {
+/** reject: reason, its category (picked by you), the correction needed and remarks; earlier rejections stay in the history */
+export function rejectEcpar(row, date, reason, { cat = '', correction = '', remarks = '' } = {}) {
   const e = ecpar(row);
-  D.update(e.id, { 'p:status': 'Rejected', 'p:rejected': date, 'p:reason': reason || '' });
+  D.update(e.id, { 'p:status': 'Pending Revision', 'p:rejected': date, 'p:reason': reason || '', 'p:rcat': cat || null, 'p:correction': correction || '', ...(remarks ? { 'p:remarks': remarks } : {}) });
   setRow(row, 'ECPAR Rejected', date); setRow(row, 'Status', 'To Amend'); // Rejected ECPAR focus, alerts and the widget follow this
-  log(row, 'ECPAR', 'ECPAR rejected.' + (reason ? ' ' + reason : ''), { ecpar: true, ev: 'rejected', date, reason });
+  log(row, 'ECPAR', 'ECPAR rejected.' + (reason ? ' ' + reason : ''), { ecpar: true, ev: 'rejected', date, reason, cat, correction });
 }
 export function resubmitEcpar(row, date, note) {
   const e = ecpar(row);
@@ -133,6 +157,9 @@ export function approveEcpar(row, date) {
 export function setEcparStatus(row, s) {
   const e = ecpar(row); const was = g(e, 'status'); if (was === s) return;
   D.update(e.id, { 'p:status': s }); if (s === 'Submitted' && !g(e, 'submitted')) D.update(e.id, { 'p:submitted': today(Date.now()) });
+  // keep the project in (or out of) the Rejected ECPAR queue to match
+  if (ECPAR_ACTIVE.includes(s) && rowVal(row, 'Status') !== 'To Amend') { setRow(row, 'Status', 'To Amend'); if (!rowVal(row, 'ECPAR Rejected') && g(e, 'rejected')) setRow(row, 'ECPAR Rejected', g(e, 'rejected')); }
+  if (!ECPAR_ACTIVE.includes(s) && rowVal(row, 'Status') === 'To Amend') setRow(row, 'Status', 'Estimation');
   log(row, 'ECPAR', 'ECPAR status: ' + s + '.', { ecpar: true, ev: 'status' });
 }
 
@@ -143,9 +170,13 @@ export function addEcx(row, number = '') {
   log(row, 'ECX', 'ECX application added' + (number ? ': ' + number : '') + '.', { ecx: x.id }); return x;
 }
 const ecxName = x => g(x, 'number') || 'ECX application';
-export function rejectEcx(row, x, date, reason) {
-  D.update(x.id, { 'p:status': 'Rejected', 'p:rejected': date, 'p:reason': reason || '' });
-  log(row, 'ECX', ecxName(x) + ' rejected.' + (reason ? ' ' + reason : ''), { ecx: x.id, ev: 'rejected', date, reason });
+export function rejectEcx(row, x, date, reason, { cat = '', correction = '', remarks = '' } = {}) {
+  D.update(x.id, { 'p:status': 'Pending Action', 'p:rejected': date, 'p:reason': reason || '', 'p:rcat': cat || null, 'p:correction': correction || '', ...(remarks ? { 'p:remarks': remarks } : {}) });
+  log(row, 'ECX', ecxName(x) + ' rejected.' + (reason ? ' ' + reason : ''), { ecx: x.id, ev: 'rejected', date, reason, cat, correction });
+}
+export function closeEcx(row, x, note) {
+  D.update(x.id, { 'p:status': 'Closed' });
+  log(row, 'ECX', ecxName(x) + ' closed.' + (note ? ' ' + note : ''), { ecx: x.id, ev: 'closed' });
 }
 export function resubmitEcx(row, x, date, note) {
   D.update(x.id, { 'p:status': 'Resubmitted', 'p:resubmitted': date });
@@ -164,7 +195,7 @@ export function setEcxStatus(row, x, s) {
 export function rejectedEcx(now = Date.now()) {
   const dbr = DB.kpiDb(); if (!dbr) return [];
   const t0 = startOfDay(new Date(now)), out = [];
-  for (const x of D.all('ecx', x => g(x, 'status') === 'Rejected')) {
+  for (const x of D.all('ecx', x => ECX_ACTIVE.includes(g(x, 'status')))) {
     const row = D.live(D.val(x, 'project')); if (!row || D.val(row, 'db') !== dbr.id) continue;
     const info = DB.kpiInfo(row, dbr, now); if (info.closed) continue;
     const rj = parseDate(g(x, 'rejected')); const due = rj ? dateAdd(rj, 1, 'days') : null;
@@ -185,7 +216,7 @@ export function log(row, type, text, extra = {}) {
 /** project history: log entries, comments and the project's creation, oldest first */
 export function history(row) {
   const ev = D.all('act', a => D.val(a, 'project') === row.id).map(a => ({ id: a.id, t: D.val(a, 't', 0), type: D.val(a, 'type', 'Note'), text: D.val(a, 'text', ''),
-    ecx: D.val(a, 'ecx'), ecpar: D.val(a, 'ecpar'), ev: D.val(a, 'ev'), date: D.val(a, 'date'), reason: D.val(a, 'reason') }));
+    ecx: D.val(a, 'ecx'), ecpar: D.val(a, 'ecpar'), ev: D.val(a, 'ev'), date: D.val(a, 'date'), reason: D.val(a, 'reason'), cat: D.val(a, 'cat'), correction: D.val(a, 'correction') }));
   for (const c of D.all('cmt', c => D.val(c, 'parent') === row.id)) ev.push({ id: c.id, t: D.val(c, 'created', 0), type: 'Comment', text: D.val(c, 'text', '') });
   const created = D.val(row, 'created', 0); if (created) ev.push({ id: 'new' + row.id, t: created, type: 'Project', text: 'Project created.' });
   return ev.sort((a, b) => a.t - b.t);
@@ -218,17 +249,18 @@ export function kpiDays(info, now = Date.now()) {
 // ---------------- migration: runs at start-up and after every sync; only writes what is missing ----------------
 export function ensureModel() {
   const dbr = DB.kpiDb(); if (!dbr) return;
+  for (const k of ['ecpar', 'ecx']) for (const r of D.all(k)) { const s = g(r, 'status'), to = OLD_STATUS[k][s]; if (to) D.update(r.id, { 'p:status': to }); }
   for (const row of DB.rows(dbr.id)) {
     linkCustomer(row);
     // one ECX application from the old "ECX & WBS NO" text, once per project
     const no = rowVal(row, 'ECX & WBS NO');
     if (no && !D.getRec('xm' + row.id) && !ecxOf(row.id).length) {
       const old = rowVal(row, 'ECX Rejected');
-      D.create('ecx', row.sh, { id: 'xm' + row.id, project: row.id, created: D.val(row, 'created', Date.now()), 'p:number': String(no).split(/\n/)[0].trim(), 'p:status': old ? 'Rejected' : 'Submitted', 'p:rejected': old ? toISODate(old) : null });
+      D.create('ecx', row.sh, { id: 'xm' + row.id, project: row.id, created: D.val(row, 'created', Date.now()), 'p:number': String(no).split(/\n/)[0].trim(), 'p:status': old ? 'Pending Action' : 'Submitted', 'p:rejected': old ? toISODate(old) : null });
     }
     // projects rejected before ECPAR records existed
     const info = DB.kpiInfo(row, dbr);
-    if (info.amend && !D.getRec('ep' + row.id)) D.create('ecpar', row.sh, { id: 'ep' + row.id, project: row.id, created: Date.now(), 'p:status': 'Rejected', 'p:rejected': info.rejected ? toISODate(info.rejected) : null, 'p:version': 1 });
+    if (info.amend && !D.getRec('ep' + row.id)) D.create('ecpar', row.sh, { id: 'ep' + row.id, project: row.id, created: Date.now(), 'p:status': 'Pending Revision', 'p:rejected': info.rejected ? toISODate(info.rejected) : null, 'p:version': 1 });
   }
 }
 

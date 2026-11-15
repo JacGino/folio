@@ -34,6 +34,14 @@ export function homeScreen() {
       dueCard(n), midCard(n), trendCard(all, n), categoryCard(all), quickCard(), calendarCard(n)));
   return wrap;
 }
+/** the Home cover photo, also shown as the banner of the Focus pages */
+export function coverInto(el) {
+  const rec = D.live('home'), cover = rec && D.val(rec, 'cover');
+  el.classList.add('cover'); if (!cover) el.classList.add('default');
+  if (cover) import('./page.js').then(m => m.fileUrl(cover.id)).then(u => { if (u) el.style.backgroundImage = `url("${u}")`; });
+  if (rec) el.style.backgroundPosition = D.val(rec, 'coverPos', '50% 50%');
+  return el;
+}
 const homeMore = a => moreMenu(a, { extra: [{ label: 'Open Planning KPI Tracker', icon: 'table', run: () => go('#/tracker') }] });
 
 // ---------- cover, profile photo, greeting ----------
@@ -83,16 +91,17 @@ function kpiBar(all, n) {
 export function dueItems(n) {
   const out = new Map();
   const add = (key, it) => { if (!out.has(key)) out.set(key, it); };
-  for (const t of flat(DB.ecparGroups(n))) add('ep' + t.id, { key: 'ep' + t.id, kind: 'ecpar', row: t.row, title: 'Revise ECPAR', cust: t.title, ecx: t.ecx, cats: t.category, status: 'Rejected', due: t.due, days: t.days, tab: 'ecpar' });
+  for (const t of flat(DB.ecparGroups(n))) add('ep' + t.id, { key: 'ep' + t.id, kind: 'ecpar', row: t.row, title: 'Revise ECPAR', cust: t.title, ecx: t.ecx, cats: t.category, status: 'Rejected', priority: t.priority, due: t.due, days: t.days, tab: 'ecpar' });
   for (const t of flat(DB.ecxGroups(n))) add('x' + t.ecxId, { key: 'x' + t.ecxId, kind: 'ecx', ecxId: t.ecxId, row: t.row, title: 'Resubmit ' + (t.ecx || 'ECX'), cust: t.title, ecx: t.ecx, cats: t.category, status: 'Rejected', due: t.due, days: t.days, tab: 'ecx' });
   for (const x of E.dueTasks(n)) add('t' + x.task.id, { key: 't' + x.task.id, kind: 'task', task: x.task, row: x.row, title: x.name, cust: x.customer, ecx: x.info.ecx, cats: x.info.category, status: E.g(x.task, 'status') || 'Not Started', due: parseDate(E.g(x.task, 'due')), days: x.days, tab: 'tasks' });
   const sv = DB.surveyGroups(n);
   for (const t of [...sv.overdue, ...sv.today]) add('p' + t.id, { key: 'p' + t.id, kind: 'survey', row: t.row, title: 'Site survey', cust: t.title, ecx: t.ecx, cats: t.category, status: 'Site Survey', due: t.due, days: t.days, tab: 'survey' });
   for (const t of flat(DB.todayGroups(n))) if (!t.amend) add('p' + t.id, { key: 'p' + t.id, kind: 'project', row: t.row, title: t.status === 'Estimation' ? 'Estimation due' : 'Project due', cust: t.title, ecx: t.ecx, cats: t.category, status: t.status || 'Open', due: t.due, days: t.days, tab: 'overview' });
-  return [...out.values()].sort((a, b) => (a.days ?? 999) - (b.days ?? 999) || a.cust.localeCompare(b.cust));
+  // rejected follow-ups count once they are due (today or overdue)
+  return [...out.values()].filter(it => !(it.kind === 'ecpar' || it.kind === 'ecx') || (it.days != null && it.days <= 0)).sort((a, b) => (a.days ?? 999) - (b.days ?? 999) || a.cust.localeCompare(b.cust));
 }
 const dueText = it => it.days == null ? '—' : it.days === 0 ? 'Today' : it.days === 1 ? 'Tomorrow' : it.days === -1 ? 'Yesterday' : it.due ? formatDate(it.due, 'D/M/YYYY') : '—';
-async function completeItem(it, n) {
+export async function completeItem(it, n) {
   const day = iso(new Date(n));
   if (it.kind === 'task') { E.completeTask(it.task, true, n); toast('Task completed'); }
   else if (it.kind === 'survey') { E.completeSurvey(it.row, day, n); toast('Site survey completed'); }
@@ -230,7 +239,7 @@ function categoryCard(all) {
 }
 
 // ---------- Quick Actions ----------
-function pickProject(title, { fullOnly = false } = {}) {
+export function pickProject(title, { fullOnly = false } = {}) {
   return new Promise(res => {
     const dbr = DB.kpiDb(); let chosen = null;
     const list = DB.rows(dbr.id).map(r => DB.kpiInfo(r, dbr, NOW())).filter(t => !t.archived && !(fullOnly && E.reportOnly(t.category))).sort((a, b) => a.title.localeCompare(b.title));
@@ -242,7 +251,7 @@ function pickProject(title, { fullOnly = false } = {}) {
     draw();
   });
 }
-function logSheet(row) {
+export function logSheet(row) {
   const type = h('select', { class: 'field', 'aria-label': 'Activity type' }, E.ACT_TYPES.map(t => h('option', { value: t }, t)));
   const txt = h('textarea', { class: 'field', rows: 3, placeholder: 'What happened? e.g. Customer follow-up completed.', 'aria-label': 'Description' });
   const s = sheet('Log activity · ' + DB.title(row), h('form', { class: 'npform', onsubmit: e => { e.preventDefault(); const v = txt.value.trim(); if (!v) { txt.focus(); return; } E.log(row, type.value, v, type.value === 'ECPAR' ? { ecpar: true } : {}); s.close(); toast('Saved to the Activity Log'); render(); } },
