@@ -218,6 +218,7 @@ export const PREMISES = [
   { key: 'shopres', label: 'Shophouse Unit Floor (Residential)', mal: 3, res: true, listed: true, threeOnly: true },
   { key: 'resettle', label: 'Residential house in a Resettlement Scheme area (not listed in Table 5.1)', mal: null, res: true, listed: false, contrib: true },
   { key: 'othres', label: 'Other residential premise (not listed in Table 5.1)', mal: null, res: true, listed: false },
+  { key: 'publight', label: 'Public lighting — LED 70W (0.08 kVA per unit)', mal: null, res: false, listed: false, perLamp: 0.08 },
   { key: 'nonres', label: 'Non-residential premise (commercial, industrial, other — not listed in Table 5.1)', mal: null, res: false, listed: false },
 ];
 export const PREMISE = Object.fromEntries(PREMISES.map(p => [p.key, p]));
@@ -225,3 +226,6 @@ export const TABLE51_NOTES = {
   1: 'Small Residential House: total floor area not exceeding 755ft² (70.1m²) and load not exceeding 2kVA per unit. If applied maximum demand exceeds single phase 2kVA or three-phase supply, classify as Detached, Semi-Detached or Terrace/Quadrant House.',
   2: 'Government assisted scheme: applied load (maximum demand) not exceeding 2kVA. If applied maximum demand exceeds single phase 2kVA or three-phase supply, classify as Detached, Semi-Detached or Terrace/Quadrant House.',
 };
+
+/** premise types offered in Customer Information (same list the calculator uses) */
+export const PREMISE_TYPES = PREMISES.map(p => p.label);

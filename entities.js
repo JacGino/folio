@@ -16,6 +16,11 @@ export const ECX_ACTIVE = ['Pending Action', 'In Review', 'Ready to Resubmit'];
 // rejection reason categories are picked when a rejection is recorded (never guessed from the text)
 export const ECPAR_REASONS = ['Technical data issues', 'Drawing / layout issues', 'Load summary issues', 'Other'];
 export const ECX_REASONS = ['Incomplete documents', 'Drawing not compliant', 'Additional information required', 'Revised documents required', 'Other'];
+// customer supply details (Customer Information)
+export const TARIFFS = ['Domestic', 'Commercial'];
+export const APP_TYPES = ['Service Line', 'Underground'];
+export const METER_TYPES = ['1-Phase', '3-Phase'];
+export { PREMISE_TYPES } from './ccrates.js';
 export const TASK_TYPES = ['ECX', 'ECPAR', 'Site Survey', 'Report', 'Other'];
 const OLD_STATUS = { ecpar: { Rejected: 'Pending Revision' }, ecx: { Rejected: 'Pending Action', 'In Revision': 'In Review' } };
 export const ACT_TYPES = ['Note', 'Site survey', 'Document check', 'ECPAR', 'ECX', 'Customer follow-up', 'Report'];

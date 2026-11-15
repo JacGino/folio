@@ -6,7 +6,8 @@ import * as DB from './db.js';
 import * as E from './entities.js';
 import { h, icon, menu, sheet, toast, confirmBox, promptBox, textbox } from './ui.js';
 import { formatDate } from './dates.js';
-import { render, now as NOW } from './app.js';
+import { render, now as NOW, download, L as LBL } from './app.js';
+import { longText, schemeDraft, RM as RMS } from './longtext.js';
 import { badge, optPill } from './project.js';
 import { GUIDELINE, RATE, PREMISES, PREMISE, COMPONENTS, TABLE51_NOTES } from './ccrates.js';
 import { CATS, SCOPES, METHODS, ELIGIBLE_PROJECT_CATS, methodology, calculate, contributionEligible, itemsFor, serviceCableSplit, perCircuit, snapshot, rm } from './ccengine.js';
@@ -22,11 +23,19 @@ const nextVersion = rowId => Math.max(0, ...D.all('ccalc', c => D.val(c, 'projec
 
 // ---------- the calculation being edited (per project, kept until you leave the app) ----------
 const WORK = new Map();
-const blank = () => ({ inputs: { cat: '', method: 'normal', scope: '', phase: 3, premise: '', applied: '', units: 1, contribution: false }, lines: [], notRequired: {}, loadedId: null, dirty: false });
-function fromSaved(c) { const s = D.val(c, 'snap'); return { inputs: { ...s.inputs }, lines: s.lines.filter(l => !l.auto).map(l => ({ id: l.id || uid(), comp: l.comp, code: l.code, qty: l.qty, override: l.override || null, note: l.note || '' })), notRequired: { ...(s.notRequired || {}) }, loadedId: c.id, dirty: false }; }
+const blank = () => ({ inputs: { basis: 'practice', cat: '', method: 'normal', scope: '', phase: 3, premise: '', applied: '', units: 1, contribution: false }, lines: [], notRequired: {}, loadedId: null, dirty: false });
+function fromSaved(c) { const s = D.val(c, 'snap'); return { inputs: { basis: 'guideline', ...s.inputs }, lines: s.lines.filter(l => !l.auto).map(l => ({ id: l.id || uid(), comp: l.comp, code: l.code, qty: l.qty, override: l.override || null, note: l.note || '' })), notRequired: { ...(s.notRequired || {}) }, loadedId: c.id, dirty: false }; }
 function work(row) {
   let w = WORK.get(row.id);
-  if (!w) { const last = calcsOf(row.id)[0]; w = last ? fromSaved(last) : blank(); WORK.set(row.id, w); }
+  if (!w) { const last = calcsOf(row.id)[0]; w = last ? fromSaved(last) : fromCustomer(row); WORK.set(row.id, w); }
+  return w;
+}
+/** a new calculation starts with the customer's Meter Type and Premise Type (you can still change them) */
+function fromCustomer(row) {
+  const w = blank(), c = E.customerOf(row); if (!c) return w;
+  const meter = g(c, 'meter'), prem = PREMISES.find(p => p.label === g(c, 'premise'));
+  if (meter) w.inputs.phase = meter === '1-Phase' ? 1 : 3;
+  if (prem) w.inputs.premise = prem.key;
   return w;
 }
 const touch = w => { w.dirty = true; };
@@ -87,7 +96,7 @@ function left(row, info, w, res) {
     frow('Supply Phase', segs([[1, 'Single Phase'], [3, 'Three Phase']], I.phase, v => set('phase', v), 'Supply Phase')),
     frow('Premise Type', pickBtn('Premise Type', I.premise, PREMISES.map(p => [p.key, p.label + (p.mal ? ` — ${p.mal}kVA` : '')]), v => set('premise', v)), 'Table 5.1'),
     PREMISE[I.premise]?.fn ? h('p', { class: 'cchint' }, TABLE51_NOTES[PREMISE[I.premise].fn]) : null,
-    frow(+I.cat === 2 ? 'Number of houses / units' : 'Number of premises / units', numBox(I.units, 'Number of units', v => { I.units = v; touch(w); refreshResults(row, info); })),
+    frow(I.premise === 'publight' ? 'Number of LED 70W units' : +I.cat === 2 ? 'Number of houses / units' : 'Number of premises / units', numBox(I.units, 'Number of units', v => { I.units = v; touch(w); refreshResults(row, info); })),
     has('perhouse') ? frow('House type', pickBtn('House type (Per House Fee)', I.houseType || '', houseTypes, v => set('houseType', v)), 'Table 4.2') : null,
     showDedicated ? frow('Dedicated new substation', tog(!!I.dedicated, v => set('dedicated', v), 'Dedicated new substation'), 'Footnote [1] · Section 3.1.3') : null,
     showZone ? frow('New HT line from Zone Substation', tog(!!I.fromZone, v => set('fromZone', v), 'New HT line from Zone Substation'), 'Footnote [2]') : null,
@@ -107,7 +116,9 @@ function loadSection(row, info, w, res) {
   const elig = contributionEligible(I);
   return h('section', { class: 'ccsec ccload' },
     h('h3', { class: 'ccsh' }, h('span', { class: 'ccn' }, icon('play', 13)), '2. Load / Capacity'),
-    frow('Applied Load', numBox(I.applied, 'Applied Load', v => { I.applied = v; touch(w); refreshResults(row, info); }, 'kVA'), p && p.listed && I.phase === 1 && !p.threeOnly ? 'Table 5.1 minimum is used for single phase' : 'Maximum demand declared by the customer'),
+    I.premise === 'publight' ? null : frow('Applied Load', numBox(I.applied, 'Applied Load', v => { I.applied = v; touch(w); refreshResults(row, info); }, 'kVA'), I.basis === 'guideline' && p && p.listed && I.phase === 1 && !p.threeOnly ? 'Table 5.1 minimum is used for single phase' : 'Maximum demand declared by the customer'),
+    frow('Load basis', segs([['practice', 'Your rule'], ['guideline', 'Guideline 5.2']], I.basis === 'guideline' ? 'guideline' : 'practice', v => { I.basis = v; touch(w); render(); }, 'Load basis'),
+      I.basis === 'guideline' ? 'Table 5.1 / Section 5.2 as written' : '1-phase min 5 kVA · 3-phase min 10 kVA · Table 5.1 for Longhouse & upgrading'),
     frow('Supply upgrading (existing customer)', tog(!!I.upgrade, v => { I.upgrade = v; touch(w); render(); }, 'Supply upgrading'), 'Section 5.2.3'),
     I.upgrade ? frow('Existing capacity', numBox(I.existing, 'Existing capacity', v => { I.existing = v; touch(w); refreshResults(row, info); }, 'kVA'), 'Charged on the difference') : null,
     loadResult(w, res),
@@ -242,6 +253,7 @@ function actions(row, info, w, res) {
     btn('page', 'Save as Draft', () => save(row, info, w, 'Draft')),
     btn('star', 'Save Final', () => save(row, info, w, 'Final')),
     btn('export', 'Export PDF', () => exportPdf(row, info, w)),
+    btn('page', 'Long Text (.txt)', () => longTextSheet(row, info, w)),
     btn('history', `Calculation History (${n})`, () => historySheet(row, info)),
     btn('pages', 'Duplicate', () => { w.loadedId = null; touch(w); toast('Copied as a new unsaved calculation'); render(); }));
 }
@@ -308,7 +320,7 @@ function exportPdf(row, info, w) {
     h('h1', {}, 'Connection Charge — Calculation Summary'),
     h('p', { class: 'cpn' }, 'Estimate prepared from ' + GUIDELINE.name + ' (' + GUIDELINE.rev + '). This is not an invoice or bill. Rates are reference values from this guideline version, exclusive of Service Tax and subject to review.'),
     h('table', { class: 'kv' }, [['Customer', info.title], ['Project reference', pref || '—'], ['Project category', info.category.join(', ')], ['Connection charging category', CATS[I.cat] || '—'], ['Charging method', METHODS[I.method] || '—'], ['Scope of work', SCOPES[I.scope] || '—'],
-      ['Supply phase', I.phase === 1 ? 'Single Phase' : 'Three Phase'], ['Premise type', PREMISE[I.premise]?.label || '—'], ['Applied load', I.applied ? I.applied + ' kVA' : '—'], ['Chargeable load', res.load && res.load.total != null ? res.load.total + ' kVA (' + res.load.ref + ')' : '—'],
+      ['Supply phase', I.phase === 1 ? 'Single Phase' : 'Three Phase'], ['Premise type', PREMISE[I.premise]?.label || '—'], ['Applied load', I.applied ? I.applied + ' kVA' : '—'], ['Load basis', I.basis === 'guideline' ? 'Guideline Section 5.2 / Table 5.1' : 'Your rule: 1-phase min 5 kVA, 3-phase min 10 kVA; Table 5.1 for Longhouse & upgrading'], ['Chargeable load', res.load && res.load.total != null ? res.load.total + ' kVA (' + res.load.ref + ')' : '—'],
       ['Calculation', c ? label(c) : 'Unsaved'], ['Prepared', formatDate(new Date(NOW()), 'D/M/YYYY')]].map(([k, v]) => h('tr', {}, h('th', {}, k), h('td', {}, v)))),
     h('table', { class: 'items' }, h('thead', {}, h('tr', {}, ['Charge component', 'Specification / Description', 'Qty', 'Unit', 'Rate (RM)', 'Amount (RM)', 'Source'].map(x => h('th', {}, x)))),
       h('tbody', {}, res.lines.map(l => h('tr', {}, h('td', {}, COMPONENTS[l.comp]), h('td', {}, l.spec || l.desc, l.override ? h('div', { class: 'o' }, 'Rate overridden (guideline ' + money(l.catalogueRate) + '): ' + l.override.reason) : null), h('td', { class: 'r' }, fmtQ(l.qty)), h('td', {}, l.unit), h('td', { class: 'r' }, money(l.rate)), h('td', { class: 'r' }, money(l.amount)), h('td', {}, l.code + ' · ' + l.source))))),
@@ -320,4 +332,64 @@ function exportPdf(row, info, w) {
   document.getElementById('ccprint')?.remove(); document.body.append(doc); document.body.classList.add('cc-printing');
   const done = () => { document.body.classList.remove('cc-printing'); doc.remove(); window.removeEventListener('afterprint', done); };
   window.addEventListener('afterprint', done); setTimeout(() => window.print(), 50); setTimeout(done, 60000);
+}
+
+// ---------- ECX long text (.txt) ----------
+const ltRemember = k => { try { return localStorage.getItem('folio-lt-' + k) || ''; } catch { return ''; } };
+const ltKeep = (k, v) => { try { localStorage.setItem('folio-lt-' + k, v); } catch {} };
+function ltDefaults(row, info, w, res) {
+  const c = E.customerOf(row), P = n => DB.propByName(DB.kpiDb(), n), pv = n => P(n) ? DB.value(row, P(n)) : '';
+  const ecx = E.ecxOf(row.id)[0], tariff = c && g(c, 'tariff'), sub = c && g(c, 'subsidy');
+  const d = new Date(NOW());
+  return { shortTitle: '', ref: (ecx && g(ecx, 'number')) || String(info.ecx || '').split('\n')[0], projectRef: pv('Project Ref') || '', title: '', consultant: '', client: info.title, ic: '', contact: (c && g(c, 'phone')) || '',
+    appType: tariff || 'Domestic', load: w.inputs.applied || '', target: String(d.getFullYear()), cat: w.inputs.cat || '', use: '', scheme: schemeDraft(res.lines),
+    costOH: '', costNoOH: '', sst: '0', subsidy: tariff === 'Commercial' || sub === 'No' ? 'none' : sub === 'Yes' && g(c, 'subsidyPct') ? (g(c, 'subsidyPct') === '70%' ? '70' : '100') : 'auto',
+    subsidyBV: ltRemember('subsidyBV') || 'PLS-260221', cdpBV: ltRemember('cdpBV') || 'PLS-260205', source: '', feeder: 'RYB', r: '', y: '', b: '',
+    submittedBy: ltRemember('submittedBy') || LBL('profile.name', ''), date: d.toLocaleString('en-GB', { month: 'long', year: 'numeric' }).toUpperCase(), remarks: '', desc: {} };
+}
+function longTextSheet(row, info, w) {
+  let res = calculate(w);
+  w.inputs.lt = { ...ltDefaults(row, info, w, res), ...(w.inputs.lt || {}) };
+  const f = w.inputs.lt;
+  if (f.cat !== w.inputs.cat && w.inputs.cat) f.cat = w.inputs.cat;
+  if (w.inputs.applied && !f.load) f.load = w.inputs.applied;
+  const pre = h('textarea', { class: 'field ltpre', rows: 18, spellcheck: 'false', 'aria-label': 'Long text preview' });
+  const warn = h('div', { class: 'ltwarn' }), sums = h('div', { class: 'ltsum' });
+  let edited = false;
+  pre.addEventListener('input', () => { edited = true; });
+  const draw = () => {
+    res = calculate(w); const out = longText(f, res);
+    if (!edited) pre.value = out.text;
+    const t = out.totals;
+    sums.replaceChildren(...[['Connection cost (c)', t.c], ['Capacity charge (d)', t.d], ['Meter fee (e)', t.e], ['Total (f)', t.total], ['CDP to seek', t.cdpSeek], [t.pct ? `Government subsidy ${t.pct}%` : 'Government subsidy', t.gov], ['Customer', t.cust]]
+      .map(([k, v]) => h('span', {}, h('small', {}, k), h('b', {}, RMS(v)))));
+    warn.replaceChildren(...out.warnings.map(x => h('p', { class: 'ccinfo amber' }, icon('info', 14), x)));
+  };
+  const set = (k, v) => { f[k] = v; if (['subsidyBV', 'cdpBV', 'submittedBy'].includes(k)) ltKeep(k, v); touch(w); edited = false; draw(); };
+  const inp = (k, label, o = {}) => h('label', { class: 'ltf' + (o.wide ? ' wide' : '') }, h('span', {}, label),
+    o.area ? h('textarea', { class: 'field', rows: o.rows || 3, value: f[k] ?? '', oninput: e => set(k, e.target.value) }, f[k] ?? '')
+      : o.opts ? h('select', { class: 'field', onchange: e => set(k, e.target.value) }, o.opts.map(([v, l]) => h('option', { value: v, selected: String(f[k]) === v ? true : null }, l)))
+      : h('input', { class: 'field', value: f[k] ?? '', inputmode: o.num ? 'decimal' : null, placeholder: o.ph || '', oninput: e => set(k, e.target.value) }));
+  const descRows = res.lines.filter(l => !['scc', 'lcc', 'meter'].includes(l.comp)).map(l => h('label', { class: 'ltf wide' }, h('span', {}, l.code + ' wording'),
+    h('input', { class: 'field', value: (f.desc || {})[l.id] || l.desc, oninput: e => { f.desc = { ...(f.desc || {}), [l.id]: e.target.value }; touch(w); edited = false; draw(); } })));
+  const txt = () => pre.value.replace(/\r?\n/g, '\r\n');
+  const name = () => (String(f.shortTitle || f.ref || info.title).replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'Connection charge') + ' Long Text.txt';
+  const body = h('div', { class: 'ltwrap' },
+    h('div', { class: 'ltform' },
+      h('h4', {}, 'Project'), inp('shortTitle', 'Short title', { wide: true, ph: 'e.g. BTU-D-SF SL TO AISYAH AT KG PENAN MUSLIM' }), inp('ref', 'REF. NO (ECX)'), inp('projectRef', 'Project ref'),
+      inp('title', 'Project title', { wide: true, area: true, rows: 2 }), inp('consultant', 'Consultant / contractor'), inp('client', 'Developer / client'), inp('ic', 'IC / company no.'), inp('contact', 'Contact number'),
+      h('h4', {}, 'Application'), inp('appType', 'Type of application', { opts: [['Domestic', 'Domestic'], ['Commercial', 'Commercial']] }), inp('load', 'Estimated connected load (kVA)', { num: true }),
+      inp('target', 'Target date of supply'), inp('cat', 'Category'), inp('use', 'Type of use', { ph: 'e.g. DWELLING' }), inp('scheme', 'Scheme of supply', { wide: true, area: true, rows: 7 }), ...descRows,
+      h('h4', {}, 'Costs & funding'), inp('costOH', '(a) Cost of project with OH (RM)', { num: true }), inp('costNoOH', '(b) Cost of project without OH (RM)', { num: true }), inp('sst', 'SST %', { num: true }),
+      inp('subsidy', 'Government subsidy (Domestic only)', { opts: [['auto', 'By amount (≤ RM5,000 100% · ≤ RM10,000 70%)'], ['100', '100%'], ['70', '70%'], ['none', 'No subsidy']] }),
+      inp('subsidyBV', 'Subsidy BV no.'), inp('cdpBV', 'CDP BV no.'),
+      h('h4', {}, 'Source of supply'), inp('source', 'Existing substation', { wide: true, ph: 'e.g. P/M KG PENAN MUSLIM 2 11KV S/S (DS71115)' }), inp('feeder', 'Feeder'), inp('r', 'R (A)', { num: true }), inp('y', 'Y (A)', { num: true }), inp('b', 'B (A)', { num: true }),
+      h('h4', {}, 'Submission'), inp('submittedBy', 'Submitted by'), inp('date', 'Date of submission'), inp('remarks', 'Remarks (blank = automatic)', { wide: true })),
+    h('div', { class: 'ltout' }, sums, warn, h('div', { class: 'lthead' }, h('b', {}, 'Preview'), h('small', {}, 'You can edit the text here before saving. Changing a field above rebuilds it.')), pre,
+      h('div', { class: 'ccsave' },
+        h('button', { class: 'ccbtn', onclick: () => { navigator.clipboard.writeText(txt()).then(() => toast('Copied'), () => toast('Could not copy')); } }, icon('pages', 17), h('span', {}, 'Copy')),
+        navigator.share ? h('button', { class: 'ccbtn', onclick: () => { const file = new File([txt()], name(), { type: 'text/plain' }); (navigator.canShare && navigator.canShare({ files: [file] }) ? navigator.share({ files: [file], title: name() }) : navigator.share({ title: name(), text: txt() })).catch(() => {}); } }, icon('export', 17), h('span', {}, 'Share')) : null,
+        h('button', { class: 'ccbtn primary', onclick: () => { download(name(), txt(), 'text/plain;charset=utf-8'); E.log(row, 'Connection charge', 'Long text saved as .txt: ' + name()); toast('Saved ' + name()); } }, icon('export', 17), h('span', {}, 'Save .txt')))));
+  draw();
+  sheet('Long Text — ' + info.title, body, { done: 'Close', wide: true, onDone: () => render() });
 }

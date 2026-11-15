@@ -73,7 +73,27 @@ export function chargeableLoad(inp) {
   if (!p) { out.errors.push('Premise Type'); return out; }
   if (inp.phase !== 1 && inp.phase !== 3) { out.errors.push('Supply Phase'); return out; }
   if (applied != null && applied <= 0) out.errors.push('Applied Load must be more than 0 kVA');
-  if (inp.phase === 1) {
+  const basis = inp.basis === 'guideline' ? 'guideline' : 'practice';
+  if (p.perLamp) { // public lighting: charge actual — LED 70W = 0.08 kVA per unit, no minimum
+    out.mode = basis; out.perUnit = p.perLamp; out.basis = `Public lighting LED 70W: ${p.perLamp} kVA per unit (charge actual, no minimum)`; out.ref = 'Your rule: public lighting charged actual';
+    out.total = r2(out.perUnit * units); if (units > 1) out.basis += ` × ${units} units`; return out;
+  }
+  out.mode = basis;
+  if (basis === 'practice') {
+    // Your rule: single phase charged at least 5 kVA, three phase at least 10 kVA.
+    // Table 5.1 Minimum Assigned Load is used only for Longhouse units and for supply upgrading.
+    const lh = inp.premise === 'lh1' || inp.premise === 'lh2';
+    if (inp.phase === 1 && p.listed && p.threeOnly) { out.errors.push(`${p.label} at minimum requires three phase supply (Section 5.2.1 a)`); return out; }
+    if (applied != null && applied > 10) { out.perUnit = applied; out.basis = `Applied Load ${applied} kVA is more than 10 kVA, so the actual applied load is charged`; out.ref = 'Your rule: above 10 kVA, charge actual'; }
+    else if (inp.phase === 1 && (lh || inp.upgrade) && p.listed) { out.perUnit = p.mal; out.basis = `Minimum Assigned Load for ${p.label} = ${p.mal} kVA (${lh ? 'Longhouse' : 'supply upgrading'})`; out.ref = 'Table 5.1; your rule'; }
+    else {
+      if (applied == null) { out.errors.push('Applied Load (kVA)'); return out; }
+      const min = inp.phase === 1 ? 5 : 10;
+      out.perUnit = Math.max(applied, min);
+      out.basis = applied < min ? `Applied Load ${applied} kVA is below ${min} kVA, so ${min} kVA is charged (${inp.phase === 1 ? 'single' : 'three'} phase)` : `Applied Load ${applied} kVA (${inp.phase === 1 ? 'single phase, 5 kVA minimum' : 'three phase, 10 kVA minimum'})`;
+      out.ref = 'Your rule: 1-phase min 5 kVA, 3-phase min 10 kVA';
+    }
+  } else if (inp.phase === 1) {
     if (p.listed && p.threeOnly) { out.errors.push(`${p.label} at minimum requires three phase supply (Section 5.2.1 a)`); return out; }
     if (p.listed) { out.perUnit = p.mal; out.basis = `Minimum Assigned Load for ${p.label} = ${p.mal} kVA`; out.ref = 'Table 5.1; Section 5.2.1(a)'; }
     else { if (applied == null) { out.errors.push('Applied Load (kVA) — premise is not listed in Table 5.1'); return out; } out.perUnit = applied; out.basis = 'Applied Load (premise not listed in Table 5.1)'; out.ref = 'Section 5.2.1(b)'; }
