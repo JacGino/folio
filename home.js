@@ -3,11 +3,13 @@
 // and a right panel with a compact calendar and recent activity. All numbers come from My Task.
 import * as D from './data.js';
 import * as DB from './db.js';
-import { h, icon, menu, toast, textbox, strip } from './ui.js';
+import { h, icon, menu, toast, textbox, strip, promptBox } from './ui.js';
 import { formatDate, toISODate, dateBetween, startOfDay, isDate } from './dates.js';
+import * as E from './entities.js';
 import { state, openTask, now as NOW, render, go, moreMenu, elabel, longPress, rowActions, exportList } from './app.js';
 import { presetSearch } from './search.js';
 import { popEdit } from './popedit.js';
+import { newProjectSheet } from './project.js';
 
 let tab = 'today', sortBy = 'due', catFilter = '', pickDay = '', monthOff = 0;
 const selected = new Set();
@@ -15,8 +17,13 @@ const TABS = [['today', 'Due Today'], ['survey', 'Pending Site Survey'], ['ecpar
 export function setHomeTab(t) { if (TABS.some(x => x[0] === t)) { tab = t; pickDay = ''; } }
 
 const flat = g => [...(g.overdue || []), ...(g.today || []), ...(g.upcoming || [])];
+// a task of a project, shaped like a project row so the table can show both
+const taskItem = x => ({ id: x.task.id, kind: 'task', task: x.task, row: x.row, title: x.customer, category: x.info.category, priority: E.g(x.task, 'priority') || '',
+  status: E.g(x.task, 'status') || 'Not Started', due: parseDateLocal(E.g(x.task, 'due')), days: x.days, next: x.name });
+const parseDateLocal = v => v ? new Date(v + 'T00:00:00') : null;
+export const dueTaskItems = n => E.dueTasks(n).map(taskItem);
 function tabRows(t, n) {
-  if (t === 'today') return flat(DB.todayGroups(n));
+  if (t === 'today') return [...dueTaskItems(n), ...flat(DB.todayGroups(n))];
   if (t === 'survey') return flat(DB.surveyGroups(n));
   if (t === 'ecpar') return flat(DB.ecparGroups(n));
   return flat(DB.ecxGroups(n));
@@ -26,7 +33,7 @@ const tsOf = f => parseInt(String(f?.ts || '').split(':')[0], 36) || 0;
 
 export function homeScreen() {
   // new data (first sync, import) may not have the Home fields yet; this only writes when something is missing
-  try { DB.ensureHomeFields(); } catch {}
+  E.ensureAll();
   const n = NOW(), dbr = DB.kpiDb();
   state.ctx = { export: a => exportList(tab === 'ecx' ? 'ecpar' : tab, a), more: a => moreMenu(a, { extra: [{ label: 'Open Planning KPI Tracker', icon: 'table', run: () => go('#/tracker') }] }) };
   const wrap = h('div', { class: 'wrap home' });
@@ -47,7 +54,7 @@ function header(n, dbr) {
       h('label', { class: 'hsearch glass' }, icon('search', 17), q),
       h('button', { class: 'hbtn glass', 'aria-label': alerts ? `Notifications, ${alerts} due or overdue` : 'Notifications', onclick: () => go('#/inbox') }, icon('bell', 19), alerts ? h('i', { class: 'hdot' }) : null),
       h('button', { class: 'hbtn glass', 'aria-label': 'More options', onclick: e => moreMenu(e.currentTarget, { extra: [{ label: 'Open Planning KPI Tracker', icon: 'table', run: () => go('#/tracker') }] }) }, icon('more', 19)),
-      dbr ? h('button', { class: 'hnew', onclick: () => { const r = DB.newRow(dbr); openTask(r.id); } }, icon('plus', 17), h('span', {}, 'New Project')) : null));
+      dbr ? h('button', { class: 'hnew', onclick: () => newProjectSheet() }, icon('plus', 17), h('span', {}, 'New Project')) : null));
 }
 
 // ---------- KPI strip (one container, thin dividers) ----------
@@ -72,9 +79,9 @@ function kpiStrip(n, dbr) {
 function tableCard(n, dbr) {
   const counts = Object.fromEntries(TABS.map(([k]) => [k, tabRows(k, n).length]));
   let rows = tabRows(tab, n);
-  if (pickDay) rows = DB.kpiTasks(n).filter(t => t.due && toISODate(t.due) === pickDay).concat(flat(DB.ecxGroups(n)).filter(t => toISODate(t.due) === pickDay));
+  if (pickDay) rows = E.dueTasks(n, { within: 9999 }).map(taskItem).filter(t => toISODate(t.due) === pickDay).concat(DB.kpiTasks(n).filter(t => t.due && toISODate(t.due) === pickDay), flat(DB.ecxGroups(n)).filter(t => t.due && toISODate(t.due) === pickDay));
   if (catFilter) rows = rows.filter(t => t.category.includes(catFilter));
-  const seen = new Set(); rows = rows.filter(t => !seen.has(t.id) && seen.add(t.id));
+  const seen = new Set(); rows = rows.filter(t => { const k = t.ecxId || t.id; return !seen.has(k) && seen.add(k); });
   const sorters = { due: (a, b) => (a.days ?? 9999) - (b.days ?? 9999), priority: (a, b) => (PRI[a.priority] ?? 3) - (PRI[b.priority] ?? 3) || (a.days ?? 9999) - (b.days ?? 9999), project: (a, b) => a.title.localeCompare(b.title) };
   rows.sort(sorters[sortBy]);
   const P = name => DB.propByName(dbr, name);
@@ -83,10 +90,34 @@ function tableCard(n, dbr) {
   const dueText = t => t.days == null ? '—' : t.days === 0 ? 'Today' : t.days === 1 ? 'Tomorrow' : t.days === -1 ? 'Yesterday' : formatDate(t.due, 'D/M/YYYY');
   const choose = (anchor, t, name) => { const p = P(name); if (!p) return; menu(anchor, [...(p.options || []).map(o => ({ label: o.name, checked: t[name === 'Status' ? 'status' : 'priority'] === o.name, run: () => { D.update(t.id, { ['p:' + p.id]: o.name }); render(); } })),
     ...(name === 'Priority' ? ['-', { label: 'Clear', icon: 'close', run: () => { D.update(t.id, { ['p:' + p.id]: null }); render(); } }] : [])]); };
+  const taskRowEl = t => {
+    const tk = t.task, late = t.days != null && t.days < 0;
+    const chk = h('input', { type: 'checkbox', class: 'hchk', 'aria-label': 'Select ' + t.next, checked: selected.has(t.id) ? true : null, onclick: e => e.stopPropagation(), onchange: e => { e.target.checked ? selected.add(t.id) : selected.delete(t.id); render(); } });
+    const nameEl = h('button', { class: 'c-task ebtn', onclick: e => { e.stopPropagation(); popEdit(nameEl, D.getRec(tk.id), { id: 'name', name: 'Task', type: 'text' }, () => render()); } }, t.next || 'Task');
+    const pickT = (anchor, list, key) => menu(anchor, list.map(o => ({ label: o, checked: E.g(tk, key) === o, run: () => { if (key === 'status' && o === 'Completed') E.completeTask(tk, true, NOW()); else D.update(tk.id, { ['p:' + key]: o }); render(); } })));
+    const tone = { High: ['#FBE6E3', '#C2443A'], Medium: ['#FBEBDD', '#B4610F'], Low: ['#E3EEF7', '#2F6FA3'], 'In Progress': ['#E3EEF7', '#2F6FA3'], 'On Hold': ['#FBEBDD', '#B4610F'] };
+    const tp = v => { const c = tone[v] || ['#EFEEEC', '#6F6E69']; return h('span', { class: 'hp dot', style: { background: c[0], color: c[1] } }, h('i', { style: { background: c[1] } }), v); };
+    const r = h('div', { class: 'hrow trowh' + (selected.has(t.id) ? ' sel' : ''), role: 'row', onclick: () => go('#/project/' + t.row.id + '/tasks') },
+      h('span', { class: 'c-chk' }, chk),
+      h('span', { class: 'c-proj' }, icon('listcheck', 17, 'hpic'), h('span', {}, t.title)),
+      nameEl,
+      h('span', { class: 'c-tags' },
+        h('span', { class: 'c-cat' }, t.category.length ? [pill(t.category[0], P('Project Category')), t.category.length > 1 ? h('small', { class: 'more' }, '+' + (t.category.length - 1)) : null] : h('span', { class: 'muted' }, '—')),
+        h('button', { class: 'c-pri ebtn', onclick: e => { e.stopPropagation(); pickT(e.currentTarget, E.PRIORITY, 'priority'); } }, t.priority ? tp(t.priority) : h('span', { class: 'muted' }, 'Set')),
+        h('button', { class: 'c-stat ebtn', onclick: e => { e.stopPropagation(); pickT(e.currentTarget, E.TASK_STATUS, 'status'); } }, tp(t.status))),
+      h('span', { class: 'c-due' + (late ? ' late' : '') }, dueText(t)),
+      h('button', { class: 'c-act ebtn', 'aria-label': 'Actions for ' + t.next, onclick: e => { e.stopPropagation(); menu(e.currentTarget, [
+        { label: 'Mark completed', icon: 'check', run: () => { E.completeTask(tk, true, NOW()); toast('Task completed'); render(); } },
+        { label: 'Open project', icon: 'expand', run: () => go('#/project/' + t.row.id + '/tasks') }]); } }, icon('more', 18)));
+    return r;
+  };
   const row = t => {
-    let taskEl;
+    if (t.kind === 'task') return taskRowEl(t);
+    let taskEl; const nt = E.nextTask(t.id); if (nt) t = { ...t, next: E.g(nt, 'name') };
     const chk = h('input', { type: 'checkbox', class: 'hchk', 'aria-label': 'Select ' + t.title, checked: selected.has(t.id) ? true : null, onclick: e => e.stopPropagation(), onchange: e => { e.target.checked ? selected.add(t.id) : selected.delete(t.id); render(); } });
-    taskEl = h('button', { class: 'c-task ebtn' + (t.next ? '' : ' empty'), onclick: e => { e.stopPropagation(); const p = P('Next Task'); if (p) popEdit(taskEl, D.getRec(t.id), p, () => render()); } }, t.next || (t.amend ? 'Amend ECPAR' : t.ecxDue ? 'Resubmit ECX' : 'Add task'));
+    taskEl = h('button', { class: 'c-task ebtn' + (t.next ? '' : ' empty'), onclick: async e => { e.stopPropagation();
+      if (nt) { popEdit(taskEl, D.getRec(nt.id), { id: 'name', name: 'Task', type: 'text' }, () => render()); return; }
+      const name = (await promptBox('New task for ' + t.title, '', 'Task name'))?.trim(); if (name) { E.addTask(t.row, name); render(); } } }, t.next || (t.amend ? 'Amend ECPAR' : t.ecxDue ? 'Resubmit ECX' : 'Add task'));
     const late = t.days != null && t.days < 0;
     const r = h('div', { class: 'hrow' + (selected.has(t.id) ? ' sel' : ''), role: 'row', onclick: () => openTask(t.id) },
       h('span', { class: 'c-chk' }, chk),
@@ -115,13 +146,13 @@ function tableCard(n, dbr) {
   const chips = [pickDay ? h('button', { class: 'hchip', onclick: () => { pickDay = ''; render(); } }, 'Due ' + formatDate(pickDay, 'D MMM YYYY'), icon('close', 13)) : null,
     catFilter ? h('button', { class: 'hchip', onclick: () => { catFilter = ''; render(); } }, catFilter, icon('close', 13)) : null].filter(Boolean);
   const bulk = selected.size ? h('div', { class: 'hbulk' }, h('b', {}, selected.size + ' selected'),
-    h('button', { class: 'btn', onclick: () => { const p = P('Status'); for (const id of selected) D.update(id, { ['p:' + p.id]: 'Done' }); toast(selected.size + ' marked Done'); selected.clear(); render(); } }, icon('check', 15), 'Mark Done'),
+    h('button', { class: 'btn', onclick: () => { const p = P('Status'); for (const id of selected) { const r = D.live(id); if (r && r.k === 'task') E.completeTask(r, true, NOW()); else D.update(id, { ['p:' + p.id]: 'Done' }); } toast(selected.size + ' marked Done'); selected.clear(); render(); } }, icon('check', 15), 'Mark Done'),
     h('button', { class: 'btn', onclick: () => { selected.clear(); render(); } }, 'Clear')) : null;
   const allChk = h('input', { type: 'checkbox', class: 'hchk', 'aria-label': 'Select all', checked: rows.length && rows.every(t => selected.has(t.id)) ? true : null,
     onchange: e => { rows.forEach(t => e.target.checked ? selected.add(t.id) : selected.delete(t.id)); render(); } });
   const head = h('div', { class: 'hrow hhd', role: 'row' }, h('span', { class: 'c-chk' }, allChk), h('span', { class: 'c-proj' }, 'Project'), h('span', { class: 'c-task' }, 'Task'),
     h('span', { class: 'c-tags' }, h('span', { class: 'c-cat' }, 'Category'), h('span', { class: 'c-pri' }, 'Priority'), h('span', { class: 'c-stat' }, 'Status')), h('span', { class: 'c-due' }, 'Due Date'), h('span', { class: 'c-act' }));
-  const empty = h('p', { class: 'hempty' }, pickDay ? 'Nothing due on this day.' : { today: 'Nothing due in the next 2 days.', survey: 'No projects waiting for a site survey.', ecpar: 'No rejected ECPAR to amend.', ecx: 'No rejected ECX. Add an ECX Rejected date to a project to track it here.' }[tab]);
+  const empty = h('p', { class: 'hempty' }, pickDay ? 'Nothing due on this day.' : { today: 'Nothing due in the next 2 days.', survey: 'No projects waiting for a site survey.', ecpar: 'No rejected ECPAR to amend.', ecx: 'No rejected ECX application. Reject one from a project\'s ECX tab to track it here.' }[tab]);
   return h('section', { class: 'hcard htable' }, h('div', { class: 'hbar' }, tabsEl, tools), chips.length ? h('div', { class: 'hchips' }, chips) : null, bulk,
     h('div', { class: 'hlist', role: 'table' }, head, rows.length ? rows.map(row) : empty));
 }
@@ -132,7 +163,7 @@ function shade(hex) { const m = /^#?([0-9a-f]{6})$/i.exec(hex || ''); if (!m) re
 function calendarCard(n) {
   const base = new Date(n), first = new Date(base.getFullYear(), base.getMonth() + monthOff, 1);
   const start = new Date(first); start.setDate(1 - ((first.getDay() + 6) % 7));
-  const tasks = [...DB.kpiTasks(n).filter(t => t.due), ...flat(DB.ecxGroups(n))];
+  const tasks = [...DB.kpiTasks(n).filter(t => t.due), ...flat(DB.ecxGroups(n)).filter(t => t.due), ...E.dueTasks(n, { within: 9999 }).map(taskItem).filter(t => t.due)];
   const byDay = new Map(); for (const t of tasks) { const k = toISODate(t.due); byDay.set(k, (byDay.get(k) || 0) + 1); }
   const today = toISODate(new Date(n));
   const weeks = Math.ceil(((first.getDay() + 6) % 7 + new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate()) / 7);

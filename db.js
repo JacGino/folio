@@ -158,8 +158,11 @@ export function surveyGroups(now) {
   return { overdue: t.filter(x => x.days != null && x.days < 0).sort(byDays), today: t.filter(x => x.days != null && x.days >= 0 && x.days <= 2).sort(byDays), upcoming: t.filter(x => x.days == null || x.days > 2).sort(byDays) };
 }
 // Rejected ECX: has an ECX Rejected date and is still open; due the day after it was rejected (same rule as ECPAR)
+let ecxSource = null; // the ECX application records register here (entities.js), so this file does not need to know them
+export const setEcxSource = f => { ecxSource = f; };
 export function ecxGroups(now) {
   const today = startOfDay(new Date(now));
+  if (ecxSource) { const t = ecxSource(now); return { overdue: t.filter(x => x.days != null && x.days < 0).sort(byDays), today: t.filter(x => !(x.days != null && x.days < 0)).sort(byDays) }; }
   const t = kpiTasks(now).filter(x => x.ecxRejected).map(x => { const due = dateAdd(x.ecxRejected, 1, 'days'); return { ...x, due, days: dateBetween(due, today, 'days'), ecxDue: true }; });
   return { overdue: t.filter(x => x.days < 0).sort(byDays), today: t.filter(x => x.days >= 0).sort(byDays) };
 }
@@ -176,7 +179,8 @@ export function ensureHomeFields() {
     if (add.length) { cat.options = [...(cat.options || []), ...add]; changed = true; } }
   const want = [{ id: 'p_nexttask', name: 'Next Task', type: 'text' },
     { id: 'p_priority', name: 'Priority', type: 'select', options: [{ name: 'High', color: 'red' }, { name: 'Medium', color: 'orange' }, { name: 'Low', color: 'blue' }] },
-    { id: 'p_ecxrejected', name: 'ECX Rejected', type: 'date' }];
+    { id: 'p_ecxrejected', name: 'ECX Rejected', type: 'date' },
+    { id: 'p_projref', name: 'Project Ref', type: 'text' }, { id: 'p_remarks', name: 'Scope / Remarks', type: 'text' }];
   for (const w of want) if (!list.some(x => x.id === w.id || x.name === w.name)) { list.push(w); changed = true; }
   if (changed) saveProps(d, list);
   return changed;

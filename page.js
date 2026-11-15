@@ -127,7 +127,8 @@ export function renderRow(id, { inPane = false } = {}) {
     h('dt', {}, icon(DB.TYPE_ICON[p.type] || 'text', 16), h('span', { title: p.name }, p.name)), h('dd', { 'data-p': p.id }, propEditor(rec, p, dbr))]));
   const body = h('div', {});
   const wrap = h('div', { class: 'wrap ' + fontClass(rec) },
-    h('p', { class: 'crumb' }, h('a', { href: '#/tracker' }, D.val(pageRec, 'title') || D.val(dbr, 'name') || 'Database')),
+    h('p', { class: 'crumb' }, h('a', { href: '#/tracker' }, D.val(pageRec, 'title') || D.val(dbr, 'name') || 'Database'),
+      D.val(dbr, 'role') === 'kpi' || dbr === DB.kpiDb() ? h('a', { class: 'pdlink', href: '#/project/' + id }, icon('building', 14), 'Project details') : null),
     title, dl,
     h('button', { class: 'addprop', onclick: () => import('./table.js').then(m => m.editProperties(dbr, () => go(location.hash))) }, icon('plus', 16), 'Add a property'),
     comments(rec), h('hr', { class: 'sep' }), body);
@@ -150,9 +151,9 @@ function rowMd(rec, dbr, ed) {
 }
 
 // ---------- property editors ----------
-export function propEditor(rec, p, dbr, { compact = false } = {}) {
+export function propEditor(rec, p, dbr, { compact = false, dfmt } = {}) {
   const key = 'p:' + p.id, v = DB.raw(rec, p), set = val => { D.update(rec.id, { [key]: val }); document.dispatchEvent(new CustomEvent('folio-row', { detail: rec.id })); };
-  const refresh = (el) => { const n = propEditor(D.getRec(rec.id), p, DB.db(dbr.id), { compact }); el.replaceWith(n); n.querySelector?.('button,input')?.focus(); };
+  const refresh = (el) => { const n = propEditor(D.getRec(rec.id), p, DB.db(dbr.id), { compact, dfmt }); el.replaceWith(n); n.querySelector?.('button,input')?.focus(); };
   switch (p.type) {
     case 'text': case 'title': case 'number': case 'url': {
       // tap the value: a Notion-style white edit card opens over it
@@ -191,7 +192,7 @@ export function propEditor(rec, p, dbr, { compact = false } = {}) {
         const inp = h('input', { type: 'date', class: 'field', value: toISODate(v) || '' });
         const s = sheet(p.name, h('div', {}, inp, h('button', { class: 'btn block', onclick: () => { inp.value = toISODate(new Date(now())); } }, 'Today'),
           h('button', { class: 'btn block danger', onclick: () => { inp.value = ''; s.close(); } }, 'Clear')), { onDone: () => { set(inp.value || null); refresh(btn); } });
-      } }, v ? formatDate(v) : 'Empty');
+      } }, v ? formatDate(v, dfmt) : 'Empty');
       return btn;
     }
     case 'files': {

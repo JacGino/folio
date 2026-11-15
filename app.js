@@ -14,6 +14,8 @@ import { renderSearch } from './search.js';
 import { startNotifier } from './notify.js';
 import { initKeyboardBar } from './kbar.js';
 import { commentsScreen, calendarScreen, inboxScreen } from './hub.js';
+import * as E from './entities.js';
+import { projectsScreen, projectScreen, newProjectSheet, dueTaskList } from './project.js';
 import { homeScreen, activityScreen, soonScreen } from './home.js';
 
 export const state = { route: [], pane: null, ctx: {} };
@@ -204,8 +206,12 @@ export const layoutMode = () => document.body.dataset.layout;
 // ---------- routing ----------
 export function go(hash, { replace = false } = {}) { if (location.hash === hash) render(); else if (replace) location.replace(hash); else location.hash = hash; }
 export function openTask(id) {
+  const rec = D.live(id), kd = DB.kpiDb();
+  // a project opens its Project Details; the Focus lists keep their own task page / side panel (with a link to the details)
+  const focus = ['today', 'survey', 'ecpar', 'ecx', 'db', 'archive', 'tracker'].includes(state.route[0]);
+  if (!focus && rec && kd && rec.k === 'row' && D.val(rec, 'db') === kd.id) { go('#/project/' + id); return; }
   const m = layoutMode();
-  if ((m === 'split' || m === 'wide') && ['today', 'survey', 'ecpar', 'db', 'archive', 'tracker'].includes(state.route[0])) { state.pane = id; render(); }
+  if ((m === 'split' || m === 'wide') && ['today', 'survey', 'ecpar', 'ecx', 'db', 'archive', 'tracker'].includes(state.route[0])) { state.pane = id; render(); }
   else go('#/r/' + id);
 }
 export function back() { if (history.length > 1) history.back(); else go('#/home'); }
@@ -228,8 +234,8 @@ export function render() {
       case 'home': main.append(homeScreen()); break;
       case 'activity': main.append(activityScreen()); break;
       case 'ecx': main.append(listScreen('ecx')); break;
-      case 'customers': main.append(soonScreen('Customers')); break;
-      case 'tasks': main.append(soonScreen('Tasks')); break;
+      case 'projects': main.append(projectsScreen()); break;
+      case 'project': main.append(projectScreen(r[1], r[2])); break;
       case 'kpi': main.append(soonScreen('KPI')); break;
       case 'timeline': main.append(soonScreen('Timeline')); break;
       case 'board': main.append(soonScreen('Board')); break;
@@ -254,7 +260,7 @@ export function render() {
     }
   } catch (e) { console.error(e); main.append(h('div', { class: 'wrap' }, h('p', { class: 'empty' }, 'Something went wrong showing this screen: ' + e.message))); }
   main.prepend(topbar());
-  document.body.classList.toggle('on-home', r[0] === 'home' || r[0] === 'activity');
+  document.body.classList.toggle('on-home', ['home', 'activity', 'projects', 'project'].includes(r[0]));
   if (layoutMode() !== 'wide') document.body.classList.remove('side-open');
   applyLock();
   if (['p', 'r'].includes(r[0]) && r[1]) noteRecent(r[1]);
@@ -348,7 +354,7 @@ function renderSide() {
   const cur = state.route[0], kp = DB.kpiDb() && D.val(DB.kpiDb(), 'page'), n = NOW();
   const has = !!DB.kpiDb();
   const count = g => has ? (g.overdue || []).length + (g.today || []).length + (g.upcoming || []).length : 0;
-  const counts = has ? { today: count(DB.todayGroups(n)), survey: count(DB.surveyGroups(n)), ecpar: count(DB.ecparGroups(n)), ecx: count(DB.ecxGroups(n)) } : {};
+  const counts = has ? { today: count(DB.todayGroups(n)) + E.dueTasks(n).length, survey: count(DB.surveyGroups(n)), ecpar: count(DB.ecparGroups(n)), ecx: count(DB.ecxGroups(n)) } : {};
   const nav = (hash, ic, label, on, badge) => h('a', { class: 'nitem' + (on ? ' on' : ''), href: hash, 'aria-label': label, 'aria-current': on ? 'page' : null },
     icon(ic, 18), h('span', { class: 'nl' }, label), badge ? h('span', { class: 'nbadge' }, badge) : null);
   const head = (key, label, extra) => h('div', { class: 'nhead' }, h('span', {}, label), extra || null);
@@ -367,9 +373,7 @@ function renderSide() {
     h('nav', { class: 'nscroll' },
       h('div', { class: 'ngroup' },
         nav('#/home', 'home', 'Home', cur === 'home'),
-        nav('#/tracker', 'folder', 'Projects', cur === 'tracker' || cur === 'archive' || cur === 'db'),
-        nav('#/customers', 'users', 'Customers', cur === 'customers'),
-        nav('#/tasks', 'listcheck', 'Tasks', cur === 'tasks'),
+        nav('#/projects', 'folder', 'Projects', ['projects', 'project', 'tracker', 'archive', 'db'].includes(cur)),
         nav('#/kpi', 'barchart', 'KPI', cur === 'kpi')),
       head('focus', 'Focus'),
       h('div', { class: 'ngroup' },
@@ -398,7 +402,7 @@ function renderSide() {
 }
 
 // ---------- top bar (Notion style): menu, back, forward, title, share, favourite, more ----------
-const SCREEN = { home: ['Home', 'home'], activity: ['Recent Activity', 'history'], ecx: ['Rejected ECX', 'filex'], customers: ['Customers', 'users'], tasks: ['Tasks', 'listcheck'], kpi: ['KPI', 'barchart'], timeline: ['Timeline', 'timeline'], board: ['Board', 'columns'], reports: ['Reports', 'linechart'], comments: ['Comments', 'comment'], calendar: ['Calendar', 'date'], inbox: ['Inbox', 'inbox'], today: ['Due Today', 'today'], survey: ['Pending Site Survey', 'target'], ecpar: ['Rejected ECPAR', 'ecpar'], pages: ['Pages', 'pages'], search: ['Search', 'search'], settings: ['Settings', 'settings'], trash: ['Trash', 'trash'] };
+const SCREEN = { home: ['Home', 'home'], activity: ['Recent Activity', 'history'], ecx: ['Rejected ECX', 'filex'], projects: ['Projects', 'folder'], project: ['Project Details', 'building'], kpi: ['KPI', 'barchart'], timeline: ['Timeline', 'timeline'], board: ['Board', 'columns'], reports: ['Reports', 'linechart'], comments: ['Comments', 'comment'], calendar: ['Calendar', 'date'], inbox: ['Inbox', 'inbox'], today: ['Due Today', 'today'], survey: ['Pending Site Survey', 'target'], ecpar: ['Rejected ECPAR', 'ecpar'], pages: ['Pages', 'pages'], search: ['Search', 'search'], settings: ['Settings', 'settings'], trash: ['Trash', 'trash'] };
 function topbar() {
   const r = state.route[0], ctx = state.ctx;
   const kp = DB.kpiDb() && D.val(DB.kpiDb(), 'page');
@@ -433,9 +437,9 @@ export function renderNav() {
   const isPage = r === 'r' || r === 'p' || r === 'settings' || r === 'trash';
   const menuPill = pill(
     nb('Home', 'home', () => go('#/home'), r === 'home'), nb('Due Today', 'today', () => go('#/today'), r === 'today'), nb('Pending Site Survey', 'target', () => go('#/survey'), r === 'survey'),
-    nb('Rejected ECPAR', 'ecpar', () => go('#/ecpar'), r === 'ecpar'), nb('Projects', 'folder', () => go('#/tracker'), r === 'tracker' || r === 'archive' || r === 'db'),
+    nb('Rejected ECPAR', 'ecpar', () => go('#/ecpar'), r === 'ecpar'), nb('Projects', 'folder', () => go('#/projects'), ['projects', 'project', 'tracker', 'archive', 'db'].includes(r)),
     nb('Search', 'search', () => go('#/search'), r === 'search'));
-  const newPill = pill(nb('New project', 'plus', () => { const d = DB.kpiDb(); if (d) openTask(DB.newRow(d).id); else go('#/p/' + newPage().id); }));
+  const newPill = pill(nb('New project', 'plus', () => { if (DB.kpiDb()) newProjectSheet(); else go('#/p/' + newPage().id); }));
   const ctx = state.ctx;
   const actions = pill(nb('Export: PDF, Markdown or share', 'export', e => ctx.export ? ctx.export(e.currentTarget) : window.print()), nb('More options', 'more', e => (ctx.more || (a => moreMenu(a)))(e.currentTarget)));
   const backPill = pill(nb(r === 'settings' ? 'Close' : 'Back', r === 'settings' ? 'close' : 'back', back));
@@ -459,11 +463,13 @@ function listScreen(kind) {
   const wrap = h('div', { class: 'wrap' }, head);
   if (!DB.kpiDb()) { wrap.append(emptyTracker(true)); return wrap; }
   const g = kind === 'today' ? DB.todayGroups(n) : kind === 'survey' ? DB.surveyGroups(n) : kind === 'ecx' ? DB.ecxGroups(n) : DB.ecparGroups(n);
+  const dueT = kind === 'today' ? E.dueTasks(n) : [];
+  if (dueT.length) wrap.append(dueTaskList(dueT));
   const names = kind === 'ecpar' || kind === 'ecx' ? ['Overdue Amendment', 'Pending Amendment'] : ['Overdue', 'Today', 'Upcoming'];
   const unitFor = () => 'Days';
   const sec = (label, color, list, numColor) => list.length ? [h('div', { class: 'barrow' }, h('span', { class: 'bunit ' + color }, elabel('unit.' + kind + '.' + label, unitFor(label))), h('h2', { class: 'bar ' + color }, elabel('sec.' + kind + '.' + label, label))), ...later(list, t => taskRow(t, numColor, kind), { first: 15, step: 30 })] : [];
   wrap.append(...sec(names[0], 'red', g.overdue, 'red'), ...sec(names[1], 'orange', g.today, 'orange'), ...(g.upcoming ? sec(names[2], 'blue', g.upcoming, 'blue') : []));
-  if (!g.overdue.length && !g.today.length && !(g.upcoming || []).length)
+  if (!g.overdue.length && !g.today.length && !(g.upcoming || []).length && !dueT.length)
     wrap.append(h('p', { class: 'empty' }, kind === 'today' ? 'Nothing due in the next 2 days. Nice.' : kind === 'survey' ? 'No tasks are waiting for a site survey.' : kind === 'ecx' ? 'No rejected ECX. Add an ECX Rejected date to a project to track it here.' : 'No rejected ECPAR to amend.'));
   return wrap;
 }
@@ -585,8 +591,8 @@ function trashScreen() {
 export async function boot() {
   try { if (localStorage.getItem('folio-side') === 'closed') document.body.classList.add('side-closed'); } catch {}
   document.body.append(h('div', { id: 'app' }, h('div', { id: 'scrim', onclick: () => toggleSide(false) }), h('nav', { id: 'side', 'aria-label': 'Workspace' }), h('main', { id: 'main' }), h('div', { id: 'divider', role: 'separator', 'aria-label': 'Drag to resize. Drag to the edge to open full.', onpointerdown: dragDivider }), h('section', { id: 'pane', 'aria-label': 'Selected task' })), h('div', { id: 'fnav' }));
-  window.__folioStep = 'storage'; await D.load(); S.persist(); await loadFont(); try { DB.ensureHomeFields(); } catch {}
-  D.onChange(info => { if (info.type === 'sync') { try { DB.ensureHomeFields(); } catch {} }
+  window.__folioStep = 'storage'; await D.load(); S.persist(); await loadFont(); E.ensureAll();
+  D.onChange(info => { if (info.type === 'sync') { E.ensureAll(); }
     if (info.type === 'sync' || info.type === 'create' || info.type === 'delete' || info.type === 'wipe') render(); if (info.type !== 'sync') Sync.soon(); });
   Sync.onStatus(() => { renderSide(); loadFont(); });
   addEventListener('hashchange', () => { state.pane = null; render(); });

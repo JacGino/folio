@@ -17,6 +17,15 @@ export const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 export const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 const P = {
+  building: '<rect x="5" y="3.5" width="14" height="17" rx="1.5" stroke-width="1.6"/><path d="M9 7.5h1.5M13.5 7.5H15M9 11h1.5M13.5 11H15M9 14.5h1.5M13.5 14.5H15M10.5 20.5v-3h3v3" stroke-width="1.6"/>',
+  hourglass: '<path d="M7 3.5h10M7 20.5h10M8 3.5c0 4.5 8 5.5 8 8.5s-8 4-8 8.5M16 3.5c0 4.5-8 5.5-8 8.5" stroke-width="1.6"/>',
+  pencil: '<path d="M4.5 19.5l1-4L15.8 5.2a2 2 0 0 1 2.9 0l.1.1a2 2 0 0 1 0 2.9L8.5 18.5z" stroke-width="1.6"/><path d="M13.5 7.5l3 3" stroke-width="1.6"/>',
+  phone: '<path d="M6.5 4h3l1.5 4-2 1.5a10 10 0 0 0 5.5 5.5l1.5-2 4 1.5v3a1.5 1.5 0 0 1-1.6 1.5A15.5 15.5 0 0 1 5 5.6 1.5 1.5 0 0 1 6.5 4z" stroke-width="1.6"/>',
+  mail: '<rect x="3.5" y="5.5" width="17" height="13" rx="2" stroke-width="1.6"/><path d="M4 7l8 6 8-6" stroke-width="1.6"/>',
+  xcircle: '<circle cx="12" cy="12" r="8.5" stroke-width="1.6"/><path d="M9.2 9.2l5.6 5.6M14.8 9.2l-5.6 5.6" stroke-width="1.6"/>',
+  okcircle: '<circle cx="12" cy="12" r="8.5" stroke-width="1.6"/><path d="M8.3 12.3l2.5 2.5 5-5.2" stroke-width="1.6"/>',
+  redo: '<path d="M19 8.5H9.5a5 5 0 0 0 0 10H13" stroke-width="1.6"/><path d="M15.5 5l3.5 3.5-3.5 3.5" stroke-width="1.6"/>',
+  info: '<circle cx="12" cy="12" r="8.5" stroke-width="1.6"/><path d="M12 11v5.5M12 7.8v.4" stroke-width="1.8"/>',
   today: '<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>',
   pin: '<path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>',
   ecpar: '<path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4"/><path d="M10 12l4 4M14 12l-4 4"/>',
