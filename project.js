@@ -318,8 +318,8 @@ export function projectScreen(id, tab = 'overview') {
     h('nav', { class: 'crumbs', 'aria-label': 'Breadcrumb' }, h('a', { href: '#/projects' }, icon('folder', 16), 'Projects'), icon('chevr', 14), h('span', {}, 'Project Details')),
     h('header', { class: 'pdhead' },
       h('span', { class: 'pdic' }, icon('building', 26)),
-      h('div', { class: 'pdname' }, h('div', { class: 'pdt' }, h('h1', {}, info.title), catPills(info.category, false), info.archived ? badge('Archived', 'gray') : null),
-        h('p', { class: 'hsub' }, [ref || 'No reference', created ? 'Created ' + formatDate(new Date(created), 'DD/MM/YYYY') : ''].filter(Boolean).join(' · '))),
+      h('div', { class: 'pdname' }, h('div', { class: 'pdt' }, h('h1', {}, info.title), info.archived ? badge('Archived', 'gray') : null),
+        created ? h('p', { class: 'hsub' }, 'Created ' + formatDate(new Date(created), 'DD/MM/YYYY')) : null),
       h('div', { class: 'hactions' },
         h('button', { class: 'hbtn glass', 'aria-label': 'Project actions', onclick: e => projectMenu(e.currentTarget, row) }, icon('more', 19)),
         h('button', { class: 'hnew', onclick: () => editProjectSheet(row) }, icon('pencil', 16), h('span', {}, 'Edit Project')))),
@@ -337,6 +337,20 @@ export function projectScreen(id, tab = 'overview') {
 }
 
 // ---------- Overview ----------
+/** Project Reference = the ECPAR No (kept on the ECPAR record); report-only categories have no ECPAR */
+function ecparRefField(row, info) {
+  if (E.reportOnly(info.category)) return h('span', { class: 'muted' }, 'Not applicable');
+  const ep = E.ecparOf(row);
+  if (ep) return field(ep, { key: 'ref', label: 'Project Reference (ECPAR No)', mono: true });
+  return h('button', { class: 'val fv empty', type: 'button', 'aria-label': 'Project Reference (ECPAR No): Empty', onclick: async e => { e.stopPropagation();
+    const v = await promptBox('Project Reference (ECPAR No)', '', 'e.g. BTU-260476'); if (v == null) return; const rec = E.ecpar(row); if (v.trim()) D.update(rec.id, { 'p:ref': v.trim() }); render(); } }, h('span', {}, 'Empty'));
+}
+/** Application ID of each ECX application (moved here from the ECX tab) */
+function appIds(row) {
+  const xs = E.ecxOf(row.id);
+  if (!xs.length) return [kv('text', 'Application ID', h('span', { class: 'muted' }, 'Add an ECX application first'))];
+  return xs.map(x => kv('text', xs.length > 1 ? 'Application ID (' + (g(x, 'number') || 'ECX') + ')' : 'Application ID', field(x, { key: 'appid', label: 'Application ID', mono: true })));
+}
 function overview(row, info, n) {
   const c = E.customerOf(row);
   const cf = (ic, label, key, extra = {}) => kv(ic, label, c ? field(c, { key, label, onSet: v => E.setCustomer(c, key, v), ...extra }) : h('span', { class: 'muted' }, '—'));
@@ -347,7 +361,7 @@ function overview(row, info, n) {
   return h('div', { class: 'pdgrid' },
     h('section', { class: 'hcard pcard' },
       h('h3', { class: 'ph' }, icon('users', 17), 'Customer Information'),
-      h('div', { class: 'kvs' }, kv('building', 'Customer', custName), cf('person', 'PIC', 'pic'), cf('phone', 'Contact Number', 'phone', { tel: 'tel' }), cf('mail', 'Email', 'email', { tel: 'mail' }),
+      h('div', { class: 'kvs' }, kv('building', 'Customer', custName), cf('person', 'Contractor / Consultant', 'pic'), ...appIds(row), cf('phone', 'Contact Number', 'phone', { tel: 'tel' }), cf('mail', 'Email', 'email', { tel: 'mail' }),
         kv('pin', 'Address', c ? field(c, { key: 'address', label: 'Address', onSet: v => E.setCustomer(c, 'address', v), ph: E.custAddress(row, c) || 'Empty' }) : '—'),
         kv('globe', 'Pin Location', c ? field(c, { key: 'map', label: 'Pin Location', type: 'url', onSet: v => E.setCustomer(c, 'map', v) }) : '—'),
         // supply details of the customer
@@ -358,8 +372,8 @@ function overview(row, info, n) {
         cf('today', 'Meter Type', 'meter', { type: 'select', options: E.METER_TYPES }),
         cf('building', 'Premise Type', 'premise', { type: 'select', options: E.PREMISE_TYPES })),
       h('h3', { class: 'ph' }, icon('info', 17), 'Project Information'),
-      h('div', { class: 'kvs' }, kv('layers', 'Category', propVal(row, 'Project Category')), kv('text', 'Project Reference (ECX & WBS No)', propVal(row, 'ECX & WBS NO')), kv('pin', 'Station', propVal(row, 'Station')),
-        kv('date', 'Date Assigned', propVal(row, 'Date Assigned')), kv('date', 'Due Date', propVal(row, 'Due Date')), kv('status', 'Status', propVal(row, 'Status')), kv('text', 'Scope / Remarks', propVal(row, 'Scope / Remarks')))),
+      h('div', { class: 'kvs' }, kv('layers', 'Category', propVal(row, 'Project Category')), kv('text', 'Reference No (ECX No)', propVal(row, 'ECX & WBS NO')), kv('text', 'Project Reference (ECPAR No)', ecparRefField(row, info)), kv('pin', 'Station', propVal(row, 'Station')),
+        kv('date', 'Date Assigned', propVal(row, 'Date Assigned')), kv('date', 'Due Date', propVal(row, 'Due Date')))),
     h('div', { class: 'pside' },
       h('section', { class: 'hcard pcard' },
         h('h3', { class: 'ph' }, icon('target', 17), 'Project Progress'),
@@ -415,6 +429,7 @@ function surveyTab(row, info, n) {
     h('div', { class: 'kvs two' },
       kv('date', 'Survey date', wf('survey', 'Survey date', { type: 'date' })),
       rep ? kv('page', 'Report prepared', toggle('report', 'Report prepared')) : kv('listcheck', 'Documents checked', toggle('docs', 'Documents checked')),
+      kv('text', 'Scope / Remarks', propVal(row, 'Scope / Remarks')),
       kv('text', 'Technical findings', wf('findings', 'Technical findings')),
       rep ? null : kv('linechart', 'Transformer & feeder loading', wf('loading', 'Transformer & feeder loading')),
       kv('pin', 'Site address', h('span', {}, E.custAddress(row) || h('span', { class: 'muted' }, '—'))),
@@ -434,9 +449,9 @@ function ecparTab(row, info, n) {
       h('button', { class: 'val fv', 'aria-label': 'ECPAR status: ' + s, onclick: ev => pick(ev.currentTarget, E.ECPAR_STATUS, s, v => { if (v === 'Pending Revision' && !E.ECPAR_ACTIVE.includes(s)) rejectBtn.click(); else if (v === 'Approved') approveBtn.click(); else if (v === 'Resubmitted') resubBtn.click(); else { E.setEcparStatus(row, v); render(); } }) }, badge(s), icon('chevd', 14))),
       h('div', { class: 'wfacts' }, ...ecparButtons())),
     h('div', { class: 'kvs two' },
-      kv('text', 'Reference No.', ef('ref', 'ECPAR reference number', { mono: true })), kv('date', 'Submission Date', ef('submitted', 'Submission date', { type: 'date' })),
-      kv('number', 'Budget Amount', ef('budget', 'Budget amount (RM)', { type: 'money' })), kv('layers', 'Version', h('span', {}, 'v' + (g(e, 'version') || 1))),
-      kv('date', 'Approval Date', ef('approved', 'Approval date', { type: 'date' })), kv('date', 'Rejection Date', ef('rejected', 'Rejection date', { type: 'date' })),
+      kv('text', 'Project Reference', ef('ref', 'Project Reference (ECPAR No)', { mono: true })), kv('date', 'Submission Date', ef('submitted', 'Submission date', { type: 'date' })),
+      kv('number', 'Budget Amount', ef('budget', 'Budget amount (RM)', { type: 'money' })), kv('layers', 'Version', h('span', { class: 'mono' }, E.ecparVersion(e))),
+      kv('date', 'Rejection Date', ef('rejected', 'Rejection date', { type: 'date' })),
       kv('text', 'Rejection Reason', ef('reason', 'Rejection reason')), kv('date', 'Resubmission Date', ef('resubmitted', 'Resubmission date', { type: 'date' })),
       kv('list', 'Reason Category', ef('rcat', 'Reason category', { type: 'select', options: E.ECPAR_REASONS })), kv('pencil', 'Required Correction', ef('correction', 'Required correction')),
       kv('text', 'Remarks', ef('remarks', 'Remarks')),
@@ -483,9 +498,9 @@ function ecxCard(row, x) {
         !act ? h('button', { class: 'rbtn', onclick: reject }, icon('close', 13), 'Reject') : null,
         h('button', { class: 'c-act ebtn', 'aria-label': 'More for this ECX application', onclick: e => menu(e.currentTarget, [{ label: 'Delete application', icon: 'trash', danger: true, run: async () => { if (await confirmBox('Delete this ECX application? Its log entries stay in the Activity Log.', 'Delete')) { D.trash(x.id); E.log(row, 'ECX', (g(x, 'number') || 'ECX application') + ' deleted.'); render(); } } }]) }, icon('more', 18)))),
     h('div', { class: 'kvs two' },
-      kv('text', 'Application ID', xf('appid', 'Application ID', { mono: true })), kv('date', 'Submission Date', xf('submitted', 'Submission date', { type: 'date' })),
+      kv('date', 'Completed Date', xf('submitted', 'Completed date', { type: 'date' })),
       kv('date', 'Rejection Date', xf('rejected', 'Rejection date', { type: 'date' })), kv('text', 'Rejection Reason', xf('reason', 'Rejection reason')),
-      kv('date', 'Resubmission Date', xf('resubmitted', 'Resubmission date', { type: 'date' })), kv('date', 'Approval Date', xf('approved', 'Approval date', { type: 'date' })),
+      kv('date', 'Reassigned Date', xf('resubmitted', 'Reassigned date', { type: 'date' })),
       kv('list', 'Reason Category', xf('rcat', 'Reason category', { type: 'select', options: E.ECX_REASONS })), kv('pencil', 'Required Correction', xf('correction', 'Required correction')),
       kv('text', 'Remarks', xf('remarks', 'Remarks'))),
     historyBlock('Rejection history', E.revisions(row, x.id)));
@@ -503,7 +518,7 @@ function docsTab(row) {
         { label: 'Remove', icon: 'trash', danger: true, run: async () => { if (await confirmBox('Remove this link?', 'Remove')) { D.trash(d.id); render(); } } }]) }, icon('more', 18)))))
       : h('p', { class: 'hempty' }, 'No documents yet. Add links to files in iCloud Drive, Google Drive or the company system.'),
     h('div', { class: 'kvs' }, kv('clip', 'Files', propEditor(row, { id: 'docs', name: 'Files', type: 'files' }, DB.kpiDb())),
-      kv('page', 'Notes and comments', h('a', { class: 'lnk', href: '#/r/' + row.id }, 'Open the notes page'))));
+      kv('link', 'ECX Link', propVal(row, 'ECX Link'))));
 }
 
 // ---------- Activity Log ----------

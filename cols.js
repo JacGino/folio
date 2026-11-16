@@ -215,7 +215,7 @@ export function addFilterSheet(dbr, onAdd, preset = null) {
 
 // ---------- add and delete properties ----------
 /** properties Folio itself works with (KPI, Focus pages, Alert, maps): they can be hidden or renamed, but not deleted */
-export const CORE_PROPS = ['Status', 'Project Category', 'Due Date', 'Date Assigned', 'Date Completed', 'ECPAR Rejected', 'ECX Rejected', 'Priority', 'Address', 'Pin Location', 'ECX & WBS NO', 'Station', 'Archive', 'Alert', 'Next Task'];
+export const CORE_PROPS = ['Status', 'Project Category', 'Due Date', 'Date Assigned', 'Date Completed', 'ECPAR Rejected', 'ECX Rejected', 'Priority', 'Address', 'Pin Location', 'ECX & WBS NO', 'Station', 'Archive', 'Alert', 'Next Task', 'ECX Link'];
 export const isCore = p => p.type === 'title' || CORE_PROPS.includes(p.name);
 const TYPE_ORDER = ['text', 'number', 'select', 'multi', 'status', 'date', 'checkbox', 'url', 'files', 'formula'];
 async function newProperty(dbr, anchor) {

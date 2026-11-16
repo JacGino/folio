@@ -216,8 +216,8 @@ export function ensureHomeFields() {
   const want = [{ id: 'p_nexttask', name: 'Next Task', type: 'text' },
     { id: 'p_priority', name: 'Priority', type: 'select', options: [{ name: 'High', color: 'red' }, { name: 'Medium', color: 'orange' }, { name: 'Low', color: 'blue' }] },
     { id: 'p_ecxrejected', name: 'ECX Rejected', type: 'date' },
-    { id: 'p_remarks', name: 'Scope / Remarks', type: 'text' }]; // Project Ref is the ECX & WBS NO (no separate field)
-  for (const w of want) if (!list.some(x => x.id === w.id || x.name === w.name)) { list.push(w); changed = true; }
+    { id: 'p_remarks', name: 'Scope / Remarks', type: 'text' }, { id: 'p_ecxlink', name: 'ECX Link', type: 'url' }]; // Project Ref is the ECX & WBS NO (no separate field)
+  for (const w of want) if (!list.some(x => x.id === w.id || x.name.toLowerCase() === w.name.toLowerCase())) { list.push(w); changed = true; }
   if (changed) saveProps(d, list);
   return changed;
 }

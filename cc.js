@@ -341,7 +341,7 @@ function ltDefaults(row, info, w, res) {
   const c = E.customerOf(row), P = n => DB.propByName(DB.kpiDb(), n), pv = n => P(n) ? DB.value(row, P(n)) : '';
   const ecx = E.ecxOf(row.id)[0], tariff = c && g(c, 'tariff'), sub = c && g(c, 'subsidy');
   const d = new Date(NOW());
-  return { shortTitle: '', ref: (ecx && g(ecx, 'number')) || DB.refParts(row).ecx || DB.refParts(row).all, projectRef: DB.refParts(row).wbs || DB.refParts(row).all, title: '', consultant: '', client: info.title, ic: '', contact: (c && g(c, 'phone')) || '',
+  return { shortTitle: '', ref: (ecx && g(ecx, 'number')) || DB.refParts(row).ecx || DB.refParts(row).all, projectRef: (E.ecparOf(row) && g(E.ecparOf(row), 'ref')) || DB.refParts(row).wbs || DB.refParts(row).all, title: '', consultant: (c && g(c, 'pic')) || '', client: info.title, ic: '', contact: (c && g(c, 'phone')) || '',
     appType: tariff || 'Domestic', load: w.inputs.applied || '', target: String(d.getFullYear()), cat: w.inputs.cat || '', use: '', scheme: schemeDraft(res.lines),
     costOH: '', costNoOH: '', sst: tariff === 'Commercial' ? '6' : '0', subsidy: tariff === 'Commercial' || sub === 'No' ? 'none' : sub === 'Yes' && g(c, 'subsidyPct') ? (g(c, 'subsidyPct') === '70%' ? '70' : '100') : 'auto',
     subsidyBV: ltRemember('subsidyBV') || 'PLS-260221', cdpBV: ltRemember('cdpBV') || 'PLS-260205', source: '', feeder: 'RYB', r: '', y: '', b: '',

@@ -135,6 +135,8 @@ export function completeSurvey(row, date, now = Date.now()) {
 
 // ---------------- ECPAR: one per project ----------------
 export const ecparOf = row => D.live('ep' + row.id) || null;
+/** ECPAR version as shown: Z00 first, then Z01, Z02… after each resubmission (stored as 1, 2, 3…) */
+export const ecparVersion = e => 'Z' + String(Math.max(0, (+g(e, 'version', 1) || 1) - 1)).padStart(2, '0');
 export const ecpar = row => ensure('ecpar', 'ep' + row.id, { project: row.id, 'p:status': 'Draft', 'p:version': 1 });
 /** what to show for ECPAR on a project (also understands rows rejected before ECPAR records existed) */
 export function ecparStatus(row, info) {
@@ -237,8 +239,8 @@ export function milestones(row, info = DB.kpiInfo(row, DB.kpiDb())) {
   list.push({ key: 'survey', label: 'Site survey', done: surveyState(row, info) === 'done' });
   if (rep) list.push({ key: 'report', label: 'Report prepared', done: !!(w && g(w, 'report')), toggle: true });
   else {
-    const e = ecparStatus(row, info); if (e) list.push({ key: 'ecpar', label: 'ECPAR approved', done: e === 'Approved' });
-    const xs = ecxOf(row.id); if (xs.length) list.push({ key: 'ecx', label: 'ECX approved', done: xs.every(x => g(x, 'status') === 'Approved') });
+    const e = ecparStatus(row, info); if (e) list.push({ key: 'ecpar', label: 'ECPAR submitted', done: !!g(ecparOf(row), 'submitted') || ['Submitted', 'Resubmitted', 'Approved'].includes(e) });
+    const xs = ecxOf(row.id); if (xs.length) list.push({ key: 'ecx', label: 'ECX submitted', done: xs.every(x => !!g(x, 'submitted') || ['Submitted', 'Resubmitted', 'Approved', 'Closed'].includes(g(x, 'status'))) });
   }
   list.push({ key: 'done', label: 'Completed', done });
   return list;

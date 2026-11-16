@@ -410,7 +410,7 @@ function renderSide() {
         nav('#/today', 'today', 'Due Today', cur === 'today', counts.today),
         nav('#/survey', 'target', 'Pending Site Survey', cur === 'survey', counts.survey),
         nav('#/ecpar', 'ecpar', 'Rejected ECPAR', cur === 'ecpar', counts.ecpar),
-        nav('#/ecx', 'filex', 'Rejected ECX', cur === 'ecx', counts.ecx)),
+        nav('#/ecx', 'ecxs', 'Rejected ECX', cur === 'ecx', counts.ecx)),
       favs.length ? [head('favs', 'Favourites'), h('div', { class: 'ngroup nfavs' }, favs.map(item))] : null,
       head('pages', 'Pages', h('button', { class: 'smore', 'aria-label': 'Private options', onclick: e => privateMenu(e.currentTarget) }, icon('more', 16))),
       h('div', { class: 'ngroup npages' }, pages.map(item),
@@ -426,7 +426,7 @@ function renderSide() {
 }
 
 // ---------- top bar (Notion style): menu, back, forward, title, share, favourite, more ----------
-const SCREEN = { home: ['Home', 'home'], activity: ['Recent Activity', 'history'], ecx: ['Rejected ECX', 'filex'], projects: ['Projects', 'folder'], project: ['Project Details', 'building'], kpi: ['KPI', 'barchart'], timeline: ['Timeline', 'timeline'], board: ['Board', 'columns'], reports: ['Reports', 'linechart'], comments: ['Comments', 'comment'], calendar: ['Calendar', 'date'], inbox: ['Inbox', 'inbox'], today: ['Due Today', 'today'], survey: ['Pending Site Survey', 'target'], ecpar: ['Rejected ECPAR', 'ecpar'], pages: ['Pages', 'pages'], search: ['Search', 'search'], settings: ['Settings', 'settings'], trash: ['Trash', 'trash'] };
+const SCREEN = { home: ['Home', 'home'], activity: ['Recent Activity', 'history'], ecx: ['Rejected ECX', 'ecxs'], projects: ['Projects', 'folder'], project: ['Project Details', 'building'], kpi: ['KPI', 'barchart'], timeline: ['Timeline', 'timeline'], board: ['Board', 'columns'], reports: ['Reports', 'linechart'], comments: ['Comments', 'comment'], calendar: ['Calendar', 'date'], inbox: ['Inbox', 'inbox'], today: ['Due Today', 'today'], survey: ['Pending Site Survey', 'target'], ecpar: ['Rejected ECPAR', 'ecpar'], pages: ['Pages', 'pages'], search: ['Search', 'search'], settings: ['Settings', 'settings'], trash: ['Trash', 'trash'] };
 function topbar() {
   const r = state.route[0], ctx = state.ctx;
   const kp = DB.kpiDb() && D.val(DB.kpiDb(), 'page');
@@ -461,7 +461,8 @@ export function renderNav() {
   const isPage = r === 'r' || r === 'p' || r === 'settings' || r === 'trash';
   const menuPill = pill(
     nb('Home', 'home', () => go('#/home'), r === 'home'), nb('Due Today', 'today', () => go('#/today'), r === 'today'), nb('Pending Site Survey', 'target', () => go('#/survey'), r === 'survey'),
-    nb('Rejected ECPAR', 'ecpar', () => go('#/ecpar'), r === 'ecpar'), nb('Projects', 'folder', () => go('#/projects'), ['projects', 'project', 'tracker', 'archive', 'db'].includes(r)),
+    nb('Rejected ECPAR', 'ecpar', () => go('#/ecpar'), r === 'ecpar'), nb('Rejected ECX', 'ecxs', () => go('#/ecx'), r === 'ecx'),
+    nb('Projects', 'folder', () => go('#/projects'), ['projects', 'project', 'tracker', 'archive', 'db', 'board', 'timeline'].includes(r)),
     nb('Search', 'search', () => go('#/search'), r === 'search'));
   const newPill = pill(nb('New project', 'plus', () => { if (DB.kpiDb()) newProjectSheet(); else go('#/p/' + newPage().id); }));
   const ctx = state.ctx;

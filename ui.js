@@ -53,6 +53,7 @@ const P = {
   listcheck: '<path d="M4 6.5l1.5 1.5L8 5.5M4 12.5L5.5 14 8 11.5M4 18.5L5.5 20 8 17.5M11 7h9M11 13h9M11 19h9" stroke-width="1.6"/>',
   barchart: '<path d="M4 20.5h16M7 17V10M12 17V5.5M17 17v-4" stroke-width="1.8"/>',
   target: '<circle cx="12" cy="12" r="8" stroke-width="1.6"/><circle cx="12" cy="12" r="3.5" stroke-width="1.6"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3" stroke-width="1.6"/>',
+  ecxs: '<path d="M9 6.5V4.5h7l4 4V18h-2" stroke-width="1.5"/><path d="M5 7.5h7.5l4 4v9H5z" stroke-width="1.6"/><path d="M8.5 13.5l4.5 4.5M13 13.5l-4.5 4.5" stroke-width="1.6"/>',
   filex: '<path d="M6.5 3.5h7.5l4 4v13h-11.5z" stroke-width="1.6"/><path d="M14 3.5v4h4M10 12l4 4M14 12l-4 4" stroke-width="1.6"/>',
   timeline: '<circle cx="6" cy="6" r="2" stroke-width="1.6"/><circle cx="6" cy="18" r="2" stroke-width="1.6"/><circle cx="18" cy="12" r="2" stroke-width="1.6"/><path d="M8 6h4a4 4 0 0 1 4 4v0M8 18h4a4 4 0 0 0 4-4v0" stroke-width="1.6"/>',
   columns: '<rect x="3.5" y="4.5" width="17" height="15" rx="2" stroke-width="1.6"/><path d="M9.2 4.5v15M14.8 4.5v15" stroke-width="1.6"/>',
