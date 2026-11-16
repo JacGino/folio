@@ -2010,3 +2010,66 @@ body:not([data-layout="wide"]):not([data-layout="rail"]) .hero:has(.hnav) .cover
 /* where the buttons now float over the cover, keep the greeting clear of them */
 body[data-layout="wide"] .hero .hero-in { padding-top: 58px; }
 body[data-layout="wide"] .hero .cover { height: 168px; }
+
+/* settleViewport() in app.js puts the page back after a rotation, app switch or the keyboard closing */
+html, body { overscroll-behavior: none; }
+html.vv-nudge .topbar, html.vv-nudge #main > .wrap { padding-top: 0.01px; }
+
+/* links (ECX Link etc.): use the whole value column, host dark + rest grey, at most two lines */
+.urlrow > .val.tval { flex: 1 1 auto; min-width: 0; text-align: left; }
+.urlrow .url { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; word-break: break-word; }
+.urlrow .url i { font-style: normal; }
+/* a single value next to its label (Project Details rows): one full-width column, not the 136px label column */
+.props.pv { grid-template-columns: minmax(0, 1fr); width: 100%; }
+.props.pv > .urlrow { justify-self: stretch; }
+
+/* shortcut bar over the keyboard: same buttons, bar height and icons as the floating bottom bar (42pt buttons in a 50pt bar; 39pt on phones up to 430 wide) */
+.kbar { --kb: 42px; height: 50px !important; border-radius: 25px !important; padding: 0 4px !important; }
+@media (max-width: 430px) { .kbar { --kb: 39px; } }
+.kbar .kb { width: var(--kb) !important; height: var(--kb) !important; border-radius: 50% !important; }
+.kbar .kb svg { width: var(--kbi, 23px) !important; height: var(--kbi, 23px) !important; }
+.kbar .kt { font-size: 20px !important; }
+.kbar .kscroll { gap: 2px; }
+.kbar .kchip { height: calc(var(--kb) - 8px) !important; border-radius: calc(var(--kb) / 2 - 4px) !important; }
+html.zoomed .kbar { max-width: calc((100vw - 20px) / var(--zoom, 1)) !important; }
+
+/* ---------- planning checklist (Project Details → Tasks) ---------- */
+.tabstack { display: flex; flex-direction: column; gap: 12px; }
+.tabstack > .hcard { margin: 0; }
+.ckl .hcount.ok { background: color-mix(in srgb, #448361 18%, transparent); color: #2f6b4b; }
+.ckl-bar { height: 4px; border-radius: 2px; background: var(--bg2); overflow: hidden; margin: 2px 0 10px; }
+.ckl-bar i { display: block; height: 100%; background: #448361; border-radius: 2px; transition: width .25s ease; }
+.ckl-sec + .ckl-sec { margin-top: 14px; }
+.ckl-h { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin: 4px 0 6px; }
+.ckl-h h4 { margin: 0; font-size: 14px; font-weight: 650; color: var(--ink); }
+.ckl .seg { display: inline-flex; padding: 2px; border-radius: 9px; background: var(--bg2); gap: 2px; }
+.ckl .seg button { border: 0; background: none; padding: 5px 10px; border-radius: 7px; font: inherit; font-size: 13px; color: var(--ink2); min-height: 30px; }
+.ckl .seg button.on { background: var(--bg); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.1); font-weight: 600; }
+.ckl-list { list-style: none; margin: 0; padding: 0; }
+.ckl-i { border-bottom: 0.5px solid var(--line); }
+.ckl-i:last-child { border-bottom: 0; }
+.ckl-i label { display: grid; grid-template-columns: 26px 22px minmax(0, 1fr); gap: 8px; align-items: start; padding: 10px 6px; cursor: pointer; border-radius: 8px; }
+.ckl-i .hchk { margin: 2px 0 0; }
+.ckl-n { color: var(--ink3, var(--ink2)); font-variant-numeric: tabular-nums; font-size: 13px; padding-top: 2px; text-align: right; }
+.ckl-t { display: flex; flex-direction: column; gap: 3px; font-size: 14.5px; line-height: 1.45; color: var(--ink); min-width: 0; overflow-wrap: anywhere; }
+.ckl-t b { font-weight: 650; }
+.ckl-notes { margin: 2px 0 0; padding-left: 16px; color: var(--ink2); font-size: 13.5px; }
+.ckl-notes li { margin: 1px 0; }
+.ckl-i.on .ckl-t > span, .ckl-i.on .ckl-t > b, .ckl-i.on .ckl-notes { color: var(--ink2); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--ink2) 50%, transparent); }
+.ckl-i.tone-blue label { background: color-mix(in srgb, #2F80ED 9%, transparent); }
+.ckl-i.tone-purple label { background: color-mix(in srgb, #9B51E0 10%, transparent); }
+.ckl-i.tone-orange label { background: color-mix(in srgb, #E07B39 11%, transparent); }
+.ckl-i.tone-green label { background: color-mix(in srgb, #27AE60 10%, transparent); }
+.ckl-i[class*="tone-"] { border-bottom: 0; margin: 4px 0; }
+.val.fv, .kv .val.tval, .props .val.tval { white-space: pre-wrap; } .tdue .val.fv { white-space: nowrap; }
+
+/* history / log entries can be tapped to edit */
+.rr.editable, .alog > li.editable { cursor: pointer; border-radius: 8px; }
+.rr.editable:active, .alog > li.editable:active { background: var(--bg2); }
+@media (hover: hover) { .rr.editable:hover, .alog > li.editable:hover { background: var(--bg2); } }
+.rr .rtext { display: flex; align-items: flex-start; gap: 6px; white-space: pre-wrap; }
+.rr .ehint, .alog .ehint { margin-left: auto; color: var(--ink3, var(--ink2)); opacity: .55; flex: none; }
+.alog > li p { white-space: pre-wrap; }
+.entry-ed { display: flex; flex-direction: column; gap: 8px; }
+.entry-ed .entry-ta { min-height: 120px; resize: vertical; font: inherit; line-height: 1.45; }
+.entry-ed .btn.danger { margin-top: 10px; }

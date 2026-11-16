@@ -2,7 +2,7 @@
 import * as D from './data.js';
 import * as DB from './db.js';
 import * as Sync from './sync.js';
-import { h, icon, toast, menu, sheet, group, row, confirmBox, promptBox, esc, textbox, pickImage } from './ui.js';
+import { h, icon, toast, menu, sheet, group, row, confirmBox, promptBox, esc, textbox, pickImage, pickFile } from './ui.js';
 import { mountEditor, blocksToMd, nb } from './editor.js';
 import { formatDate, toISODate, parseDate } from './dates.js';
 import { state, go, renderNav, download, layoutMode, browserUrl, now, moreMenu } from './app.js';
@@ -157,15 +157,15 @@ export function propEditor(rec, p, dbr, { compact = false, dfmt } = {}) {
   switch (p.type) {
     case 'text': case 'title': case 'number': case 'url': {
       // tap the value: a Notion-style white edit card opens over it
-      const mono = /^ecx/i.test(p.name);
+      const mono = /^ecx/i.test(p.name) && p.type !== 'url'; // ECX numbers in mono; links read as normal text
       const show = val => {
         if (val == null || val === '') return h('span', { class: 'muted' }, 'Empty');
-        if (p.type === 'url') { try { const x = new URL(val); return h('span', { class: 'url' }, h('b', {}, x.hostname), h('i', {}, decodeURIComponent(x.pathname + x.search).replace(/\/$/, ''))); } catch {} } // like Notion: host dark, rest grey
+        if (p.type === 'url') { try { const x = new URL(/^[a-z][a-z0-9+.-]*:/i.test(val) ? val : 'https://' + val); return h('span', { class: 'url' }, h('b', {}, x.hostname), h('i', {}, decodeURIComponent(x.pathname + x.search).replace(/\/$/, ''))); } catch {} } // like Notion: host dark, rest grey
         return String(val);
       };
       const btn = h('button', { class: 'val tval' + (v == null || v === '' ? ' empty' : ''), type: 'button', 'aria-label': p.name + ': ' + (v ?? 'Empty'), style: mono ? { fontFamily: 'var(--mono)' } : null,
         onclick: () => popEdit(btn, D.getRec(rec.id), p, () => { const nv = DB.raw(D.getRec(rec.id), p); btn.replaceChildren(show(nv)); btn.classList.toggle('empty', nv == null || nv === ''); }) }, show(v));
-      if (p.type === 'url' && v) return h('span', { style: { display: 'flex', width: '100%', alignItems: 'center', gap: '4px' } }, btn, h('a', { class: 'iconbtn', href: browserUrl(v), target: '_blank', rel: 'noopener', 'aria-label': 'Open link' }, icon('globe', 18)));
+      if (p.type === 'url' && v) return h('span', { class: 'urlrow', style: { display: 'flex', width: '100%', alignItems: 'center', gap: '4px', minWidth: 0 } }, btn, h('a', { class: 'iconbtn', href: browserUrl(/^[a-z][a-z0-9+.-]*:/i.test(v) ? v : 'https://' + v), target: '_blank', rel: 'noopener', 'aria-label': 'Open link' }, icon('globe', 18)));
       return btn;
     }
     case 'checkbox': return h('input', { type: 'checkbox', checked: v ? true : null, 'aria-label': p.name, style: { width: '18px', height: '18px', margin: '4px', accentColor: 'var(--blue)' }, onchange: e => set(e.target.checked) });
@@ -198,7 +198,7 @@ export function propEditor(rec, p, dbr, { compact = false, dfmt } = {}) {
     case 'files': {
       const list = Array.isArray(v) ? v : [];
       return h('span', { style: { display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' } }, list.map(f => h('button', { class: 'tag', style: { background: 'var(--bg2)', border: 0 }, onclick: () => openFile(f) }, icon('clip', 12), ' ', f.name)),
-        h('button', { class: 'iconbtn', 'aria-label': 'Add file', onclick: e => { const inp = h('input', { type: 'file' }); inp.onchange = async () => { const f = inp.files[0]; if (!f) return; const ref = await addFile(f); set([...list, ref]); refresh(e.target.closest('span')); }; inp.click(); } }, icon('plus', 16)));
+        h('button', { class: 'iconbtn', 'aria-label': 'Add file', onclick: e => { const host = e.currentTarget.parentElement; pickFile(async f => { const ref = await addFile(f); const cur = D.val(D.getRec(rec.id) || rec, 'p:' + p.id); set([...(Array.isArray(cur) ? cur : []), ref]); toast('Added ' + f.name); if (host && host.isConnected) refresh(host); }); } }, icon('plus', 16)));
     }
     case 'formula': {
       const txt = DB.display(rec, p, now());

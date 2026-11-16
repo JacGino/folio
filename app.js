@@ -222,6 +222,22 @@ function layout() {
   }
 }
 export const layoutMode = () => document.body.dataset.layout;
+/** iOS sometimes leaves the web view scrolled down, or keeps the old screen's top margin, after a rotation or when coming back
+ *  from another app — that shows as an empty band at the top. Put the page back at the top and make Safari re-measure. */
+function settleViewport() {
+  if (document.visibilityState === 'hidden') return;
+  const typing = () => { const a = document.activeElement; return !!(a && a.matches && a.matches('input, textarea, select, [contenteditable="true"]')); };
+  if (typing()) return; // never move the page while you type: iOS is keeping the field in view
+  const fix = () => {
+    if (typing()) return;
+    if (window.scrollX || window.scrollY) window.scrollTo(0, 0);
+    if (document.documentElement.scrollTop) document.documentElement.scrollTop = 0;
+    if (document.body.scrollTop) document.body.scrollTop = 0;
+    const r = document.documentElement; r.classList.add('vv-nudge'); void r.offsetHeight; r.classList.remove('vv-nudge'); // fresh safe-area values
+    layout();
+  };
+  fix(); [80, 300, 700, 1500].forEach(t => setTimeout(fix, t)); // rotation finishes in steps on iOS
+}
 
 // ---------- routing ----------
 export function go(hash, { replace = false } = {}) { if (location.hash === hash) render(); else if (replace) location.replace(hash); else location.hash = hash; }
@@ -640,6 +656,11 @@ export async function boot() {
   Sync.onStatus(() => { renderSide(); loadFont(); });
   addEventListener('hashchange', () => { state.pane = null; render(); });
   addEventListener('resize', layout); layout();
+  addEventListener('orientationchange', settleViewport); addEventListener('resize', () => setTimeout(settleViewport, 50));
+  addEventListener('pageshow', settleViewport); addEventListener('focus', settleViewport);
+  document.addEventListener('focusout', () => setTimeout(() => { const a = document.activeElement; if (!a || !a.matches('input, textarea, select, [contenteditable="true"]')) settleViewport(); }, 350)); // keyboard closed
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') settleViewport(); });
+  if (window.visualViewport) visualViewport.addEventListener('resize', () => { if (!document.activeElement || !document.activeElement.matches('input, textarea, [contenteditable="true"]')) settleViewport(); });
   initKeyboardBar();
   window.__folioStep = 'lock'; await initLock();
   window.__folioStep = 'sync'; await startupSync(); window.__folioStep = 'ready';

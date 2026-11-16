@@ -227,6 +227,19 @@ export function textbox({ value = '', placeholder = '', multiline = false, cls =
 // ---- choose a photo (profile photo, cover, page icon) ----
 // The file input is put on the page while it is open: iPhone (especially from the Home Screen) ignores one that is not.
 // Big camera photos are made smaller before saving (max side `max` px, JPEG), which also turns HEIC into JPEG.
+/** pick any file (PDF, Word, photo…). The picker is put on the page while it is open — iPhone/iPad often ignore a file chosen from a detached one. */
+export function pickFile(onFile, { accept = '' } = {}) {
+  document.querySelector('input.anypick')?.remove();
+  const inp = h('input', { type: 'file', class: 'anypick', 'aria-hidden': 'true', tabindex: '-1', ...(accept ? { accept } : {}),
+    style: { position: 'fixed', left: '-1000px', top: '0', width: '1px', height: '1px', opacity: '0' } });
+  const done = () => setTimeout(() => inp.remove(), 1000);
+  inp.addEventListener('cancel', done);
+  inp.addEventListener('change', async () => {
+    const f = inp.files && inp.files[0]; done(); if (!f) return;
+    try { await onFile(f); } catch (e) { toast('The file could not be added: ' + (e && e.message || 'please try again.')); }
+  });
+  document.body.append(inp); inp.click();
+}
 export function pickImage(onFile, { max = 1600 } = {}) {
   document.querySelector('input.imgpick')?.remove();
   const inp = h('input', { type: 'file', accept: 'image/*', class: 'imgpick', 'aria-hidden': 'true', tabindex: '-1',

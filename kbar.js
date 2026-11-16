@@ -139,7 +139,10 @@ function build() {
 function place() {
   if (!bar || !target) return;
   const vv = window.visualViewport; const bottom = vv ? vv.offsetTop + vv.height : innerHeight;
-  bar.style.top = Math.round(bottom - bar.offsetHeight - 8) + 'px';
+  // with ⋯ → Zoom on, the bar is scaled, and so is the 'top' we give it: work in screen pixels, then divide by the zoom
+  const z = document.documentElement.classList.contains('zoomed') ? (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--zoom')) || 1) : 1;
+  const hgt = bar.getBoundingClientRect().height || bar.offsetHeight * z;
+  bar.style.top = Math.round((bottom - hgt - 8) / z) + 'px';
 }
 function show(el) { target = el; update(); }
 function update() {

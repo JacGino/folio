@@ -66,6 +66,16 @@ export function methodology(inp) {
 }
 
 // ---------- Sections 5.1 / 5.2: chargeable load ----------
+/** minimum assigned load used for supply upgrading: the premise's Table 5.1 value; null when the premise has none */
+export function upgradeMin(inp, p = PREMISE[inp.premise]) {
+  if (!p || p.perLamp) return null;
+  return p.listed && p.mal != null ? p.mal : null; // Table 5.1, single or three phase (e.g. BTU-260499: 18.65 − 3 kVA terrace)
+}
+/** the minimum assigned load is a floor: when the customer applies for more (per unit), the actual applied load is charged */
+function atLeastMin(out, applied, min, minText) {
+  if (applied != null && applied > min) { out.perUnit = applied; out.basis = `Applied Load ${applied} kVA is more than the minimum (${minText}), so the actual applied load is charged`; }
+  else { out.perUnit = min; out.basis = minText; }
+}
 /** inp: { phase: 1|3, premise, applied, units, upgrade, existing } → { perUnit, units, total, basis, ref, errors, warnings } */
 export function chargeableLoad(inp) {
   const p = PREMISE[inp.premise], applied = num(inp.applied), units = Math.max(1, Math.floor(num(inp.units) || 1));
@@ -85,7 +95,7 @@ export function chargeableLoad(inp) {
     const lh = inp.premise === 'lh1' || inp.premise === 'lh2';
     if (inp.phase === 1 && p.listed && p.threeOnly) { out.errors.push(`${p.label} at minimum requires three phase supply (Section 5.2.1 a)`); return out; }
     if (applied != null && applied > 10) { out.perUnit = applied; out.basis = `Applied Load ${applied} kVA is more than 10 kVA, so the actual applied load is charged`; out.ref = 'Your rule: above 10 kVA, charge actual'; }
-    else if (inp.phase === 1 && (lh || inp.upgrade) && p.listed) { out.perUnit = p.mal; out.basis = `Minimum Assigned Load for ${p.label} = ${p.mal} kVA (${lh ? 'Longhouse' : 'supply upgrading'})`; out.ref = 'Table 5.1; your rule'; }
+    else if (inp.phase === 1 && (lh || inp.upgrade) && p.listed) { atLeastMin(out, applied, p.mal, `Minimum Assigned Load for ${p.label} = ${p.mal} kVA (${lh ? 'Longhouse' : 'supply upgrading'})`); out.ref = 'Table 5.1; your rule'; }
     else {
       if (applied == null) { out.errors.push('Applied Load (kVA)'); return out; }
       const min = inp.phase === 1 ? 5 : 10;
@@ -95,9 +105,9 @@ export function chargeableLoad(inp) {
     }
   } else if (inp.phase === 1) {
     if (p.listed && p.threeOnly) { out.errors.push(`${p.label} at minimum requires three phase supply (Section 5.2.1 a)`); return out; }
-    if (p.listed) { out.perUnit = p.mal; out.basis = `Minimum Assigned Load for ${p.label} = ${p.mal} kVA`; out.ref = 'Table 5.1; Section 5.2.1(a)'; }
+    if (p.listed) { atLeastMin(out, applied, p.mal, `Minimum Assigned Load for ${p.label} = ${p.mal} kVA`); out.ref = 'Table 5.1; Section 5.2.1(a)'; }
     else { if (applied == null) { out.errors.push('Applied Load (kVA) — premise is not listed in Table 5.1'); return out; } out.perUnit = applied; out.basis = 'Applied Load (premise not listed in Table 5.1)'; out.ref = 'Section 5.2.1(b)'; }
-  } else if (p.res && p.listed) { out.perUnit = 10; out.basis = `Three phase residential premise listed in Table 5.1 = 10 kVA`; out.ref = 'Section 5.2.2(a)'; }
+  } else if (p.res && p.listed) { atLeastMin(out, applied, 10, `Three phase residential premise listed in Table 5.1 = 10 kVA`); out.ref = 'Section 5.2.2(a)'; }
   else {
     if (applied == null) { out.errors.push('Applied Load (kVA)'); return out; }
     out.perUnit = Math.max(applied, 10); out.basis = `Higher of Applied Load (${applied} kVA) or 10 kVA`; out.ref = 'Section 5.2.2(b)';
@@ -107,9 +117,19 @@ export function chargeableLoad(inp) {
   if ((p.fn === 1 || p.fn === 2) && (inp.phase === 3 || (applied != null && applied > 2))) out.errors.push(`${p.label} applies only up to 2kVA on single phase. Choose Detached, Semi-Detached or Terrace/Quadrant House (Table 5.1 footnotes)`);
   out.total = r2(out.perUnit * units);
   if (units > 1) out.basis += ` × ${units} units`;
-  if (inp.upgrade) { // Section 5.2.3: charged the difference between old and new capacity requirement
+  if (inp.upgrade) { // supply upgrading: Applied Load − Minimum Assigned Load (per unit) — your rule; Section 5.2.3 charges only the increase
+    const mal = upgradeMin(inp, p);
+    if (mal != null) {
+      if (applied == null) { out.errors.push('Applied Load (kVA) for supply upgrading'); return out; }
+      const per = r2(Math.max(0, applied - mal));
+      out.perUnit = per; out.total = r2(per * units); out.gross = r2(applied * units); out.minus = r2(mal * units); // for the Long Text line
+      out.basis = `Supply upgrading: Applied Load ${applied} kVA − Minimum Assigned Load ${mal} kVA = ${per} kVA` + (units > 1 ? ` × ${units} units` : '');
+      out.ref = 'Table 5.1; Section 5.2.3; your rule';
+      if (per === 0) out.warnings.push('Applied Load is not more than the Minimum Assigned Load: no extra capacity to charge for the upgrade.');
+      return out;
+    }
     const ex = num(inp.existing);
-    if (ex == null) { out.errors.push('Existing capacity (kVA) for supply upgrading'); return out; }
+    if (ex == null) { out.errors.push('Existing capacity (kVA) for supply upgrading — this premise has no Table 5.1 minimum'); return out; }
     const diff = r2(Math.max(0, out.total - ex));
     out.basis += ` − existing ${ex} kVA (supply upgrading)`; out.ref += '; Section 5.2.3'; out.total = diff;
     if (diff === 0) out.warnings.push('New capacity requirement is not more than the existing capacity: no incremental capacity to charge (Section 5.2.3).');

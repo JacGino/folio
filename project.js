@@ -11,6 +11,7 @@ import { propEditor } from './page.js';
 import { ccTab, ccEligible } from './cc.js';
 import * as C from './cols.js';
 import { viewTabs } from './views.js';
+import { checklistsFor, guessSide } from './checklists.js';
 
 const { g } = E;
 const P = n => { const d = DB.kpiDb(); return d && DB.propByName(d, n); };
@@ -405,13 +406,40 @@ function overview(row, info, n) {
 }
 
 // ---------- Tasks ----------
+/** planning checklist for the project's category (SAL100KW, SSE, TK1, TK2, NEM, TOS): ticks saved on the project, synced */
+function checklistCard(row, info) {
+  const cats = [].concat(info.category || []);
+  const c = E.customerOf(row);
+  const side = D.val(row, 'cklSide') || guessSide(c ? g(c, 'premise', '') : '', c ? g(c, 'tariff', '') : '');
+  const lists = checklistsFor(cats, side); if (!lists.length) return null;
+  const ticks = D.val(row, 'checklist') || {};
+  const all = lists.flatMap(l => l.items), done = all.filter(i => ticks[i.id]).length;
+  const toggle = (id, on) => { const cur = { ...(D.val(D.getRec(row.id), 'checklist') || {}) }; if (on) cur[id] = toISODate(new Date(NOW())); else delete cur[id]; D.update(row.id, { checklist: cur }); render(); };
+  const item = (it, i) => {
+    const on = !!ticks[it.id];
+    return h('li', { class: 'ckl-i' + (on ? ' on' : '') + (it.tone ? ' tone-' + it.tone : '') },
+      h('label', {}, h('input', { type: 'checkbox', class: 'hchk', checked: on ? true : null, 'aria-label': (it.title || it.text), onchange: e => toggle(it.id, e.target.checked) }),
+        h('span', { class: 'ckl-n' }, String(i + 1)),
+        h('span', { class: 'ckl-t' }, it.title ? h('b', {}, it.title) : null, it.text ? h('span', {}, it.text) : null,
+          it.notes ? h('ul', { class: 'ckl-notes' }, it.notes.map(x => h('li', {}, x))) : null,
+          on && typeof ticks[it.id] === 'string' ? h('small', { class: 'muted' }, 'Checked ' + dmy(ticks[it.id])) : null)));
+  };
+  return h('section', { class: 'hcard pcard ckl' },
+    h('div', { class: 'phbar' }, h('h3', { class: 'ph' }, icon('listcheck', 17), 'Checklist', h('span', { class: 'hcount' + (done === all.length ? ' ok' : '') }, done + ' / ' + all.length)),
+      done ? h('button', { class: 'c-act ebtn', 'aria-label': 'More for checklist', onclick: e => menu(e.currentTarget, [{ label: 'Untick all', icon: 'undo', run: async () => { if (await confirmBox('Untick every item in this checklist?', 'Untick all')) { D.update(row.id, { checklist: {} }); render(); } } }]) }, icon('more', 18)) : null),
+    h('div', { class: 'ckl-bar', role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': all.length, 'aria-valuenow': done }, h('i', { style: { width: (all.length ? done / all.length * 100 : 0) + '%' } })),
+    lists.map(l => h('div', { class: 'ckl-sec' },
+      h('div', { class: 'ckl-h' }, h('h4', {}, l.label),
+        l.sides ? h('div', { class: 'seg', role: 'group', 'aria-label': 'Premise' }, Object.entries(l.sides).map(([k, s]) => h('button', { class: k === l.side ? 'on' : '', 'aria-pressed': k === l.side ? 'true' : 'false', onclick: () => { D.update(row.id, { cklSide: k }); render(); } }, s.label))) : null),
+      h('ol', { class: 'ckl-list' }, l.items.map(item)))));
+}
 function tasksTab(row, info, n) {
   const list = E.tasksOf(row.id);
   const add = async () => { const name = (await promptBox('New task', '', 'Task name'))?.trim(); if (!name) return; E.addTask(row, name); render(); };
-  return h('section', { class: 'hcard pcard' },
+  return h('div', { class: 'tabstack' }, checklistCard(row, info), h('section', { class: 'hcard pcard' },
     h('div', { class: 'phbar' }, h('h3', { class: 'ph' }, icon('listcheck', 17), 'Tasks', h('span', { class: 'hcount' }, list.length)), h('button', { class: 'hnew sm', onclick: add }, icon('plus', 15), h('span', {}, 'Add Task'))),
     list.length ? h('div', { class: 'tlist' }, h('div', { class: 'trow thd' }, h('span'), h('span', {}, 'Task'), h('span', {}, 'Due Date'), h('span', {}, 'Priority'), h('span', {}, 'Status'), h('span')), list.map(t => taskRow(t, row, n)))
-      : h('p', { class: 'hempty' }, 'No tasks yet. Add the first one, for example "Check documents".'));
+      : h('p', { class: 'hempty' }, 'No tasks yet. Add the first one, for example "Check documents".')));
 }
 function taskRow(t, row, n) {
   const done = g(t, 'status') === 'Completed', days = E.taskDays(t, n), late = !done && days != null && days < 0;
@@ -482,11 +510,35 @@ function ecparTab(row, info, n) {
     return [act ? resubBtn : null, s !== 'Approved' ? approveBtn : null, !act ? rejectBtn : null].filter(Boolean);
   }
 }
+/** edit a saved history / log entry: its date and its text (new lines allowed), or delete it. Saves on Done. */
+function editEntry(x, { textKey = 'text', title = 'Edit entry', dateKey = null } = {}) {
+  const rec = D.getRec(x.id); if (!rec || !D.live(x.id)) return toast('This entry can’t be changed.');
+  const isCmt = rec.k === 'cmt';
+  const tKey = isCmt ? 'created' : 't';
+  const when = new Date(D.val(rec, tKey, Date.now()));
+  const dIso = dateKey && D.val(rec, dateKey) ? toISODate(parseDate(D.val(rec, dateKey))) : toISODate(when);
+  const dt = h('input', { type: 'date', class: 'field', value: dIso, 'aria-label': 'Date' });
+  const ta = h('textarea', { class: 'field entry-ta', rows: 5, 'aria-label': 'Text', enterkeyhint: 'enter' }); ta.value = D.val(rec, textKey, '') || '';
+  let deleted = false;
+  const del = h('button', { class: 'btn block danger', onclick: async () => { if (await confirmBox('Delete this entry?', 'Delete')) { deleted = true; D.trash(rec.id); s.close(); render(); } } }, 'Delete entry');
+  const s = sheet(title, h('div', { class: 'entry-ed' }, h('label', { class: 'small muted' }, 'Date'), dt, h('label', { class: 'small muted' }, 'Text'), ta, del), {
+    onDone: () => {
+      if (deleted || !D.live(rec.id)) return;
+      const patch = {}, txt = ta.value.replace(/\s+$/, '');
+      if (txt !== (D.val(rec, textKey, '') || '')) patch[textKey] = txt;
+      if (dt.value && dt.value !== dIso) {
+        const nd = parseDate(dt.value);
+        if (nd) { if (dateKey) patch[dateKey] = dt.value; const keep = new Date(nd); keep.setHours(when.getHours(), when.getMinutes(), when.getSeconds(), 0); patch[tKey] = keep.getTime(); }
+      }
+      if (Object.keys(patch).length) { D.update(rec.id, patch); toast('Entry updated'); render(); }
+    } });
+  setTimeout(() => ta.focus({ preventScroll: true }), 300);
+}
 function historyBlock(title, hist) {
   return h('details', { class: 'rhist', open: hist.length ? true : null },
     h('summary', {}, icon('chevd', 14), title + ' (' + hist.filter(x => x.ev === 'rejected').length + ' rejected)'),
     hist.length ? h('div', { class: 'rtable' }, h('div', { class: 'rr rhd' }, h('span', {}, '#'), h('span', {}, 'Date'), h('span', {}, 'Event'), h('span', {}, 'Reason / Remarks')),
-      hist.map((x, i) => h('div', { class: 'rr' }, h('span', {}, i + 1), h('span', {}, dmy(x.date) || formatDate(new Date(x.t), 'DD/MM/YYYY')), h('span', {}, badge(x.ev === 'rejected' ? 'Rejected' : x.ev === 'approved' ? 'Approved' : 'Resubmitted', undefined, false)), h('span', {}, x.reason || h('span', { class: 'muted' }, '—')))))
+      hist.map((x, i) => h('div', { class: 'rr editable', role: 'button', tabindex: '0', 'aria-label': 'Edit history entry ' + (i + 1), onclick: () => editEntry(x, { textKey: x.ev === 'rejected' ? 'reason' : (x.reason ? 'reason' : 'text'), title: 'Edit history entry', dateKey: 'date' }), onkeydown: e => { if (e.key === 'Enter') e.currentTarget.click(); } }, h('span', {}, i + 1), h('span', {}, dmy(x.date) || formatDate(new Date(x.t), 'DD/MM/YYYY')), h('span', {}, badge(x.ev === 'rejected' ? 'Rejected' : x.ev === 'approved' ? 'Approved' : 'Resubmitted', undefined, false)), h('span', { class: 'rtext' }, x.reason || x.text || h('span', { class: 'muted' }, '—'), h('span', { class: 'ehint', 'aria-hidden': 'true' }, icon('pencil', 13))))))
       : h('p', { class: 'muted small pad' }, 'No rejection record yet.'));
 }
 
@@ -546,7 +598,7 @@ function logTab(row) {
     h('div', { class: 'phbar' }, h('h3', { class: 'ph' }, icon('history', 17), 'Activity Log', h('span', { class: 'hcount' }, ev.length)),
       h('div', { class: 'wfacts' }, h('button', { class: 'sbtn', onclick: () => { logOrder = logOrder === 'new' ? 'old' : 'new'; render(); } }, icon('sort', 13), logOrder === 'new' ? 'Newest first' : 'Oldest first'),
         h('button', { class: 'hnew sm', onclick: add }, icon('plus', 15), h('span', {}, 'Add entry')))),
-    h('ol', { class: 'alog' }, ev.map(x => h('li', {}, h('time', {}, formatDate(new Date(x.t), 'DD/MM/YYYY'), h('small', {}, new Date(x.t).toTimeString().slice(0, 5))),
+    h('ol', { class: 'alog' }, ev.map(x => h('li', String(x.id).startsWith('new') ? {} : { class: 'editable', role: 'button', tabindex: '0', 'aria-label': 'Edit log entry: ' + (x.text || '').slice(0, 40), onclick: () => editEntry(x, { title: 'Edit log entry', textKey: x.ev === 'rejected' && !x.text ? 'reason' : 'text' }), onkeydown: e => { if (e.key === 'Enter') e.currentTarget.click(); } }, h('time', {}, formatDate(new Date(x.t), 'DD/MM/YYYY'), h('small', {}, new Date(x.t).toTimeString().slice(0, 5))),
       h('div', {}, h('div', { class: 'atags' }, badge(x.type, tone(x.type), false), x.ecx && xs[x.ecx] ? h('span', { class: 'mono small muted' }, xs[x.ecx]) : null, x.ecpar ? h('span', { class: 'small muted' }, 'ECPAR') : null),
         h('p', {}, x.text))))));
 }

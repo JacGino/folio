@@ -10,7 +10,7 @@ import { render, now as NOW, download, L as LBL } from './app.js';
 import { longText, schemeDraft, layoutFor, LAYOUTS, RM as RMS } from './longtext.js';
 import { badge, optPill } from './project.js';
 import { GUIDELINE, RATE, PREMISES, PREMISE, COMPONENTS, TABLE51_NOTES } from './ccrates.js';
-import { CATS, SCOPES, METHODS, ELIGIBLE_PROJECT_CATS, methodology, calculate, contributionEligible, itemsFor, serviceCableSplit, perCircuit, snapshot, rm } from './ccengine.js';
+import { CATS, SCOPES, METHODS, ELIGIBLE_PROJECT_CATS, methodology, calculate, contributionEligible, itemsFor, upgradeMin, serviceCableSplit, perCircuit, snapshot, rm } from './ccengine.js';
 
 export const ccEligible = cats => cats.some(c => ELIGIBLE_PROJECT_CATS.includes(c));
 const COMP_ORDER = ['perhouse', 'lt', 'ltstreet', 'ht', 'htexcess', 'substation', 'scc', 'lcc', 'meter', 'admin', 'testing', 'controlled', 'engfee'];
@@ -116,11 +116,12 @@ function loadSection(row, info, w, res) {
   const elig = contributionEligible(I);
   return h('section', { class: 'ccsec ccload' },
     h('h3', { class: 'ccsh' }, h('span', { class: 'ccn' }, icon('play', 13)), '2. Load / Capacity'),
-    I.premise === 'publight' ? null : frow('Applied Load', numBox(I.applied, 'Applied Load', v => { I.applied = v; touch(w); refreshResults(row, info); }, 'kVA'), I.basis === 'guideline' && p && p.listed && I.phase === 1 && !p.threeOnly ? 'Table 5.1 minimum is used for single phase' : 'Maximum demand declared by the customer'),
+    I.premise === 'publight' ? null : frow('Applied Load', numBox(I.applied, 'Applied Load', v => { I.applied = v; touch(w); refreshResults(row, info); }, 'kVA'), p && p.listed ? 'Per unit. Charged at the Table 5.1 minimum, or the applied load if higher' : 'Maximum demand declared by the customer (per unit)'),
     frow('Load basis', segs([['practice', 'Your rule'], ['guideline', 'Guideline 5.2']], I.basis === 'guideline' ? 'guideline' : 'practice', v => { I.basis = v; touch(w); render(); }, 'Load basis'),
       I.basis === 'guideline' ? 'Table 5.1 / Section 5.2 as written' : '1-phase min 5 kVA · 3-phase min 10 kVA · Table 5.1 for Longhouse & upgrading'),
     frow('Supply upgrading (existing customer)', tog(!!I.upgrade, v => { I.upgrade = v; touch(w); render(); }, 'Supply upgrading'), 'Section 5.2.3'),
-    I.upgrade ? frow('Existing capacity', numBox(I.existing, 'Existing capacity', v => { I.existing = v; touch(w); refreshResults(row, info); }, 'kVA'), 'Charged on the difference') : null,
+    I.upgrade && upgradeMin(I, p) == null ? frow('Existing capacity', numBox(I.existing, 'Existing capacity', v => { I.existing = v; touch(w); refreshResults(row, info); }, 'kVA'), 'No Table 5.1 minimum for this premise: charged on the difference') : null,
+    I.upgrade && upgradeMin(I, p) != null ? h('p', { class: 'muted small note' }, `Upgrading is charged on Applied Load − Minimum Assigned Load (${upgradeMin(I, p)} kVA per unit).`) : null,
     loadResult(w, res),
     elig && needs ? frow('Apply SESCO Contribution', tog(!!I.contribution, v => { I.contribution = v; touch(w); render(); }, 'SESCO Contribution'), 'Section 3.1.17(a): capacity charges borne by SESCO') : null);
 }
@@ -347,8 +348,14 @@ function ltDefaults(row, info, w, res) {
     subsidyBV: ltRemember('subsidyBV') || 'PLS-260221', cdpBV: ltRemember('cdpBV') || 'PLS-260205', source: '', feeder: 'RYB', r: '', y: '', b: '',
     submittedBy: ltRemember('submittedBy') || LBL('profile.name', ''), date: d.toLocaleString('en-GB', { month: 'long', year: 'numeric' }).toUpperCase(), remarks: '', desc: {},
     // layout by project category (TK2 / TOS / UOS / SAL100KW / NTK), and the fields only some layouts use
-    layout: layoutFor(info.category || [], tariff, sub), existing: w.inputs.existing ?? '', existingLabel: 'Minimum assigned load', extras: [],
+    layout: layoutFor(info.category || [], tariff, sub), ...upgradeLT(w.inputs), extras: [],
     hvLen: '', ltOhLen: '', ltUgLen: '', trafoKva: '', bondRate: '50', bondTrafoYears: 'two (2)', bondOtherYears: 'one (1)', material: '' };
+}
+/** Long Text 'ACTUAL DECLARE LOAD − MINIMUM ASSIGNED LOAD (…)': the premise's Table 5.1 minimum, or the existing capacity typed in */
+function upgradeLT(I) {
+  const p = PREMISE[I.premise], mal = upgradeMin(I, p);
+  if (mal != null) return { existing: String(mal), existingLabel: 'Minimum assigned load (' + p.label + ')' };
+  return { existing: I.existing != null && I.existing !== '' ? String(I.existing) : '', existingLabel: 'Minimum assigned load' };
 }
 function longTextSheet(row, info, w) {
   let res = calculate(w);
@@ -356,7 +363,7 @@ function longTextSheet(row, info, w) {
   const f = w.inputs.lt;
   if (f.cat !== w.inputs.cat && w.inputs.cat) f.cat = w.inputs.cat;
   if (w.inputs.applied && !f.load) f.load = w.inputs.applied;
-  if (w.inputs.existing != null && w.inputs.existing !== '') f.existing = w.inputs.existing;
+  { const u = upgradeLT(w.inputs); if (u.existing !== '') { f.existing = u.existing; f.existingLabel = u.existingLabel; } }
   if (!f.layout) f.layout = layoutFor(info.category || []);
   const pre = h('textarea', { class: 'field ltpre', rows: 18, spellcheck: 'false', 'aria-label': 'Long text preview' });
   const warn = h('div', { class: 'ltwarn' }), sums = h('div', { class: 'ltsum' });

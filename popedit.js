@@ -11,6 +11,9 @@ export function popEdit(anchor, rec, p, after) {
   if (!anchor.isConnected) return null; // the screen changed under the tap; nothing to edit
   const host = anchor.closest('#pane') || document.getElementById('main') || document.body;
   const num = p.type === 'number';
+  // Enter starts a new line in text (remarks, address, findings…); one-line values (numbers, links, IDs, phone, email) finish on Enter.
+  // Either way, ✓ above the keyboard or tapping outside saves.
+  const single = p.single === true || num || p.type === 'url' || p.type === 'title' || /\b(ecx|wbs|ref|reference|id|phone|contact|tel|email|e-mail|number|no)\b/i.test(p.name || '');
   const inp = textbox({ cls: 'popin', multiline: true, label: p.name, attrs: { inputmode: num ? 'decimal' : p.type === 'url' ? 'url' : null, autocapitalize: p.type === 'url' ? 'off' : null, spellcheck: p.type === 'text' || p.type === 'title' ? null : 'false' } });
   if (/^ecx/i.test(p.name)) inp.style.fontFamily = 'var(--mono)';
   inp.value = DB.raw(rec, p) ?? '';
@@ -22,12 +25,21 @@ export function popEdit(anchor, rec, p, after) {
     box.style.left = left + 'px'; box.style.top = (a.top - hr.top + host.scrollTop - 1) + 'px'; box.style.width = w + 'px';
   };
   // keep the card between the top bar and the keyboard
+  // measured against the shortcut bar itself when it is showing, so the card and the bar always agree on where the keyboard is
+  let revealQueued = false;
   const reveal = () => {
-    if (!box.isConnected) return;
-    const vv = window.visualViewport, top = (vv ? vv.offsetTop : 0) + TOPBAR, bottom = (vv ? vv.offsetTop + vv.height : innerHeight) - BAR;
-    const b = box.getBoundingClientRect();
-    if (b.bottom > bottom) host.scrollTop += Math.min(b.bottom - bottom + 12, b.top - top);
-    else if (b.top < top) host.scrollTop -= top - b.top + 12;
+    if (!box.isConnected || revealQueued) return; revealQueued = true;
+    requestAnimationFrame(() => {
+      revealQueued = false; if (!box.isConnected) return;
+      const vv = window.visualViewport, vh = vv ? vv.height : innerHeight;
+      const kb = document.querySelector('.kbar:not([hidden])'), kr = kb && kb.getBoundingClientRect();
+      let top, bottom;
+      if (kr && kr.height) { bottom = kr.top - 10; top = kr.bottom + 8 - vh + TOPBAR; }
+      else { top = (vv ? vv.offsetTop : 0) + TOPBAR; bottom = (vv ? vv.offsetTop + vv.height : innerHeight) - BAR; }
+      const r = box.getBoundingClientRect();
+      if (r.bottom > bottom + 3) host.scrollTop += Math.min(r.bottom - bottom + 12, Math.max(0, r.top - top));
+      else if (r.top < top - 3 && r.bottom + (top - r.top) < bottom) host.scrollTop -= top - r.top + 12; // only move down if that doesn't hide it at the bottom
+    });
   };
   const grow = () => { inp.style.height = 'auto'; inp.style.height = Math.min(inp.scrollHeight, innerHeight * 0.35) + 'px'; };
   let done = false;
@@ -46,7 +58,8 @@ export function popEdit(anchor, rec, p, after) {
     after && after();
   };
   inp.addEventListener('input', () => { grow(); reveal(); });
-  inp.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); close(true); } if (e.key === 'Escape') { e.preventDefault(); close(false); } });
+  inp.setAttribute('enterkeyhint', single ? 'done' : 'enter');
+  inp.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && single) { e.preventDefault(); close(true); } if (e.key === 'Escape') { e.preventDefault(); close(false); } });
   inp.addEventListener('blur', () => setTimeout(() => close(true), 0));
   box.addEventListener('commit', () => close(true));
   host.append(box); anchor.classList.add('editing'); place(); grow();

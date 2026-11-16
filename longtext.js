@@ -216,7 +216,8 @@ function uosText(f, res) {
   if (p.cap.length) {
     const L = res.load || {}, ex = num(f.existing), q = p.cap[0].qty;
     P(`(d) CAPACITY CHARGE: ${[scc && 'SUBSTATION CAPACITY CHARGE', lcc && 'LINE CAPACITY CHARGE'].filter(Boolean).join(' + ')}`);
-    if (ex != null && L.perUnit != null) P(`= ACTUAL DECLARE LOAD - ${up(f.existingLabel || 'MINIMUM ASSIGNED LOAD')}`, `= ${kv(L.perUnit * (L.units || 1))} kVA - ${kv(ex)} kVA = ${kv(q)} kVA`);
+    if (L.gross != null && L.minus != null) P(`= ACTUAL DECLARE LOAD - ${up(f.existingLabel || 'MINIMUM ASSIGNED LOAD')}`, `= ${kv(L.gross)} kVA - ${kv(L.minus)} kVA = ${kv(q)} kVA`);
+    else if (ex != null && L.perUnit != null) P(`= ACTUAL DECLARE LOAD - ${up(f.existingLabel || 'MINIMUM ASSIGNED LOAD')}`, `= ${kv(L.perUnit * (L.units || 1))} kVA - ${kv(ex)} kVA = ${kv(q)} kVA`);
     P(`=[${[scc, lcc].filter(Boolean).map(l => `(${kvRM(l.rate)} x ${kv(l.qty)} kVA)`).join(' + ')}]`, `= ${RM(p.sum(p.cap))}`);
     for (const a of p.adjCap) P(`LESS ${a.label} = ${RM(a.amount)}`, `CAPACITY CHARGE PAYABLE = ${RM(p.d)}`);
   } else P('(d) CAPACITY CHARGE: NOT APPLICABLE = RM 0.00');
