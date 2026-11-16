@@ -33,7 +33,7 @@ export function homeScreen() {
   const all = DB.rows(dbr.id).map(r => DB.kpiInfo(r, dbr, n));
   wrap.append(kpiBar(all, n),
     h('div', { class: 'dgrid' },
-      dueCard(n), midCard(n), trendCard(all, n), categoryCard(all), quickCard(), calendarCard(n)));
+      dueCard(n), midCard(n), trendCard(all, n), categoryCard(all), calendarCard(n)));
   return wrap;
 }
 /** the Home cover photo, also shown as the banner of the Focus pages */
@@ -58,7 +58,7 @@ function hero(n) {
     h('div', { class: 'hero-in' },
       av,
       h('div', { class: 'hero-t' }, h('small', {}, 'Home'), h('h1', {}, `Good ${part}${first ? ', ' + first : ''} 👋`), h('p', {}, 'Here’s your planning overview today.')),
-      h('div', { class: 'hero-a' },
+      h('div', { class: 'hero-a' }, quickActions(),
         h('button', { class: 'hbtn glass', 'aria-label': alerts ? `Notifications, ${alerts} due or overdue` : 'Notifications', onclick: () => go('#/inbox') }, icon('bell', 19), alerts ? h('i', { class: 'hdot' }) : null),
         h('button', { class: 'hbtn glass', 'aria-label': 'More options', onclick: e => homeMore(e.currentTarget) }, icon('more', 19)))));
 }
@@ -282,18 +282,20 @@ export function logSheet(row) {
   const s = sheet('Log activity · ' + DB.title(row), h('form', { class: 'npform', onsubmit: e => { e.preventDefault(); const v = txt.value.trim(); if (!v) { txt.focus(); return; } E.log(row, type.value, v, type.value === 'ECPAR' ? { ecpar: true } : {}); s.close(); toast('Saved to the Activity Log'); render(); } },
     h('label', { class: 'flabel' }, h('span', {}, 'Type'), type), h('label', { class: 'flabel' }, h('span', {}, 'Description'), txt), h('button', { class: 'btn primary block', type: 'submit' }, 'Save')), { done: 'Cancel' });
 }
-function quickCard() {
-  const qa = (ic, label, run) => h('button', { class: 'qa', onclick: run }, icon(ic, 20), h('span', {}, label));
-  return h('section', { class: 'hcard qcard c-quick' },
-    h('div', { class: 'chead' }, icon('play', 18), h('h2', {}, 'Quick Actions')),
-    h('div', { class: 'qgrid' },
+/** Quick Actions: small buttons at the top right of the page header (shared look with the Focus pages) */
+export const quickBtn = (ic, label, run) => h('button', { class: 'qs', type: 'button', title: label, 'aria-label': label, onclick: run }, icon(ic, 16), h('span', {}, label));
+export const quickBar = btns => h('div', { class: 'qbar', role: 'toolbar', 'aria-label': 'Quick actions' }, btns);
+function quickActions() {
+  const qa = quickBtn;
+  return quickBar([
+
       qa('plus', 'New Project', () => newProjectSheet()),
       qa('filex', 'Add ECX', async () => { const row = await pickProject('Add ECX to…', { fullOnly: true }); if (!row) return; const no = await promptBox('New ECX application', '', 'ECX number (you can add it later)'); if (no == null) return; E.addEcx(row, no.trim()); go('#/project/' + row.id + '/ecx'); }),
       qa('ecpar', 'Add ECPAR', async () => { const row = await pickProject('Add ECPAR to…', { fullOnly: true }); if (!row) return;
         if (E.ecparOf(row)) { toast('This project already has its ECPAR. Opening it.'); go('#/project/' + row.id + '/ecpar'); return; }
         const ref = await promptBox('ECPAR reference number', '', 'e.g. ECPAR-0326 (optional)'); if (ref == null) return;
         const e = E.ecpar(row); if (ref.trim()) D.update(e.id, { 'p:ref': ref.trim() }); E.log(row, 'ECPAR', 'ECPAR record added' + (ref.trim() ? ': ' + ref.trim() : '') + '.', { ecpar: true }); go('#/project/' + row.id + '/ecpar'); }),
-      qa('history', 'Log Activity', async () => { const row = await pickProject('Log activity for…'); if (row) logSheet(row); })));
+      qa('history', 'Log Activity', async () => { const row = await pickProject('Log activity for…'); if (row) logSheet(row); })]);
 }
 
 // ---------- full calendar: Month / Week / Day ----------

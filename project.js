@@ -10,6 +10,7 @@ import { popEdit } from './popedit.js';
 import { propEditor } from './page.js';
 import { ccTab, ccEligible } from './cc.js';
 import * as C from './cols.js';
+import { viewTabs } from './views.js';
 
 const { g } = E;
 const P = n => { const d = DB.kpiDb(); return d && DB.propByName(d, n); };
@@ -188,6 +189,7 @@ export function projectsScreen() {
     cols = C.columns(dbr); C.gridOf(list, [30], cols, [32]);
     const shown = rows.slice(0, pshow);
     list.replaceChildren(...[head(), ...shown.map(t => projectRow(t, n)), rows.length ? null : h('p', { class: 'hempty' }, pq || pcat || pstat || pdue || pfil.length ? 'No project matches. Clear the search or filters.' : ptab === 'archived' ? 'No archived projects.' : 'No projects here.')].filter(Boolean));
+    C.attachResizers(list, dbr);
     foot.replaceChildren(...[h('span', {}, rows.length ? `Showing 1–${shown.length} of ${rows.length} project${rows.length === 1 ? '' : 's'}` : ''),
       rows.length > shown.length ? h('button', { class: 'btn', onclick: () => { pshow += 100; draw(); } }, 'Show more') : null].filter(Boolean));
     bulk.replaceChildren(...[].concat(sel.size ? h('div', { class: 'hbulk' }, h('b', {}, sel.size + ' selected'),
@@ -210,10 +212,10 @@ export function projectsScreen() {
     const cellOf = c => {
       if (!c.p) return h('span', { class: 'cc cx', 'data-col': c.id, title: c.label }, computed[c.id]());
       const el = C.cell(dbr, c, row);
-      if (c.p.type === 'title') el.append(h('button', { class: 'copen', type: 'button', 'aria-label': 'Open ' + t.title, title: 'Open', onclick: e => { e.stopPropagation(); go('#/project/' + t.id); } }, icon('expand', 15)));
+      if (c.p.type === 'title') el.append(h('button', { class: 'copen', type: 'button', 'aria-label': 'Open ' + t.title, title: 'Open', onclick: e => { e.stopPropagation(); go('#/project/' + t.id); } }, 'Open'));
       return el;
     };
-    const r = h('div', { class: 'hrow prow' + (sel.has(t.id) ? ' sel' : '') + (t.archived ? ' arch' : ''), role: 'row', onclick: () => go('#/project/' + t.id) },
+    const r = h('div', { class: 'hrow prow' + (sel.has(t.id) ? ' sel' : '') + (t.archived ? ' arch' : ''), role: 'row', 'data-rid': t.id, onclick: () => go('#/project/' + t.id) },
       h('span', { class: 'c-chk' }, chk), ...cols.map(cellOf),
       h('button', { class: 'c-act ebtn', 'aria-label': 'Actions for ' + t.title, onclick: e => { e.stopPropagation(); projectMenu(e.currentTarget, row); } }, icon('more', 18)));
     longPress(r, () => rowActions(t.id));
@@ -232,7 +234,7 @@ export function projectsScreen() {
     .map(([l, clear]) => h('button', { class: 'hchip', onclick: () => { clear(); render(); } }, l, icon('close', 13)));
   wrap.append(
     h('header', { class: 'hhead' },
-      h('div', { class: 'htitle' }, h('div', { class: 'ptitle' }, icon('folder', 26), elabel('projects.title', 'Projects', 'h1')), elabel('projects.sub', 'Customers, projects, applications and tasks in one place.', 'p', { class: 'hsub' })),
+      h('div', { class: 'htitle' }, h('div', { class: 'ptitle' }, icon('folder', 26), elabel('projects.title', 'Projects', 'h1')), elabel('projects.sub', 'Customers, projects, applications and tasks in one place.', 'p', { class: 'hsub' }), viewTabs('projects', 'projects')),
       h('div', { class: 'hactions' },
         h('label', { class: 'hsearch glass' }, icon('search', 17), search),
         h('button', { class: 'hbtn glass' + (pcat || pstat || pdue || pfil.length ? ' on' : ''), 'aria-label': 'Filter projects', onclick: e => filterMenu(e.currentTarget) }, icon('filter', 18)),

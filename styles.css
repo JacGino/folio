@@ -1882,3 +1882,72 @@ span[data-s="s"] { font-size: .85em; } span[data-s="l"] { font-size: 1.25em; } s
 /* Reports, KPI, Timeline, Board and the ECPAR rejection list */
 .rrow > *, .prw > *, .rjr b, .rjr small, .kcust, .gleft > * { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; overflow-wrap: anywhere; }
 .rrow, .rjr { align-items: start; }
+/* view tabs: Projects (Table / Board / Timeline) and Reports (Monthly KPI / Report) */
+.vtabs { display: inline-flex; gap: 2px; padding: 3px; margin-top: 10px; border-radius: 12px; background: color-mix(in srgb, var(--bg2) 85%, transparent); max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+.vtabs::-webkit-scrollbar { display: none; }
+.vtab { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 14px; border-radius: 9px; color: var(--ink2); font-size: 14px; font-weight: 500; text-decoration: none; white-space: nowrap; flex: none; }
+.vtab svg { color: var(--ink3); }
+.vtab.on { background: var(--bg); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.08); } .vtab.on svg { color: var(--ink); }
+.vtab:not(.on):hover { color: var(--ink); background: color-mix(in srgb, var(--bg) 50%, transparent); }
+.htitle .vtabs { margin-top: 8px; }
+.fhead-in .vtabs { position: relative; z-index: 1; }
+@container vpage (max-width: 640px) { .vtabs .vtab { padding: 0 11px; gap: 0; } .vtabs .vtab svg { display: none; } }
+@media (max-width: 640px) { .vtabs .vtab { padding: 0 11px; gap: 0; } .vtabs .vtab svg { display: none; } }
+
+/* ---------- Quick Actions: small buttons at the top right of the page header (Home + Focus pages) ---------- */
+.dgrid { grid-template-areas: "due mid trend" "cat cat cat" "cal cal cal"; }
+@container (max-width: 1100px) { .dgrid { grid-template-areas: "due due" "mid trend" "cat cat" "cal cal"; } }
+@media (max-width: 1100px) { .dgrid { grid-template-areas: "due due" "mid trend" "cat cat" "cal cal"; } }
+@media (max-width: 760px) { .dgrid { grid-template-areas: "due" "mid" "trend" "cat" "cal"; } }
+.hero-a, .fhead-a { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.qbar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; margin-right: 4px; }
+.qs { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border: 0.5px solid color-mix(in srgb, var(--ink) 10%, transparent); border-radius: 17px;
+  background: color-mix(in srgb, var(--bg) 82%, transparent); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); color: var(--ink); font: inherit; font-size: 13px; font-weight: 500; white-space: nowrap; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+.qs svg { color: var(--ink2); flex: none; }
+.qs:hover, .qs:focus-visible { background: var(--bg); }
+.qs:active { transform: scale(.97); }
+/* narrower screens: icons only, and the bar sits on its own line under the bell and ⋯ */
+@media (max-width: 1180px) { .qs span { display: none; } .qs { width: 34px; padding: 0; justify-content: center; } }
+@media (max-width: 900px) {
+  .hero .hero-a { position: absolute; top: 12px; right: 14px; margin: 0; z-index: 3; }
+  .hero-a, .fhead-a { flex-wrap: nowrap; gap: 6px; }
+  .qbar { flex-wrap: nowrap; gap: 4px; margin-right: 2px; }
+  .qs { width: 32px; height: 32px; }
+  /* the buttons take the top band; the title starts below them */
+  .hero .hero-in { padding-top: 46px !important; padding-right: 0 !important; }
+  .fhead .fhead-in { padding-top: 44px !important; padding-right: 0 !important; }
+}
+.fgrid.full { grid-template-columns: minmax(0, 1fr) !important; }
+/* OPEN button next to the customer name (same look as the full tracker table) */
+.copen { width: auto; height: 22px; padding: 0 7px; margin: 5px 0 0 6px; border: 1px solid var(--rule); border-radius: 6px; background: var(--bg); box-shadow: 0 1px 2px rgba(15,15,15,0.06);
+  color: var(--ink2); font: inherit; font-size: 11px; font-weight: 500; letter-spacing: 0.6px; text-transform: uppercase; line-height: 20px; display: inline-flex; align-items: center; flex: none; }
+.copen:hover, .copen:focus-visible { background: var(--bg2); color: var(--ink); }
+
+/* ---------- Notion-style grid lines and drag-to-resize (columns and rows) ---------- */
+:root { --nline: rgb(233, 233, 231); }
+@media (prefers-color-scheme: dark) { :root { --nline: rgba(255, 255, 255, 0.094); } }
+/* tables: 1px light lines between rows and columns, like Notion */
+.plist.ctbl > .prow, .flist.ctbl > .frow { position: relative; column-gap: 0 !important; border-bottom: 1px solid var(--nline) !important; }
+.plist.ctbl > .prow > *, .flist.ctbl > .frow > * { padding-left: 8px; padding-right: 8px; border-right: 1px solid var(--nline); align-self: stretch; box-sizing: border-box; }
+.plist.ctbl > .prow > :last-child, .flist.ctbl > .frow > :last-child, .plist.ctbl > .prow > :first-child, .flist.ctbl > .frow > :first-child { border-right: 0; }
+.plist.ctbl > .prow > .c-chk + *, .flist.ctbl > .frow > .fc-chk + * { border-left: 0; }
+.plist.ctbl > .prow.hhd, .flist.ctbl > .frow.fhd { border-bottom: 1px solid var(--nline) !important; }
+.plist.ctbl > .prow.rfix, .flist.ctbl > .frow.rfix { overflow: hidden; }
+.cc.ce > .val, .cc.ce > span > .val { margin-left: 0; }
+/* column line: invisible until you point at it, blue while dragging */
+.rzc { position: relative; }
+.crz { position: absolute; top: 0; right: -4px; width: 8px; height: var(--tblh, 100%); z-index: 4; cursor: col-resize; touch-action: none; -webkit-touch-callout: none; user-select: none; }
+.crz::after { content: ''; position: absolute; top: 0; bottom: 0; left: 3px; width: 2px; border-radius: 1px; background: transparent; transition: background .12s; }
+.crz:hover::after { background: rgba(35, 131, 226, .45); } .crz.on::after { background: rgb(35, 131, 226); }
+/* row line: along the bottom of every row */
+.rrz { position: absolute !important; left: 0; right: 0; bottom: -4px; height: 8px; z-index: 3; cursor: row-resize; touch-action: none; -webkit-touch-callout: none; user-select: none; padding: 0 !important; border: 0 !important; display: block !important; }
+.rrz::after { content: ''; position: absolute; left: 0; right: 0; top: 3px; height: 2px; border-radius: 1px; background: transparent; transition: background .12s; }
+.rrz:hover::after { background: rgba(35, 131, 226, .45); } .rrz.on::after { background: rgb(35, 131, 226); }
+/* the full tracker table uses the same thin lines */
+.grid .tr, .grid .th, .grid .td { border-color: var(--nline) !important; border-width: 0 1px 1px 0 !important; }
+.grid .colrz.on, .grid .rzr.on { background: rgb(35, 131, 226) !important; }
+/* dates never break; headings break only between words; values break long words only when they must */
+.cc.cdate .val { white-space: nowrap !important; overflow-wrap: normal !important; word-break: normal !important; }
+.chd span { overflow-wrap: break-word !important; word-break: normal !important; }
+.cc.ce > .val, .cc.ce > span > .val, .cc.ctitle > .val { overflow-wrap: break-word !important; word-break: normal !important; }
+.cc.ce .val .url, .cc.ce .val .url b, .cc.ce .val .url i, .drow a.dpin, .grid .td a { word-break: break-all; }

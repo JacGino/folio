@@ -30,12 +30,25 @@ const catChip = c => vars(h('span', { class: 'vcat', title: c }, K.CODE[c] || c)
 // =====================================================================================
 // shared page pieces
 // =====================================================================================
-function head({ crumb, title, desc, ic, tools, more }) {
+// ---------- fewer pages: Board and Timeline are views of Projects; Monthly KPI is a tab of Reports ----------
+const TABS = {
+  projects: { label: 'Projects', items: [['#/projects', 'table', 'Table'], ['#/board', 'columns', 'Board'], ['#/timeline', 'timeline', 'Timeline']] },
+  reports: { label: 'Reports', items: [['#/kpi', 'barchart', 'Monthly KPI'], ['#/reports', 'linechart', 'Report']] } };
+/** the tab bar under the page title (Projects: Table / Board / Timeline; Reports: Monthly KPI / Report) */
+export function viewTabs(group, cur) {
+  const g = TABS[group];
+  return h('nav', { class: 'vtabs', role: 'tablist', 'aria-label': g.label + ' views' }, g.items.map(([href, ic, l]) => {
+    const on = href === '#/' + cur;
+    return h('a', { class: 'vtab' + (on ? ' on' : ''), href, role: 'tab', 'aria-selected': on ? 'true' : 'false', onclick: e => { if (on) e.preventDefault(); } }, icon(ic, 15), h('span', {}, l));
+  }));
+}
+function head({ crumb, title, desc, ic, tools, more, group, cur }) {
   const n = NOW(), alerts = DB.kpiDb() ? DB.kpiTasks(n).filter(t => t.days != null && t.days <= 0).length + E.dueTasks(n).length : 0;
   return h('header', { class: 'fhead vhead' }, coverInto(h('div', { class: 'fcover', 'aria-hidden': 'true' })),
     h('div', { class: 'fhead-in' },
-      h('nav', { class: 'crumbs fcrumbs', 'aria-label': 'Breadcrumb' }, h('a', { href: '#/home', 'aria-label': 'Home' }, icon('home', 16)), icon('chevr', 14), h('span', { class: 'cv' }, 'Views'), icon('chevr', 14), h('span', {}, crumb)),
-      h('div', { class: 'ftitle' }, h('span', { class: 'fic' }, icon(ic, 26)), h('div', {}, h('h1', {}, title), h('p', {}, desc)))),
+      h('nav', { class: 'crumbs fcrumbs', 'aria-label': 'Breadcrumb' }, h('a', { href: '#/home', 'aria-label': 'Home' }, icon('home', 16)), icon('chevr', 14), group ? h('a', { class: 'cv', href: TABS[group].items[0][0] === '#/kpi' ? '#/kpi' : '#/projects' }, TABS[group].label) : h('span', { class: 'cv' }, 'Views'), icon('chevr', 14), h('span', {}, crumb)),
+      h('div', { class: 'ftitle' }, h('span', { class: 'fic' }, icon(ic, 26)), h('div', {}, h('h1', {}, title), h('p', {}, desc))),
+      group ? viewTabs(group, cur) : null),
     h('div', { class: 'hero-a fhead-a' },
       h('button', { class: 'hbtn glass', 'aria-label': alerts ? `Notifications, ${alerts} due or overdue` : 'Notifications', onclick: () => go('#/inbox') }, icon('bell', 19), alerts ? h('i', { class: 'hdot' }) : null),
       h('button', { class: 'hbtn glass', 'aria-label': 'More options', onclick: e => more(e.currentTarget) }, icon('more', 19))),
@@ -192,7 +205,7 @@ export function timelineScreen() {
       h('button', { class: 'cseg today', onclick: () => { TL.anchor = today; render(); } }, 'Today')),
     searchBox(TL, 'q', 'Search projects…'),
     h('div', { class: 'cviews vseg' }, ['day', 'week', 'month', 'quarter'].map(v => h('button', { class: 'cseg' + (TL.view === v ? ' on' : ''), 'aria-pressed': TL.view === v ? 'true' : 'false', onclick: () => set('view', v) }, v[0].toUpperCase() + v.slice(1))))];
-  wrap.append(head({ crumb: 'Timeline', title: 'Project Timeline', desc: 'Track project schedules, deadlines and progress.', ic: 'timeline', tools, more: a => viewMore(a) }));
+  wrap.append(head({ group: 'projects', cur: 'timeline', crumb: 'Timeline', title: 'Project Timeline', desc: 'Track project schedules, deadlines and progress.', ic: 'timeline', tools, more: a => viewMore(a) }));
   if (!DB.kpiDb()) { wrap.append(noData()); return wrap; }
   let list = filterList(K.allFacts(n), { q: TL.q, cat: TL.cat, st: TL.st });
   list = list.filter(f => TL.scope === 'all' ? true : TL.scope === 'done' ? f.done : !f.done);
@@ -275,7 +288,7 @@ export function boardScreen() {
     { el: h('div', { class: 'mhead' }, 'Due date') }, ...[['', 'Any time'], ['overdue', 'Overdue'], ['week', 'Due in 7 days'], ['month', 'Due this month'], ['none', 'No due date']].map(([k, l]) => ({ label: l, checked: BS.date === k, run: () => set('date', k) })), '-',
     { el: h('div', { class: 'mhead' }, 'Sort cards by') }, ...[['due', 'Due date'], ['pri', 'Priority'], ['cust', 'Customer']].map(([k, l]) => ({ label: l, checked: BS.sort === k, run: () => set('sort', k) })), '-',
     { label: 'Clear filters', icon: 'close', run: () => { Object.assign(BS, { q: '', cat: '', stage: '', date: '' }); render(); } }], { width: 240 });
-  wrap.append(head({ crumb: 'Board', title: 'Project Board', desc: 'Projects by category, with each project’s workflow stage.', ic: 'columns', more: a => viewMore(a),
+  wrap.append(head({ group: 'projects', cur: 'board', crumb: 'Board', title: 'Project Board', desc: 'Projects by category, with each project’s workflow stage.', ic: 'columns', more: a => viewMore(a),
     tools: [dd('Project Category', BS.cat ? K.CODE[BS.cat] || BS.cat : 'All Categories', catItems(BS.cat, v => set('cat', v))), searchBox(BS, 'q', 'Search project…'),
       h('button', { class: 'hbtn sm glass' + (BS.stage || BS.date ? ' on' : ''), 'aria-label': 'Filter and sort', onclick: e => filterMenu(e.currentTarget) }, icon('filter', 17))] }));
   if (!DB.kpiDb()) { wrap.append(noData()); return wrap; }
@@ -345,7 +358,7 @@ export function reportsScreen() {
     sheet('Custom date range', h('div', { class: 'ltform' }, h('label', { class: 'ltf' }, h('span', {}, 'From'), f), h('label', { class: 'ltf' }, h('span', {}, 'To'), t)), { done: 'Apply', onDone: () => { if (f.value && t.value && f.value <= t.value) { RS.from = f.value; RS.to = t.value; RS.mode = 'custom'; render(); } else toast('Choose a start date before the end date'); } }); };
   const wrap = h('div', { class: 'wrap home focus vpage v-reports' });
   const exportMenu = a => menu(a, [{ label: 'Export PDF', icon: 'export', run: () => exportReport('pdf') }, { label: 'Export Excel (CSV)', icon: 'table', run: () => exportReport('csv') }]);
-  wrap.append(head({ crumb: 'Reports', title: 'Project Reports', desc: 'KPI performance, project analysis and turnaround time.', ic: 'barchart', more: a => viewMore(a, [{ label: 'Export PDF', icon: 'export', run: () => exportReport('pdf') }, { label: 'Export Excel (CSV)', icon: 'table', run: () => exportReport('csv') }]),
+  wrap.append(head({ group: 'reports', cur: 'reports', crumb: 'Report', title: 'Project Reports', desc: 'KPI performance, project analysis and turnaround time.', ic: 'barchart', more: a => viewMore(a, [{ label: 'Export PDF', icon: 'export', run: () => exportReport('pdf') }, { label: 'Export Excel (CSV)', icon: 'table', run: () => exportReport('csv') }]),
     tools: [dd('Project Category', RS.cat ? K.CODE[RS.cat] || RS.cat : 'All Categories', catItems(RS.cat, v => set('cat', v))), dd('Status', RS.st || 'All Status', stateItems(RS.st, v => set('st', v))),
       dd('Period', P.label, [['month', 'Month'], ['quarter', 'Quarter'], ['year', 'Year']].map(([k, l]) => ({ label: l, checked: RS.mode === k, run: () => set('mode', k) })).concat([{ label: 'Custom date range…', checked: RS.mode === 'custom', run: custom }])),
       h('div', { class: 'vnav' }, h('button', { class: 'hbtn xs', 'aria-label': 'Previous period', onclick: () => move(-1) }, icon('back', 15)), h('span', {}, icon('date', 15), P.label), h('button', { class: 'hbtn xs', 'aria-label': 'Next period', onclick: () => move(1) }, icon('chevr', 15))),
@@ -417,7 +430,7 @@ export function kpiScreen() {
   state.ctx = { more: a => viewMore(a) };
   const from = KS.month, to = new Date(from.getFullYear(), from.getMonth() + 1, 0), pf = new Date(from.getFullYear(), from.getMonth() - 1, 1), pt = new Date(from.getFullYear(), from.getMonth(), 0);
   const wrap = h('div', { class: 'wrap home focus vpage v-kpi' });
-  wrap.append(head({ crumb: 'KPI', title: 'KPI Dashboard', desc: 'Project performance, turnaround time and KPI achievement.', ic: 'barchart', more: a => viewMore(a),
+  wrap.append(head({ group: 'reports', cur: 'kpi', crumb: 'Monthly KPI', title: 'KPI Dashboard', desc: 'Project performance, turnaround time and KPI achievement.', ic: 'barchart', more: a => viewMore(a),
     tools: [h('div', { class: 'vnav' }, h('span', {}, icon('date', 15), formatDate(from, 'MMM YYYY')), h('button', { class: 'hbtn xs', 'aria-label': 'Previous month', onclick: () => set('month', pf) }, icon('back', 15)), h('button', { class: 'hbtn xs', 'aria-label': 'Next month', onclick: () => set('month', new Date(from.getFullYear(), from.getMonth() + 1, 1)) }, icon('chevr', 15)),
       h('button', { class: 'cseg today', onclick: () => set('month', new Date(today.getFullYear(), today.getMonth(), 1)) }, 'This month')),
       dd('Category', KS.cat ? K.CODE[KS.cat] || KS.cat : 'All Categories', catItems(KS.cat, v => set('cat', v))), dd('Status', KS.st || 'All Status', stateItems(KS.st, v => set('st', v))),

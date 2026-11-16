@@ -9,7 +9,7 @@ import { formatDate, toISODate, parseDate, dateAdd, startOfDay } from './dates.j
 import { state, now as NOW, render, go, moreMenu, longPress, exportList } from './app.js';
 import * as C from './cols.js';
 import { badge, optPill, linkedField, formModal, newProjectSheet, rejectEcparFlow, resubmitEcparFlow, approveEcparFlow, rejectEcxFlow, resubmitEcxFlow, approveEcxFlow, editRejectionFlow } from './project.js';
-import { dueItems, completeItem, pickProject, logSheet, coverInto } from './home.js';
+import { dueItems, completeItem, pickProject, logSheet, coverInto, quickBtn, quickBar } from './home.js';
 import { promptBox } from './ui.js';
 
 const { g } = E;
@@ -143,7 +143,7 @@ export function focusScreen(kind) {
   const rows = base.filter(tab[3]).sort((a, b) => byCol?.(a, b) || sorters[S.sort]?.(a, b) || sorters.due(a, b) || a.cust.localeCompare(b.cust));
   for (const id of [...S.sel]) if (!rows.some(r => r.id === id)) S.sel.delete(id);
   wrap.append(metricsBar(def, base),
-    h('div', { class: 'fgrid' }, tableCard(kind, def, S, base, rows, n), h('aside', { class: 'fside' }, donutCard(def, base), barsCard(def, base), quickCard(kind))));
+    h('div', { class: 'fgrid full' }, tableCard(kind, def, S, base, rows, n))); // the charts were removed (the 4 numbers above already give the counts)
   return wrap;
 }
 function pageMenu(a, kind) {
@@ -157,7 +157,7 @@ function header(kind, def) {
     h('div', { class: 'fhead-in' },
       h('nav', { class: 'crumbs fcrumbs', 'aria-label': 'Breadcrumb' }, h('a', { href: '#/home', 'aria-label': 'Home' }, icon('home', 16)), icon('chevr', 14), h('span', {}, def.title)),
       h('div', { class: 'ftitle' }, h('span', { class: 'fic' }, icon(def.icon, 26)), h('div', {}, h('h1', {}, def.title), h('p', {}, def.desc)))),
-    h('div', { class: 'hero-a fhead-a' },
+    h('div', { class: 'hero-a fhead-a' }, quickCard(kind),
       h('button', { class: 'hbtn glass', 'aria-label': alerts ? `Notifications, ${alerts} due or overdue` : 'Notifications', onclick: () => go('#/inbox') }, icon('bell', 19), alerts ? h('i', { class: 'hdot' }) : null),
       h('button', { class: 'hbtn glass', 'aria-label': 'More options', onclick: e => pageMenu(e.currentTarget, kind) }, icon('more', 19))));
 }
@@ -192,7 +192,7 @@ function tableCard(kind, def, S, base, rows, n) {
     { label: 'Filter by any property…', icon: 'plus', run: () => addFilter() }, { label: 'Clear filters', icon: 'close', run: () => clearFilters(S) }], { width: 260 });
   const shown = rows.slice(0, S.show);
   const dbr = DB.kpiDb(), lay = layout(kind, dbr);
-  C.gridOf(list, [26, ...lay.lead.map(c => c.w)], lay.shared, [...lay.tail.map(c => c.w), 30]);
+  C.gridOf(list, [26, ...lay.lead.map(c => ({ id: c.id, w: c.w, fixed: c.fixed }))], lay.shared, [...lay.tail.map(c => ({ id: c.id, w: c.w, fixed: c.fixed })), 30]);
   const pageHead = c => h('span', { class: 'cc', role: 'columnheader' }, h('button', { class: 'chd', type: 'button', 'aria-label': c.label + ' column options', onclick: e => { e.stopPropagation(); menu(e.currentTarget, [
     { label: 'Rename column', icon: 'pencil', run: async () => { const v = await promptBox('Column name', c.label); if (v == null) return; const k = C.cfg(dbr), t = v.replace(/\s+/g, ' ').trim().slice(0, 60); if (!t || t === c.def) delete k.names[c.id]; else k.names[c.id] = t; C.save(dbr, k); render(); } },
     ...(c.fixed ? [] : [{ label: 'Hide on this page', icon: 'eye', run: () => { const k = C.cfg(dbr); k.page = { ...k.page, [kind]: [...new Set([...(k.page[kind] || []), c.id])] }; C.save(dbr, k); render(); } }])], { width: 220 }); } }, h('span', {}, c.label)));
@@ -201,6 +201,7 @@ function tableCard(kind, def, S, base, rows, n) {
       lay.shared.map(c => h('span', { class: 'cc', role: 'columnheader' }, C.headCell(dbr, c, { sort: S.col, onSort: c.p ? v => { S.col = v; render(); } : null, onFilter: addFilter }))), lay.tail.map(pageHead), h('span', { class: 'fc-act' })),
     ...shown.map(r => recordRow(kind, r, S, n, lay)),
     rows.length ? null : h('p', { class: 'hempty' }, active.length ? 'Nothing matches these filters. Clear them to see everything.' : { today: 'Nothing due today. Nice.', survey: 'No site survey is pending.', ecpar: 'No rejected ECPAR needs action.', ecx: 'No rejected ECX application here.' }[kind])].filter(Boolean));
+  C.attachResizers(list, dbr);
   return h('section', { class: 'hcard ftable' },
     h('div', { class: 'fbar' }, h('div', { class: 'dchips' }, tabEls),
       h('div', { class: 'ftools' }, h('label', { class: 'hsearch glass fsearch' }, icon('search', 16), search),
@@ -259,7 +260,7 @@ const PAGE_COLS = {
 const SKIP_SHARED = ['Status', 'Due Date', 'Priority'];
 function layout(kind, dbr) {
   const hid = C.pageHidden(dbr, kind), pc = PAGE_COLS[kind];
-  const mk = c => ({ ...c, id: 'f:' + kind + ':' + c.k, label: C.pageLabel(dbr, 'f:' + kind + ':' + c.k, c.def) });
+  const W = C.cfg(dbr).widths, mk = c => { const id = 'f:' + kind + ':' + c.k; return { ...c, id, label: C.pageLabel(dbr, id, c.def), w: W[id] || c.w, fixed: !!W[id] }; };
   const allLead = pc.lead.map(mk), allTail = pc.tail.map(mk);
   return { allLead, allTail, lead: allLead.filter(c => !hid.has(c.id)), tail: allTail.filter(c => !hid.has(c.id)),
     shared: C.columns(dbr, { computed: false, skip: SKIP_SHARED }) };
@@ -273,8 +274,8 @@ function recordRow(kind, r, S, n, lay) {
   const more = h('button', { class: 'c-act ebtn fc-act', 'aria-label': 'Actions for ' + r.cust, onclick: e => { e.stopPropagation(); rowMenu(kind, r, e.currentTarget, n); } }, icon('more', 18));
   const dbr = DB.kpiDb();
   const pageCell = c => h('span', { class: 'cc fc fpc-' + c.k, 'data-col': c.id }, c.cell(r));
-  const shared = c => { const el = C.cell(dbr, c, r.row); if (c.p.type === 'title') el.append(h('button', { class: 'copen', type: 'button', 'aria-label': 'Open ' + r.cust, title: 'Open', onclick: e => { e.stopPropagation(); open(); } }, icon('expand', 15))); return el; };
-  const el = h('div', { class: 'frow' + (S.sel.has(r.id) ? ' sel' : ''), role: 'row', tabindex: '0', onclick: open, onkeydown: e => { if (e.key === 'Enter' && e.target === el) open(); } },
+  const shared = c => { const el = C.cell(dbr, c, r.row); if (c.p.type === 'title') el.append(h('button', { class: 'copen', type: 'button', 'aria-label': 'Open ' + r.cust, title: 'Open', onclick: e => { e.stopPropagation(); open(); } }, 'Open')); return el; };
+  const el = h('div', { class: 'frow' + (S.sel.has(r.id) ? ' sel' : ''), role: 'row', 'data-rid': r.row.id, tabindex: '0', onclick: open, onkeydown: e => { if (e.key === 'Enter' && e.target === el) open(); } },
     h('span', { class: 'fc-chk' }, chk), ...lay.lead.map(pageCell), ...lay.shared.map(shared), ...lay.tail.map(pageCell), more);
   longPress(el, () => rowMenu(kind, r, el, n));
   return el;
@@ -355,7 +356,7 @@ function barsCard(def, base) {
       : h('p', { class: 'hempty' }, 'Nothing to break down yet.'));
 }
 function quickCard(kind) {
-  const qa = (ic, label, run) => h('button', { class: 'qa', onclick: run }, icon(ic, 20), h('span', {}, label));
+  const qa = quickBtn;
   const pickFrom = async (title, list) => {
     if (!list.length) { toast('Nothing in this list right now.'); return null; }
     return new Promise(res => { let chosen = null;
@@ -371,16 +372,16 @@ function quickCard(kind) {
     qa('ecpar', 'Add ECPAR', async () => { const row = await pickProject('Add ECPAR to…', { fullOnly: true }); if (!row) return; if (E.ecparOf(row)) { toast('This project already has its ECPAR. Opening it.'); } else { E.ecpar(row); E.log(row, 'ECPAR', 'ECPAR record added.', { ecpar: true }); } go('#/project/' + row.id + '/ecpar'); }), logQA];
   else if (kind === 'survey') btns = [...common,
     qa('date', 'Schedule Site Survey', async () => { const r = await pickFrom('Schedule which survey?', recs().filter(x => x.status !== 'Scheduled')); if (r) schedule(r); }),
-    qa('pencil', 'Update Site Survey', async () => { const r = await pickFrom('Update which survey?', recs()); if (r) menu(document.querySelector('.f-survey .qgrid') || document.body, [{ label: r.scheduled ? 'Reschedule' : 'Schedule', icon: 'date', run: () => schedule(r) }, { label: 'Mark completed', icon: 'check', run: () => completeSurveyFlow(r, NOW()) }, { label: 'Record findings', icon: 'pencil', run: () => findingsFlow(r) }]); }), logQA];
+    qa('pencil', 'Update Site Survey', async () => { const r = await pickFrom('Update which survey?', recs()); if (r) menu(document.querySelector('.f-survey .qbar') || document.body, [{ label: r.scheduled ? 'Reschedule' : 'Schedule', icon: 'date', run: () => schedule(r) }, { label: 'Mark completed', icon: 'check', run: () => completeSurveyFlow(r, NOW()) }, { label: 'Record findings', icon: 'pencil', run: () => findingsFlow(r) }]); }), logQA];
   else if (kind === 'ecpar') btns = [
     qa('expand', 'Review ECPAR', async () => { const r = await pickFrom('Review which ECPAR?', recs()); if (r) go('#/project/' + r.row.id + '/ecpar'); }),
-    qa('pencil', 'Update Revision', async () => { const r = await pickFrom('Update which ECPAR?', recs()); if (r) menu(document.querySelector('.f-ecpar .qgrid') || document.body, [...E.ECPAR_ACTIVE.map(s => ({ label: 'Status: ' + s, checked: r.status === s, run: () => { E.setEcparStatus(r.row, s); render(); } })), '-', { label: 'Edit rejection details', icon: 'pencil', run: async () => { if (await editRejectionFlow(E.ecpar(r.row), E.ECPAR_REASONS)) render(); } }]); }),
+    qa('pencil', 'Update Revision', async () => { const r = await pickFrom('Update which ECPAR?', recs()); if (r) menu(document.querySelector('.f-ecpar .qbar') || document.body, [...E.ECPAR_ACTIVE.map(s => ({ label: 'Status: ' + s, checked: r.status === s, run: () => { E.setEcparStatus(r.row, s); render(); } })), '-', { label: 'Edit rejection details', icon: 'pencil', run: async () => { if (await editRejectionFlow(E.ecpar(r.row), E.ECPAR_REASONS)) render(); } }]); }),
     qa('redo', 'Resubmit ECPAR', async () => { const r = await pickFrom('Resubmit which ECPAR?', recs()); if (r && await resubmitEcparFlow(r.row)) render(); }), logQA];
   else btns = [
     qa('expand', 'Review ECX', async () => { const r = await pickFrom('Review which ECX?', recs().filter(x => x.status !== 'Closed')); if (r) go('#/project/' + r.row.id + '/ecx'); }),
-    qa('pencil', 'Update ECX', async () => { const r = await pickFrom('Update which ECX?', recs()); if (r) menu(document.querySelector('.f-ecx .qgrid') || document.body, [...['Pending Action', 'In Review', 'Ready to Resubmit', 'Closed'].map(s => ({ label: 'Status: ' + s, checked: r.status === s, run: () => { if (s === 'Closed') E.closeEcx(r.row, r.x); else E.setEcxStatus(r.row, r.x, s); render(); } })), '-', { label: 'Edit rejection details', icon: 'pencil', run: async () => { if (await editRejectionFlow(r.x, E.ECX_REASONS)) render(); } }]); }),
+    qa('pencil', 'Update ECX', async () => { const r = await pickFrom('Update which ECX?', recs()); if (r) menu(document.querySelector('.f-ecx .qbar') || document.body, [...['Pending Action', 'In Review', 'Ready to Resubmit', 'Closed'].map(s => ({ label: 'Status: ' + s, checked: r.status === s, run: () => { if (s === 'Closed') E.closeEcx(r.row, r.x); else E.setEcxStatus(r.row, r.x, s); render(); } })), '-', { label: 'Edit rejection details', icon: 'pencil', run: async () => { if (await editRejectionFlow(r.x, E.ECX_REASONS)) render(); } }]); }),
     qa('redo', 'Resubmit ECX', async () => { const r = await pickFrom('Resubmit which ECX?', recs().filter(x => x.active)); if (r && await resubmitEcxFlow(r.row, r.x)) render(); }), logQA];
-  return h('section', { class: 'hcard fpanel' }, h('div', { class: 'chead' }, icon('play', 18), h('h2', {}, 'Quick Actions')), h('div', { class: 'qgrid' }, btns));
+  return quickBar(btns);
 }
 
 /** how many records each Focus page lists (no filters): used by the sidebar so the numbers always agree */

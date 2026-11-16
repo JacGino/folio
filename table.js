@@ -170,7 +170,7 @@ function colHandles(dbr, v, ps) {
   let x = 0;
   return ps.map(p => { x += colW(p, v); return h('span', { class: 'colrz', 'aria-hidden': 'true', title: 'Drag to change column width. Double-tap to reset.', style: { left: (x - 6) + 'px' }, onpointerdown: e => resize(e, dbr, v, p) }); });
 }
-export { popEdit };
+export { popEdit, drag };
 function resize(e, dbr, v, p) {
   const grid = e.currentTarget.closest('.grid');
   if (doubleTap('c' + p.id)) { lastTap = { key: '', t: 0 }; const w = { ...(v.widths || {}) }; delete w[p.id]; v.widths = w; applyCols(grid, dbr, v); saveView(dbr, v); return; }

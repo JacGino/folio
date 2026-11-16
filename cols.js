@@ -7,17 +7,18 @@ import { h, icon, menu, sheet, promptBox, toast, confirmBox } from './ui.js';
 import { propEditor } from './page.js';
 import { parseDate, startOfDay, toISODate, formatDate } from './dates.js';
 import { render, now as NOW } from './app.js';
-import { editProp } from './table.js';
+import { editProp, drag } from './table.js';
+import { zoomNow } from './ui.js';
 
 /** columns worked out from linked records (not tracker properties): shown in Projects and Focus tables, never in the raw tracker table */
 export const COMPUTED = [
-  { id: 'x:survey', label: 'Site Survey', w: 80 },
-  { id: 'x:ecpar', label: 'ECPAR', w: 116 },
-  { id: 'x:ecx', label: 'ECX', w: 52 },
-  { id: 'x:days', label: 'Days Left', w: 72 }];
+  { id: 'x:survey', label: 'Site Survey', w: 96 },
+  { id: 'x:ecpar', label: 'ECPAR', w: 132 },
+  { id: 'x:ecx', label: 'ECX', w: 64 },
+  { id: 'x:days', label: 'Days Left', w: 88 }];
 // what the Projects table showed before this setting existed: used once, on first use
 const FIRST_SHOWN = ['Project Category', 'x:survey', 'x:ecpar', 'x:ecx', 'Date Assigned', 'Due Date', 'x:days', 'Status'];
-const W = { title: 180, text: 150, number: 90, select: 116, status: 116, multi: 130, date: 92, checkbox: 72, url: 170, files: 150, formula: 190, created: 120 };
+const W = { title: 196, text: 166, number: 100, select: 132, status: 132, multi: 146, date: 112, checkbox: 72, url: 170, files: 150, formula: 190, created: 120 };
 export const propW = p => /address|remark|note/i.test(p.name) ? 230 : W[p.type] || 150;
 
 const titleOf = dbr => DB.props(dbr).find(p => p.type === 'title');
@@ -34,9 +35,10 @@ export function cfg(dbr) {
   }
   const order = (c.order || []).filter(i => ids.includes(i) && i !== tid);
   for (const i of ids) if (!order.includes(i) && i !== tid) order.push(i); // a property added later is shown at the end
-  return { order: tid ? [tid, ...order] : order, hidden: (c.hidden || []).filter(i => ids.includes(i) && i !== tid), names: { ...(c.names || {}) }, page: { ...(c.page || {}) } };
+  return { order: tid ? [tid, ...order] : order, hidden: (c.hidden || []).filter(i => ids.includes(i) && i !== tid), names: { ...(c.names || {}) }, page: { ...(c.page || {}) },
+    widths: { ...(c.widths || {}) }, heights: { ...(c.heights || {}) } };
 }
-export function save(dbr, c) { D.update(dbr.id, { colcfg: { order: c.order, hidden: c.hidden, names: c.names, page: c.page } }); }
+export function save(dbr, c) { D.update(dbr.id, { colcfg: { order: c.order, hidden: c.hidden, names: c.names, page: c.page, widths: c.widths || {}, heights: c.heights || {} } }); }
 
 export const defLabel = (dbr, id) => id.startsWith('p:') ? (DB.props(dbr).find(p => 'p:' + p.id === id)?.name || '') : (COMPUTED.find(c => c.id === id)?.label || '');
 export const label = (dbr, id, def) => cfg(dbr).names[id] || def || defLabel(dbr, id);
@@ -46,21 +48,59 @@ export function columns(dbr, { computed = true, skip = [] } = {}) {
   const c = cfg(dbr), hid = new Set(c.hidden), ps = DB.props(dbr);
   return c.order.filter(id => !hid.has(id) && (computed || id.startsWith('p:'))).map(id => {
     const p = id.startsWith('p:') ? ps.find(q => 'p:' + q.id === id) : null, x = COMPUTED.find(k => k.id === id);
-    return { id, p, label: c.names[id] || (p ? p.name : x.label), w: p ? propW(p) : x.w };
+    return { id, p, label: c.names[id] || (p ? p.name : x.label), w: c.widths[id] || (p ? propW(p) : x.w), fixed: !!c.widths[id] };
   }).filter(col => !skip.includes(col.p?.name));
 }
 /** grid columns: each column has a minimum width and grows with the space left over; the table scrolls sideways when it does not fit */
 export function gridOf(list, lead, cols, tail) {
-  const ws = [...lead, ...cols.map(c => c.w), ...tail];
-  list.style.setProperty('--ccols', ws.map((w, i) => i === 0 || i === ws.length - 1 ? w + 'px' : `minmax(${w}px, ${w}fr)`).join(' '));
-  list.style.setProperty('--cmin', ws.reduce((a, b) => a + b + 8, 0) + 'px');
-  list.classList.add('ctbl');
+  // a column you resized keeps its exact width; the others have a minimum width and share the space left over
+  const spec = [...lead.map(w => typeof w === 'number' ? { w, fixed: true } : w), ...cols.map(c => ({ id: c.id, w: c.w, fixed: c.fixed })), ...tail.map(w => typeof w === 'number' ? { w, fixed: true } : w)];
+  list._spec = spec; regrid(list); list.classList.add('ctbl');
+}
+function regrid(list) {
+  const spec = list._spec || [];
+  list.style.setProperty('--ccols', spec.map(s => s.fixed ? s.w + 'px' : `minmax(${s.w}px, ${s.w}fr)`).join(' '));
+  list.style.setProperty('--cmin', spec.reduce((a, s) => a + s.w + 8, 0) + 'px');
+}
+// ---------- resize columns and rows (hold the line, move, let go) ----------
+let lastTap = { key: '', t: 0 };
+const dbl = key => { const hit = lastTap.key === key && Date.now() - lastTap.t < 400; lastTap = hit ? { key: '', t: 0 } : { key, t: Date.now() }; return hit; };
+/** add the drag lines to a Projects / Focus table: one per column (in the header) and one under every row */
+export function attachResizers(list, dbr) {
+  const head = list.querySelector(':scope > .hhd, :scope > .fhd'); if (!head || !list._spec) return;
+  const cells = [...head.children];
+  cells.forEach((cell, i) => {
+    const s = list._spec[i]; if (!s || !s.id) return;
+    cell.classList.add('rzc');
+    cell.append(h('span', { class: 'crz', 'aria-hidden': 'true', title: 'Hold and drag to change the column width. Double-tap to reset.', onclick: e => e.stopPropagation(),
+      onpointerdown: e => { e.stopPropagation(); colDrag(e, list, dbr, s, cell); } }));
+  });
+  const c = cfg(dbr);
+  for (const row of list.querySelectorAll(':scope > .prow:not(.hhd), :scope > .frow:not(.fhd)')) {
+    const id = row.dataset.rid; if (!id) continue;
+    if (c.heights[id]) { row.style.height = c.heights[id] + 'px'; row.classList.add('rfix'); }
+    row.append(h('span', { class: 'rrz', 'aria-hidden': 'true', title: 'Hold and drag to change the row height. Double-tap to reset.', onclick: e => e.stopPropagation(),
+      onpointerdown: e => { e.stopPropagation(); rowDrag(e, dbr, row, id); } }));
+  }
+  requestAnimationFrame(() => list.style.setProperty('--tblh', list.scrollHeight + 'px'));
+}
+function colDrag(e, list, dbr, s, cell) {
+  if (dbl('c' + s.id)) { const c = cfg(dbr); delete c.widths[s.id]; save(dbr, c); render(); return; }
+  const z = zoomNow(), w0 = Math.round(cell.getBoundingClientRect().width / z);
+  drag(e, dx => { s.w = Math.max(60, Math.min(900, Math.round(w0 + dx / z))); s.fixed = true; regrid(list); },
+    moved => { if (!moved) return; const c = cfg(dbr); c.widths[s.id] = s.w; save(dbr, c); list.style.setProperty('--tblh', list.scrollHeight + 'px'); });
+}
+function rowDrag(e, dbr, row, id) {
+  if (dbl('r' + id)) { const c = cfg(dbr); delete c.heights[id]; save(dbr, c); row.style.height = ''; row.classList.remove('rfix'); return; }
+  const z = zoomNow(), h0 = row.getBoundingClientRect().height / z; let ht = h0;
+  drag(e, (dx, dy) => { ht = Math.max(36, Math.min(800, Math.round(h0 + dy / z))); row.style.height = ht + 'px'; row.classList.add('rfix'); },
+    moved => { if (!moved) return; const c = cfg(dbr); c.heights[id] = ht; save(dbr, c); });
 }
 
 /** one editable cell for a tracker property: tapping it edits the value and does not open the project */
 export function cell(dbr, col, row) {
   const ed = propEditor(D.getRec(row.id) || row, col.p, dbr, { compact: true, dfmt: 'DD/MM/YYYY' });
-  return h('span', { class: 'cc ce' + (col.p.type === 'title' ? ' ctitle' : ''), 'data-col': col.id, onclick: e => e.stopPropagation(), onkeydown: e => e.stopPropagation() }, ed);
+  return h('span', { class: 'cc ce' + (col.p.type === 'title' ? ' ctitle' : '') + (col.p.type === 'date' || col.p.type === 'created' ? ' cdate' : ''), 'data-col': col.id, onclick: e => e.stopPropagation(), onkeydown: e => e.stopPropagation() }, ed);
 }
 // after an edit in a table: redraw when the person has finished (the row's other columns, counts and charts follow)
 let redraw = 0;
