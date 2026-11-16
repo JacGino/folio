@@ -1898,7 +1898,8 @@ span[data-s="s"] { font-size: .85em; } span[data-s="l"] { font-size: 1.25em; } s
 .dgrid { grid-template-areas: "due mid trend" "cat cat cat" "cal cal cal"; }
 @container (max-width: 1100px) { .dgrid { grid-template-areas: "due due" "mid trend" "cat cat" "cal cal"; } }
 @media (max-width: 1100px) { .dgrid { grid-template-areas: "due due" "mid trend" "cat cat" "cal cal"; } }
-@media (max-width: 760px) { .dgrid { grid-template-areas: "due" "mid" "trend" "cat" "cal"; } }
+/* one column only when the content itself is narrow (same measure as the column count, so cards never sit in half the width) */
+@container dash (max-width: 640px) { .dgrid { grid-template-columns: minmax(0, 1fr); grid-template-areas: "due" "mid" "trend" "cat" "cal"; } }
 .hero-a, .fhead-a { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .qbar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; margin-right: 4px; }
 .qs { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border: 0.5px solid color-mix(in srgb, var(--ink) 10%, transparent); border-radius: 17px;
@@ -1969,3 +1970,22 @@ html.contrasted { filter: contrast(var(--contrast)); }
 .crow > span { flex: 0 0 auto !important; }
 .crow .cslider { flex: 1; min-width: 90px; accent-color: var(--ink); height: 30px; touch-action: pan-x; }
 .agrp .crow { border-top: 1px solid var(--rule); }
+
+/* menu / back / forward in the cover (top-left), same round buttons as the right side; the floating bar goes away there */
+.hnav { position: absolute; top: 12px; left: 14px; z-index: 3; display: flex; gap: 8px; }
+.hnav .hbtn { background: rgba(255,255,255,calc(var(--lg-a, .5) + .2)); }
+body[data-layout="wide"] .hnav, body[data-layout="rail"] .hnav { display: none; }
+body:not([data-layout="wide"]):not([data-layout="rail"]):has(#main .hnav) .topbar { display: none; }
+body:not([data-layout="wide"]):not([data-layout="rail"]):has(#main .hnav) #main > .wrap { padding-top: calc(env(safe-area-inset-top) + 12px) !important; }
+/* room for the buttons above the cover's text */
+body:not([data-layout="wide"]):not([data-layout="rail"]) .fhead:has(.hnav) .fhead-in { padding-top: 58px !important; }
+body:not([data-layout="wide"]):not([data-layout="rail"]) .hero:has(.hnav) .hero-in { padding-top: 58px !important; }
+body:not([data-layout="wide"]):not([data-layout="rail"]) .hero:has(.hnav) .cover { height: 180px !important; }
+/* phones: slimmer buttons so the left group (menu ← →) and the right group fit side by side */
+@media (max-width: 520px) {
+  .hnav { left: 10px; gap: 4px; } .hnav .hbtn { width: 32px; height: 32px; }
+  .hero .hero-a, .fhead-a { right: 10px !important; gap: 4px !important; } .hero-a .hbtn, .fhead-a .hbtn { width: 32px !important; height: 32px !important; }
+  .qbar { gap: 3px !important; margin-right: 0 !important; } .qs { width: 30px !important; height: 30px !important; }
+  body:not([data-layout="wide"]):not([data-layout="rail"]) .hero:has(.hnav) .cover { height: 168px !important; }
+  body:not([data-layout="wide"]):not([data-layout="rail"]) .hero:has(.hnav) .hero-in, body:not([data-layout="wide"]):not([data-layout="rail"]) .fhead:has(.hnav) .fhead-in { padding-top: 52px !important; }
+}

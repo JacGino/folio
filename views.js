@@ -9,7 +9,7 @@ import { h, icon, menu, sheet, toast, confirmBox, textbox } from './ui.js';
 import { formatDate, startOfDay, toISODate, parseDate } from './dates.js';
 import { state, now as NOW, render, go, moreMenu, download } from './app.js';
 import { newProjectSheet, badge } from './project.js';
-import { coverInto } from './home.js';
+import { coverInto, heroNav } from './home.js';
 
 const DAY = 864e5;
 /** set CSS custom properties (the h() helper only sets normal style properties) */
@@ -44,7 +44,7 @@ export function viewTabs(group, cur) {
 }
 function head({ crumb, title, desc, ic, tools, more, group, cur }) {
   const n = NOW(), alerts = DB.kpiDb() ? DB.kpiTasks(n).filter(t => t.days != null && t.days <= 0).length + E.dueTasks(n).length : 0;
-  return h('header', { class: 'fhead vhead' }, coverInto(h('div', { class: 'fcover', 'aria-hidden': 'true' })),
+  return h('header', { class: 'fhead vhead' }, coverInto(h('div', { class: 'fcover', 'aria-hidden': 'true' })), heroNav(),
     h('div', { class: 'fhead-in' },
       h('nav', { class: 'crumbs fcrumbs', 'aria-label': 'Breadcrumb' }, h('a', { href: '#/home', 'aria-label': 'Home' }, icon('home', 16)), icon('chevr', 14), group ? h('a', { class: 'cv', href: TABS[group].items[0][0] === '#/kpi' ? '#/kpi' : '#/projects' }, TABS[group].label) : h('span', { class: 'cv' }, 'Views'), icon('chevr', 14), h('span', {}, crumb)),
       h('div', { class: 'ftitle' }, h('span', { class: 'fic' }, icon(ic, 26)), h('div', {}, h('h1', {}, title), h('p', {}, desc))),

@@ -6,7 +6,7 @@ import * as DB from './db.js';
 import * as E from './entities.js';
 import { h, icon, menu, sheet, toast, confirmBox, promptBox, strip } from './ui.js';
 import { formatDate, toISODate, dateBetween, dateAdd, startOfDay, isDate, parseDate } from './dates.js';
-import { state, now as NOW, render, go, moreMenu, L } from './app.js';
+import { state, now as NOW, render, go, moreMenu, L, toggleSide, back } from './app.js';
 import { newProjectSheet, setProjectFilter, badge } from './project.js';
 import { coverAndPhoto } from './page.js';
 import * as KF from './kpi.js';
@@ -54,7 +54,7 @@ function hero(n) {
   const part = hr < 12 ? 'Morning' : hr < 18 ? 'Afternoon' : 'Evening';
   const name = L('profile.name', ''), first = name.trim().split(/\s+/)[0];
   const alerts = DB.kpiDb() ? DB.kpiTasks(n).filter(t => t.days != null && t.days <= 0).length + E.dueTasks(n).length : 0;
-  return h('header', { class: 'hero' }, ...out,
+  return h('header', { class: 'hero' }, ...out, heroNav(),
     h('div', { class: 'hero-in' },
       av,
       h('div', { class: 'hero-t' }, h('small', {}, 'Home'), h('h1', {}, `Good ${part}${first ? ', ' + first : ''} 👋`), h('p', {}, 'Here’s your planning overview today.')),
@@ -292,6 +292,11 @@ export function logSheet(row) {
 }
 /** Quick Actions: small buttons at the top right of the page header (shared look with the Focus pages) */
 export const quickBtn = (ic, label, run) => h('button', { class: 'qs', type: 'button', title: label, 'aria-label': label, onclick: run }, icon(ic, 16), h('span', {}, label));
+/** menu, back and forward as round buttons in the cover (top-left), like the buttons on the right; replaces the floating bar on phones, the Duo inner screen and iPad */
+export const heroNav = () => h('div', { class: 'hnav', role: 'toolbar', 'aria-label': 'Navigation' },
+  h('button', { class: 'hbtn glass', 'aria-label': 'Show or hide the menu', onclick: () => toggleSide() }, icon('sidebar', 19)),
+  h('button', { class: 'hbtn glass', 'aria-label': 'Back', onclick: () => back() }, icon('arrowl', 19)),
+  h('button', { class: 'hbtn glass', 'aria-label': 'Forward', onclick: () => history.forward() }, icon('arrowr', 19)));
 export const quickBar = btns => h('div', { class: 'qbar', role: 'toolbar', 'aria-label': 'Quick actions' }, btns);
 function quickActions() {
   const qa = quickBtn;

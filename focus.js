@@ -9,7 +9,7 @@ import { formatDate, toISODate, parseDate, dateAdd, startOfDay } from './dates.j
 import { state, now as NOW, render, go, moreMenu, longPress, exportList } from './app.js';
 import * as C from './cols.js';
 import { badge, optPill, linkedField, formModal, newProjectSheet, rejectEcparFlow, resubmitEcparFlow, approveEcparFlow, rejectEcxFlow, resubmitEcxFlow, approveEcxFlow, editRejectionFlow } from './project.js';
-import { dueItems, completeItem, pickProject, logSheet, coverInto, quickBtn, quickBar } from './home.js';
+import { dueItems, completeItem, pickProject, logSheet, coverInto, quickBtn, quickBar, heroNav } from './home.js';
 import { promptBox } from './ui.js';
 
 const { g } = E;
@@ -153,7 +153,7 @@ function pageMenu(a, kind) {
 // ---------- header with the cover banner ----------
 function header(kind, def) {
   const n = NOW(), alerts = DB.kpiDb() ? DB.kpiTasks(n).filter(t => t.days != null && t.days <= 0).length + E.dueTasks(n).length : 0;
-  return h('header', { class: 'fhead' }, coverInto(h('div', { class: 'fcover', 'aria-hidden': 'true' })),
+  return h('header', { class: 'fhead' }, coverInto(h('div', { class: 'fcover', 'aria-hidden': 'true' })), heroNav(),
     h('div', { class: 'fhead-in' },
       h('nav', { class: 'crumbs fcrumbs', 'aria-label': 'Breadcrumb' }, h('a', { href: '#/home', 'aria-label': 'Home' }, icon('home', 16)), icon('chevr', 14), h('span', {}, def.title)),
       h('div', { class: 'ftitle' }, h('span', { class: 'fic' }, icon(def.icon, 26)), h('div', {}, h('h1', {}, def.title), h('p', {}, def.desc)))),
