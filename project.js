@@ -330,13 +330,28 @@ export function projectScreen(id, tab = 'overview') {
       h('div', { class: 'kcell' }, h('div', {}, h('small', {}, 'Days Left'), info.finished || info.archived ? h('span', { class: 'muted' }, '—') : daysBadge(dueDays))),
       h('div', { class: 'kcell kprog' }, h('div', {}, h('small', {}, 'KPI Progress'), h('div', { class: 'pbar' }, h('b', {}, pct + '%'), h('span', { class: 'bar' }, h('i', { style: { width: pct + '%' } }))),
         h('small', { class: 'kd' + (kd != null && kd > 7 ? ' late' : '') }, kd == null ? 'Set Date Assigned for KPI' : (info.completed ? 'Done in ' : 'Day ') + kd + (info.completed ? ' days' : ' of 7') + (kd > 7 ? ' · over KPI' : ' · within KPI'))))),
-    h('div', { class: 'ptabs htabs', role: 'tablist' }, TABS.map(([k, l, ic, c]) => h('a', { class: 'htab' + (tab === k ? ' on' : ''), role: 'tab', 'aria-selected': tab === k ? 'true' : 'false', href: `#/project/${id}/${k}`, onclick: e => { e.preventDefault(); go(`#/project/${id}/${k}`, { replace: true }); } },
-      icon(ic, 16), h('span', {}, l), c ? h('span', { class: 'hcount' }, c) : null))),
+    keepTabScroll(id, h('div', { class: 'ptabs htabs', role: 'tablist' }, TABS.map(([k, l, ic, c]) => h('a', { class: 'htab' + (tab === k ? ' on' : ''), role: 'tab', 'aria-selected': tab === k ? 'true' : 'false', href: `#/project/${id}/${k}`, onclick: e => { e.preventDefault(); go(`#/project/${id}/${k}`, { replace: true }); } },
+      icon(ic, 16), h('span', {}, l), c ? h('span', { class: 'hcount' }, c) : null)))),
     h('div', { class: 'pbody' }, ({ overview, tasks: tasksTab, survey: surveyTab, ecpar: ecparTab, cc: (r, i) => ccTab(r, i), ecx: ecxTab, docs: docsTab, log: logTab })[tab](row, info, n)));
   return wrap;
 }
 
 // ---------- Overview ----------
+/** the tab strip keeps its sideways scroll when a tab is picked (the page redraws), and the picked tab stays in view */
+const tabScroll = { id: null, x: 0 };
+function keepTabScroll(id, strip) {
+  if (tabScroll.id !== id) { tabScroll.id = id; tabScroll.x = 0; }
+  strip.addEventListener('scroll', () => { tabScroll.x = strip.scrollLeft; }, { passive: true });
+  requestAnimationFrame(() => {
+    strip.scrollLeft = tabScroll.x;
+    const on = strip.querySelector('.htab.on'); if (!on) return;
+    const l = on.offsetLeft - strip.offsetLeft, r = l + on.offsetWidth;
+    if (l < strip.scrollLeft) strip.scrollLeft = Math.max(0, l - 16);
+    else if (r > strip.scrollLeft + strip.clientWidth) strip.scrollLeft = r - strip.clientWidth + 16;
+    tabScroll.x = strip.scrollLeft;
+  });
+  return strip;
+}
 /** Project Reference = the ECPAR No (kept on the ECPAR record); report-only categories have no ECPAR */
 function ecparRefField(row, info) {
   if (E.reportOnly(info.category)) return h('span', { class: 'muted' }, 'Not applicable');

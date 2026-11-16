@@ -1963,3 +1963,9 @@ span[data-s="s"] { font-size: .85em; } span[data-s="l"] { font-size: 1.25em; } s
 @media (max-width: 430px) { body[data-layout="phone"] #fnav .bottom .b, body[data-layout] #fnav .bottom .b { width: 39px !important; height: 39px !important; } body[data-layout="phone"] #fnav .bottom .pill { gap: 1px; } body[data-layout="phone"] #fnav .bottom { gap: 8px; } }
 .vfit { width: 100%; min-width: 0; }
 #lock { transition: opacity .2s ease; } #lock.out { opacity: 0; pointer-events: none; }
+
+/* contrast (⋯ → Contrast): applied to the whole app only when changed from 100% */
+html.contrasted { filter: contrast(var(--contrast)); }
+.crow > span { flex: 0 0 auto !important; }
+.crow .cslider { flex: 1; min-width: 90px; accent-color: var(--ink); height: 30px; touch-action: pan-x; }
+.agrp .crow { border-top: 1px solid var(--rule); }

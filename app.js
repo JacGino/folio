@@ -56,6 +56,19 @@ export const zoomFactor = () => zoomPct / 100;
 function applyZoom() { document.documentElement.style.setProperty('--zoom', String(zoomPct / 100)); document.documentElement.classList.toggle('zoomed', zoomPct !== 100); } // zoom only costs anything when it is not 100%
 applyZoom();
 function setZoom(p) { zoomPct = Math.max(70, Math.min(200, Math.round(p / 10) * 10)); try { localStorage.setItem('folio-zoom', zoomPct); } catch {} applyZoom(); }
+// ---------- contrast (per device, ⋯ → Contrast slider under Zoom) ----------
+let contrastPct = 100;
+try { contrastPct = Math.max(60, Math.min(160, +localStorage.getItem('folio-contrast') || 100)); } catch {}
+function applyContrast() { const r = document.documentElement; r.style.setProperty('--contrast', String(contrastPct / 100)); r.classList.toggle('contrasted', contrastPct !== 100); } // costs nothing at 100%
+applyContrast();
+function setContrast(p) { contrastPct = Math.max(60, Math.min(160, Math.round(p / 5) * 5)); try { localStorage.setItem('folio-contrast', contrastPct); } catch {} applyContrast(); }
+function contrastRow() {
+  const pct = h('b', { class: 'zpct' }, contrastPct + '%');
+  const slider = h('input', { type: 'range', class: 'cslider', min: 60, max: 160, step: 5, value: contrastPct, 'aria-label': 'Contrast',
+    oninput: e => { setContrast(+e.target.value); pct.textContent = contrastPct + '%'; }, onclick: e => e.stopPropagation() });
+  return h('div', { class: 'zoomrow crow' }, icon('paint', 16), h('span', {}, 'Contrast'), slider, pct,
+    h('button', { class: 'zb zr', 'aria-label': 'Reset contrast', onclick: e => { e.stopPropagation(); setContrast(100); slider.value = 100; pct.textContent = '100%'; } }, '↺'));
+}
 function zoomRow() {
   const pct = h('b', { class: 'zpct' }, zoomPct + '%');
   const step = d => e => { e.stopPropagation(); setZoom(zoomPct + d); pct.textContent = zoomPct + '%'; };
@@ -108,7 +121,7 @@ export function moreMenu(anchor, { extra = [], rec = null, onTrash = null } = {}
   const photo = (field, label) => () => pickImage(async f => { const ref = await Sync.addFile(null, f); Sync.soon(); D.update(rec.id, { [field]: ref }); render(); }, { max: field === 'cover' ? 2000 : 800 });
   const body = h('div', { class: 'actions' },
     h('div', { class: 'agrp fonts' }, fontCard('default', 'Default', '-apple-system, sans-serif'), fontCard('serif', 'Serif', 'var(--serif)'), fontCard('mono', 'Mono', 'var(--mono)')),
-    h('div', { class: 'agrp' }, zoomRow()),
+    h('div', { class: 'agrp' }, zoomRow(), contrastRow()),
     extra.length ? grp(extra.map(e => act(e.icon || 'chevr', e.label, e.run))) : null,
     grp(rec ? act('star', fav ? 'Remove from Favourites' : 'Add to Favourites', () => { D.update(rec.id, { fav: !fav }); toast(fav ? 'Removed from Favourites' : 'Added to Favourites'); render(); }) : null,
       act('export', 'Share', () => ctx.export ? ctx.export(anchor) : window.print()),
@@ -277,7 +290,8 @@ function renderNow() {
   } catch (e) { console.error(e); main.append(h('div', { class: 'wrap' }, h('p', { class: 'empty' }, 'Something went wrong showing this screen: ' + e.message))); }
   main.prepend(topbar());
   document.body.classList.toggle('on-home', ['home', 'activity', 'projects', 'project', 'today', 'survey', 'ecpar', 'ecx', 'timeline', 'board', 'reports', 'kpi'].includes(r[0]));
-  if (layoutMode() !== 'wide') document.body.classList.remove('side-open');
+  // the menu closes when you go to another page, not when the same page redraws after a save or a sync
+  if (!same && layoutMode() !== 'wide') document.body.classList.remove('side-open');
   applyLock();
   if (['p', 'r'].includes(r[0]) && r[1]) noteRecent(r[1]);
   if (same) main.scrollTop = scroll;
@@ -617,7 +631,11 @@ export async function boot() {
   try { if (localStorage.getItem('folio-side') === 'closed') document.body.classList.add('side-closed'); } catch {}
   document.body.append(h('div', { id: 'app' }, h('div', { id: 'scrim', onclick: () => toggleSide(false) }), h('nav', { id: 'side', 'aria-label': 'Workspace' }), h('main', { id: 'main' }), h('div', { id: 'divider', role: 'separator', 'aria-label': 'Drag to resize. Drag to the edge to open full.', onpointerdown: dragDivider }), h('section', { id: 'pane', 'aria-label': 'Selected task' })), h('div', { id: 'fnav' }));
   window.__folioStep = 'storage'; await D.load(); S.persist(); await loadFont(); E.ensureAll();
-  D.onChange(info => { if (info.type === 'sync') { E.ensureAll(); }
+  // changes arriving from another device wait while you are typing or have an editor open, so nothing closes under your finger
+  const editing = () => { const a = document.activeElement; return !!(a && a !== document.body && (a.matches('input, textarea, select, [contenteditable="true"]'))) || !!document.querySelector('.cellpop, .sheet, .menu, .gmodal'); };
+  let syncPending = false;
+  const flushSync = () => { if (!syncPending) return; if (editing()) return setTimeout(flushSync, 1500); syncPending = false; render(); };
+  D.onChange(info => { if (info.type === 'sync') { E.ensureAll(); if (editing()) { syncPending = true; setTimeout(flushSync, 1500); return; } }
     if (info.type === 'sync' || info.type === 'create' || info.type === 'delete' || info.type === 'wipe') render(); if (info.type !== 'sync') Sync.soon(); });
   Sync.onStatus(() => { renderSide(); loadFont(); });
   addEventListener('hashchange', () => { state.pane = null; render(); });
