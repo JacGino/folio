@@ -23,8 +23,8 @@ async function enrol() {
     authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required', residentKey: 'discouraged' }, timeout: 60000 } });
   return b64(new Uint8Array(cred.rawId));
 }
-async function verifyBio(id) {
-  const a = await navigator.credentials.get({ publicKey: { challenge: crypto.getRandomValues(new Uint8Array(32)), allowCredentials: [{ type: 'public-key', id: unb64(id), transports: ['internal'] }], userVerification: 'required', timeout: 60000 } });
+async function verifyBio(id, signal) {
+  const a = await navigator.credentials.get({ signal, publicKey: { challenge: crypto.getRandomValues(new Uint8Array(32)), allowCredentials: [{ type: 'public-key', id: unb64(id), transports: ['internal'] }], userVerification: 'required', timeout: 60000 } });
   return !!a;
 }
 
@@ -33,8 +33,22 @@ export async function showLock() {
   const c = await cfg(); let tries = c.tries || 0;
   const msg = h('p', { role: 'status', 'aria-live': 'polite' }, 'Attachments stay encrypted until you unlock.');
   const pinRow = h('form', { class: 'pin', onsubmit: e => e.preventDefault() });
-  const done = () => { locked = false; el.remove(); S.meta.set('lock', { ...c, tries: 0 }); };
-  const tryBio = async () => { try { if (await verifyBio(c.cred)) done(); } catch { msg.textContent = `${bioName()} did not unlock. Try again or use your PIN.`; } };
+  // only one Face ID / Touch ID request at a time: two at once can leave iOS's grey passkey layer stuck over the app
+  let busy = false, ctl = null, finished = false;
+  const done = () => {
+    if (finished) return; finished = true;
+    try { ctl && ctl.abort(); } catch {}
+    try { document.activeElement && document.activeElement.blur(); } catch {}
+    S.meta.set('lock', { ...c, tries: 0 });
+    // let the iOS sheet finish closing before the lock screen goes, then fade it out
+    setTimeout(() => { el.classList.add('out'); setTimeout(() => { el.remove(); locked = false; }, 220); }, 450);
+  };
+  const tryBio = async () => {
+    if (busy || finished || document.visibilityState !== 'visible') return; busy = true; ctl = window.AbortController ? new AbortController() : null;
+    try { if (await verifyBio(c.cred, ctl ? ctl.signal : undefined)) done(); }
+    catch { if (!finished) msg.textContent = `${bioName()} did not unlock. Try again or use your PIN.`; }
+    finally { busy = false; ctl = null; }
+  };
   const showPin = () => {
     pinRow.replaceChildren(...[...Array(6)].map((_, i) => h('input', { inputmode: 'numeric', maxlength: 1, 'aria-label': `PIN digit ${i + 1}`, autocomplete: 'off',
       oninput: e => { e.target.value = e.target.value.replace(/\D/g, ''); if (e.target.value && e.target.nextSibling) e.target.nextSibling.focus(); check(); },
@@ -56,7 +70,11 @@ export async function showLock() {
       c.cred ? h('button', { class: 'btn primary block', onclick: tryBio }, icon('face', 22), 'Unlock with ' + bioName()) : null,
       c.pin ? h('button', { class: 'link', style: { fontSize: '16px', height: '44px' }, onclick: showPin }, 'Use PIN instead') : null));
   document.body.append(el);
-  if (!c.cred && c.pin) showPin(); else if (c.cred) setTimeout(tryBio, 300);
+  if (!c.cred && c.pin) showPin();
+  else if (c.cred) { // ask once automatically, only when Folio is on screen
+    const auto = () => { if (document.visibilityState === 'visible') { document.removeEventListener('visibilitychange', auto); setTimeout(tryBio, 400); } };
+    document.addEventListener('visibilitychange', auto); auto();
+  }
 }
 
 export async function lockSettings() {
