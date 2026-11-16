@@ -240,11 +240,12 @@ const muted = t => h('span', { class: 'muted' }, t);
 const dueCell = r => r.days == null ? muted('—') : h('span', { class: 'fdue' + (r.days < 0 ? ' late' : r.days === 0 ? ' today' : '') }, icon('date', 13), r.days === 0 ? 'Today' : formatDate(r.due, 'DD/MM/YYYY'));
 const PAGE_COLS = {
   // the status column already says what is due (Site Survey, Estimation, Rejected…), so only the number is shown; a task you named keeps its name
-  today: { lead: [{ k: 'task', def: 'eCX & WBS No', w: 180, fixed: true, cell: r => h('span', { class: 'fid' }, h('b', { class: r.no ? 'mono' : 'muted' }, r.no || 'No eCX & WBS No'),
-      r.kind === 'task' ? h('small', {}, linkedField(r.task, { key: 'name', label: 'Task' })) : null) }],
+  // no eCX & WBS No column here (it is a project property: show it from Properties if you want it)
+  today: { lead: [],
     tail: [{ k: 'pri', def: 'Priority', w: 96, cell: r => priPill(r.priority) }, { k: 'due', def: 'Due Date', w: 104, cell: r => dueBadge(r.days) },
-      { k: 'status', def: 'Status', w: 112, cell: r => badge(r.status, { Pending: 'blue', 'In Progress': 'yellow', 'On Hold': 'orange', Completed: 'green' }[r.status]) }] },
-  survey: { lead: [{ k: 'task', def: 'eCX & WBS No', w: 180, fixed: true, cell: r => h('span', { class: 'fid' }, h('b', { class: r.no ? 'mono' : 'muted' }, r.no || 'No eCX & WBS No')) }],
+      { k: 'status', def: 'Status', w: 132, cell: r => h('span', { class: 'fstat' }, badge(r.status, { Pending: 'blue', 'In Progress': 'yellow', 'On Hold': 'orange', Completed: 'green' }[r.status]),
+        r.kind === 'task' ? h('small', { class: 'ftask' }, linkedField(r.task, { key: 'name', label: 'Task' })) : null) }] },
+  survey: { lead: [],
     tail: [{ k: 'pri', def: 'Priority', w: 96, cell: r => priPill(r.priority) },
       { k: 'sdate', def: 'Site Survey Date', w: 112, cell: r => r.scheduled ? h('span', { class: r.status === 'Overdue' && r.sdays < 0 ? 'late' : '' }, dmy(r.scheduled)) : muted('—') },
       { k: 'status', def: 'Status', w: 112, cell: r => badge(r.status, undefined, false) }] },

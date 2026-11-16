@@ -1958,3 +1958,4 @@ span[data-s="s"] { font-size: .85em; } span[data-s="l"] { font-size: 1.25em; } s
 /* tables scroll with the page: no inner vertical scrolling, and swipes that start on a resize line still scroll the page */
 .ctbl { overflow-y: hidden !important; }
 .crz, .rrz { touch-action: auto !important; }
+.fstat { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; } .ftask .val { font-size: 12.5px; color: var(--ink2); padding: 0; min-height: 0; }
