@@ -105,9 +105,21 @@ function legend(segs, total) {
   return h('ul', { class: 'dleg' }, segs.map(s => h('li', {}, h('i', { style: { background: s.color } }), h('span', {}, s.label), h('b', {}, s.value), h('small', {}, total ? '(' + Math.round(s.value / total * 1000) / 10 + '%)' : ''))));
 }
 /** line chart (single series → no legend; the title names it). pts: [{label, v, tip}] */
-function lineChart(pts, { unit = 'd', label }) {
+/** draws a chart at the box's real width (instead of stretching it), so labels stay at the normal text size */
+function fitted(draw, W0) {
+  let svg = draw(W0), drawn = W0;
+  const box = h('div', { class: 'vfit' }, svg);
+  const fit = () => { const w = Math.round(box.clientWidth); if (w > 0 && Math.abs(w - drawn) > 2) { const n = draw(w); svg.replaceWith(n); svg = n; drawn = w; } };
+  if (window.ResizeObserver) new ResizeObserver(fit).observe(box); requestAnimationFrame(fit);
+  return box;
+}
+function lineChart(pts, opts) {
   const have = pts.filter(p => p.v != null); if (!have.length) return h('p', { class: 'hempty' }, 'No completed projects with both dates in this period yet.');
-  const W = 360, H = 190, L = 34, R = 14, T = 22, B = 24, max = Math.max(1, Math.ceil(Math.max(...have.map(p => p.v)) * 1.25));
+  return fitted(W => lineChartAt(W, pts, opts), 360);
+}
+function lineChartAt(W, pts, { unit = 'd', label }) {
+  const have = pts.filter(p => p.v != null);
+  const H = 190, L = 34, R = 14, T = 22, B = 24, max = Math.max(1, Math.ceil(Math.max(...have.map(p => p.v)) * 1.25));
   const x = i => L + (pts.length === 1 ? (W - L - R) / 2 : i * (W - L - R) / (pts.length - 1)), y = v => T + (1 - v / max) * (H - T - B);
   const ticks = [0, max / 2, max].map(t => Math.round(t * 10) / 10);
   const seq = pts.map((p, i) => p.v == null ? null : [x(i), y(p.v), p, i]).filter(Boolean);
@@ -122,8 +134,9 @@ function lineChart(pts, { unit = 'd', label }) {
   return s;
 }
 /** vertical bars with a dashed target line. pts: [{label, v, tip}] (v in %) */
-function barChart(pts, { target = 100, label, color = 'var(--vblue)' }) {
-  const W = 380, H = 200, L = 34, R = 8, T = 18, B = 24, bw = Math.min(34, (W - L - R) / pts.length * 0.56);
+function barChart(pts, opts) { return fitted(W => barChartAt(W, pts, opts), 380); }
+function barChartAt(W, pts, { target = 100, label, color = 'var(--vblue)' }) {
+  const H = 200, L = 34, R = 8, T = 18, B = 24, bw = Math.min(34, (W - L - R) / pts.length * 0.56);
   const x = i => L + (i + 0.5) * (W - L - R) / pts.length, y = v => T + (1 - v / 100) * (H - T - B);
   const s = svgEl(`0 0 ${W} ${H}`, 'vbars', label,
     [0, 25, 50, 75, 100].map(t => `<line x1="${L}" x2="${W - R}" y1="${y(t)}" y2="${y(t)}" class="tgrid"/><text x="${L - 6}" y="${y(t) + 4}" text-anchor="end" class="tax">${t}%</text>`).join('')

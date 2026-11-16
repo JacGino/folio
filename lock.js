@@ -3,16 +3,12 @@ import * as S from './store.js';
 import { hashPin, b64, unb64 } from './crypto.js';
 import { h, icon, logo, sheet, group, row, toast } from './ui.js';
 
-const AWAY_MS = 60 * 1000;
-let hiddenAt = 0, locked = false;
+let locked = false;
 const cfg = async () => (await S.meta.get('lock')) || { on: false };
 
 export async function initLock() {
+  // asks only when Folio is opened fresh (closed and reopened); switching to other apps and back does not lock it
   const c = await cfg(); if (c.on) await showLock();
-  document.addEventListener('visibilitychange', async () => {
-    if (document.visibilityState === 'hidden') hiddenAt = Date.now();
-    else if (hiddenAt && Date.now() - hiddenAt > AWAY_MS && (await cfg()).on) showLock();
-  });
 }
 export const isLocked = () => locked;
 
@@ -35,7 +31,7 @@ async function verifyBio(id) {
 export async function showLock() {
   if (locked) return; locked = true;
   const c = await cfg(); let tries = c.tries || 0;
-  const msg = h('p', { role: 'status', 'aria-live': 'polite' }, 'It locks again after 1 minute away. Attachments stay encrypted until you unlock.');
+  const msg = h('p', { role: 'status', 'aria-live': 'polite' }, 'Attachments stay encrypted until you unlock.');
   const pinRow = h('form', { class: 'pin', onsubmit: e => e.preventDefault() });
   const done = () => { locked = false; el.remove(); S.meta.set('lock', { ...c, tries: 0 }); };
   const tryBio = async () => { try { if (await verifyBio(c.cred)) done(); } catch { msg.textContent = `${bioName()} did not unlock. Try again or use your PIN.`; } };
@@ -67,7 +63,7 @@ export async function lockSettings() {
   const c = await cfg(); const can = await platformOK();
   const body = h('div');
   const paint = async () => { const c = await cfg(); body.replaceChildren(
-    h('p', { class: 'muted' }, 'Folio asks for your face, fingerprint or PIN when you open it, and locks again after 1 minute away.'),
+    h('p', { class: 'muted' }, 'Folio asks for your face, fingerprint or PIN each time you open it. Switching to another app and back does not lock it.'),
     group(
       row({ icon: 'face', label: c.cred ? `${bioName()}: on` : `Turn on ${bioName()}`, chev: false, onclick: async () => {
         if (!can) return toast(`${bioName()} is not available in this browser. Use a PIN.`);

@@ -231,26 +231,34 @@ function trendCard(all, n) {
   const badgeEl = h('span', { class: 'tbadge' }, last ? last.v + '%' : '—');
   const head = h('div', { class: 'chead' }, icon('linechart', 18), h('h2', {}, 'KPI Trend'), h('small', { class: 'muted' }, '(Last 6 Months)'));
   if (!have.length) return h('section', { class: 'hcard tcard c-trend' }, head, h('p', { class: 'hempty' }, 'Completed projects with a Date Assigned and Date Completed build this chart.'));
-  const W = 320, H = 210, L0 = 40, R0 = 12, T0 = 30, B0 = 26;
-  const lo = Math.max(0, Math.min(80, Math.floor((Math.min(...have.map(p => p.v)) - 5) / 5) * 5)), hi = 100;
-  const x = i => L0 + i * (W - L0 - R0) / 5, y = v => T0 + (hi - v) / (hi - lo) * (H - T0 - B0);
-  const ticks = []; const step = (hi - lo) / 4; for (let i = 0; i <= 4; i++) ticks.push(Math.round(lo + step * i));
-  const seq = pts.map((p, i) => p.v == null ? null : [x(i), y(p.v)]).filter(Boolean);
-  const line = seq.map((q, i) => (i ? 'L' : 'M') + q[0].toFixed(1) + ' ' + q[1].toFixed(1)).join(' ');
-  const area = seq.length > 1 ? line + ` L${seq[seq.length - 1][0].toFixed(1)} ${H - B0} L${seq[0][0].toFixed(1)} ${H - B0} Z` : '';
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.setAttribute('viewBox', `0 0 ${W} ${H}`); svg.setAttribute('class', 'tchart'); svg.setAttribute('role', 'img');
-  svg.setAttribute('aria-label', 'KPI achievement by month: ' + pts.map(p => p.label + ' ' + (p.v == null ? 'no data' : p.v + '%')).join(', '));
-  svg.innerHTML = `<defs><linearGradient id="tgrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3B8A55" stop-opacity=".22"/><stop offset="1" stop-color="#3B8A55" stop-opacity="0"/></linearGradient></defs>`
-    + ticks.map(t => `<line x1="${L0}" x2="${W - R0}" y1="${y(t)}" y2="${y(t)}" class="tgrid"/><text x="${L0 - 8}" y="${y(t) + 4}" class="tax" text-anchor="end">${t}%</text>`).join('')
-    + pts.map((p, i) => `<text x="${x(i)}" y="${H - 6}" class="tax" text-anchor="middle">${p.label}</text>`).join('')
-    + (area ? `<path d="${area}" fill="url(#tgrad)"/>` : '') + `<path d="${line}" class="tline2"/>`
-    + pts.map((p, i) => p.v == null ? '' : `<g class="tpt" data-i="${i}"><circle cx="${x(i)}" cy="${y(p.v)}" r="14" class="thit"/><circle cx="${x(i)}" cy="${y(p.v)}" r="4.5" class="tdot"/><title>${p.month}: ${p.v}% (${p.count} completed)</title></g>`).join('');
+  const H = 210, L0 = 40, R0 = 12, T0 = 30, B0 = 26;
   const tip = h('span', { class: 'ttip', hidden: true });
-  const show = i => { const p = pts[i]; if (!p || p.v == null) return; tip.hidden = false; tip.textContent = `${p.month}: ${p.v}% · ${p.count} completed`; badgeEl.textContent = p.v + '%'; };
-  svg.querySelectorAll('.tpt').forEach(g => { const i = +g.dataset.i; g.addEventListener('pointerenter', () => show(i)); g.addEventListener('click', () => show(i)); });
-  svg.addEventListener('pointerleave', () => { tip.hidden = true; badgeEl.textContent = last.v + '%'; });
-  return h('section', { class: 'hcard tcard c-trend' }, head, h('div', { class: 'tbox' }, badgeEl, svg, tip));
+  // drawn at the card's real width (not stretched), so the labels stay the same size as the rest of the text
+  const draw = W => {
+    const lo = Math.max(0, Math.min(80, Math.floor((Math.min(...have.map(p => p.v)) - 5) / 5) * 5)), hi = 100;
+    const x = i => L0 + i * (W - L0 - R0) / 5, y = v => T0 + (hi - v) / (hi - lo) * (H - T0 - B0);
+    const ticks = []; const step = (hi - lo) / 4; for (let i = 0; i <= 4; i++) ticks.push(Math.round(lo + step * i));
+    const seq = pts.map((p, i) => p.v == null ? null : [x(i), y(p.v)]).filter(Boolean);
+    const line = seq.map((q, i) => (i ? 'L' : 'M') + q[0].toFixed(1) + ' ' + q[1].toFixed(1)).join(' ');
+    const area = seq.length > 1 ? line + ` L${seq[seq.length - 1][0].toFixed(1)} ${H - B0} L${seq[0][0].toFixed(1)} ${H - B0} Z` : '';
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`); svg.setAttribute('class', 'tchart'); svg.setAttribute('role', 'img');
+    svg.setAttribute('aria-label', 'KPI achievement by month: ' + pts.map(p => p.label + ' ' + (p.v == null ? 'no data' : p.v + '%')).join(', '));
+    svg.innerHTML = `<defs><linearGradient id="tgrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3B8A55" stop-opacity=".22"/><stop offset="1" stop-color="#3B8A55" stop-opacity="0"/></linearGradient></defs>`
+      + ticks.map(t => `<line x1="${L0}" x2="${W - R0}" y1="${y(t)}" y2="${y(t)}" class="tgrid"/><text x="${L0 - 8}" y="${y(t) + 4}" class="tax" text-anchor="end">${t}%</text>`).join('')
+      + pts.map((p, i) => `<text x="${x(i)}" y="${H - 6}" class="tax" text-anchor="middle">${p.label}</text>`).join('')
+      + (area ? `<path d="${area}" fill="url(#tgrad)"/>` : '') + `<path d="${line}" class="tline2"/>`
+      + pts.map((p, i) => p.v == null ? '' : `<g class="tpt" data-i="${i}"><circle cx="${x(i)}" cy="${y(p.v)}" r="14" class="thit"/><circle cx="${x(i)}" cy="${y(p.v)}" r="4.5" class="tdot"/><title>${p.month}: ${p.v}% (${p.count} completed)</title></g>`).join('');
+    const show = i => { const p = pts[i]; if (!p || p.v == null) return; tip.hidden = false; tip.textContent = `${p.month}: ${p.v}% · ${p.count} completed`; badgeEl.textContent = p.v + '%'; };
+    svg.querySelectorAll('.tpt').forEach(g => { const i = +g.dataset.i; g.addEventListener('pointerenter', () => show(i)); g.addEventListener('click', () => show(i)); });
+    svg.addEventListener('pointerleave', () => { tip.hidden = true; badgeEl.textContent = last.v + '%'; });
+    return svg;
+  };
+  let svg = draw(320), drawnW = 320;
+  const box = h('div', { class: 'tbox' }, badgeEl, svg, tip);
+  const fit = () => { const w = Math.round(box.clientWidth); if (w > 0 && Math.abs(w - drawnW) > 2) { const n = draw(w); svg.replaceWith(n); svg = n; drawnW = w; } };
+  if (window.ResizeObserver) new ResizeObserver(fit).observe(box); requestAnimationFrame(fit);
+  return h('section', { class: 'hcard tcard c-trend' }, head, box);
 }
 
 // ---------- By Project Category ----------

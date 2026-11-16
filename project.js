@@ -429,11 +429,11 @@ function surveyTab(row, info, n) {
     h('div', { class: 'kvs two' },
       kv('date', 'Survey date', wf('survey', 'Survey date', { type: 'date' })),
       rep ? kv('page', 'Report prepared', toggle('report', 'Report prepared')) : kv('listcheck', 'Documents checked', toggle('docs', 'Documents checked')),
-      kv('text', 'Scope / Remarks', propVal(row, 'Scope / Remarks')),
       kv('text', 'Technical findings', wf('findings', 'Technical findings')),
       rep ? null : kv('linechart', 'Transformer & feeder loading', wf('loading', 'Transformer & feeder loading')),
       kv('pin', 'Site address', h('span', {}, E.custAddress(row) || h('span', { class: 'muted' }, '—'))),
-      kv('globe', 'Pin Location', E.custMap(row) ? h('a', { class: 'lnk', href: browserUrl(E.custMap(row)), target: '_blank', rel: 'noopener' }, 'Open map') : h('span', { class: 'muted' }, '—'))));
+      kv('globe', 'Pin Location', E.custMap(row) ? h('a', { class: 'lnk', href: browserUrl(E.custMap(row)), target: '_blank', rel: 'noopener' }, 'Open map') : h('span', { class: 'muted' }, '—')),
+      kv('text', 'Scope / Remarks', propVal(row, 'Scope / Remarks'))));
 }
 
 // ---------- ECPAR ----------
