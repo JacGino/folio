@@ -13,6 +13,7 @@ const LISTS = new Set(['todo', 'bullet', 'num']);
 export const nb = (t = 'p', x = '', extra = {}) => ({ id: uid('b'), t, x, ...extra });
 
 export function mountEditor(root, opts) {
+  root.classList.add('feditor'); // the shortcut bar's "Copy all" copies every block of this editor
   let blocks = (opts.blocks && opts.blocks.length ? opts.blocks : [nb()]).map(b => ({ ...b }));
   const undo = [], redo = []; let typingSnap = null, typingTimer = null;
   const snap = () => JSON.stringify(blocks);

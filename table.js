@@ -7,6 +7,7 @@ import { go, openTask, state, now, browserUrl, zoomFactor, longPress, rowActions
 import { propEditor, chip } from './page.js';
 import { evaluate } from './formula.js';
 import { popEdit } from './popedit.js';
+import * as C from './cols.js';
 
 const cur = new Map();     // dbId -> view id
 const searches = new Map(); // dbId -> text
@@ -54,14 +55,19 @@ export function renderDbBlock(dbId, { initialView } = {}) {
 }
 
 // ---------- table ----------
-function visibleProps(dbr, v) { const hid = new Set(v.hidden || []); return DB.props(dbr).filter(p => !hid.has(p.id)); }
+// the Planning KPI Tracker shares one Property visibility with Projects and the Focus pages; other databases keep it per view
+const shared = dbr => DB.kpiDb()?.id === dbr.id;
+function visibleProps(dbr, v) {
+  if (shared(dbr)) { const ps = DB.props(dbr); return C.columns(dbr, { computed: false }).map(c => ({ ...c.p, label: c.label })).filter(p => ps.some(q => q.id === p.id)); }
+  const hid = new Set(v.hidden || []); return DB.props(dbr).filter(p => !hid.has(p.id));
+}
 const DEFAULT_W = { title: 220, text: 180, number: 110, select: 140, status: 140, multi: 200, date: 140, checkbox: 90, url: 200, files: 160, formula: 240, created: 140 };
 const colW = (p, v) => (v.widths || {})[p.id] || (/address/i.test(p.name) ? 300 : DEFAULT_W[p.type] || 160);
 function table(dbr, v, list, draw) {
   const ps = visibleProps(dbr, v);
   const cols = ps.map(p => colW(p, v) + 'px').join(' ');
   const head = h('div', { class: 'tr', role: 'row', style: { gridTemplateColumns: cols } }, ps.map((p, i) => {
-    const th = h('div', { class: 'th' + (i === 0 ? ' first' : ''), role: 'columnheader', tabindex: '0', onclick: e => { if (!e.target.classList.contains('rz')) colMenu(dbr, v, p, th, draw); } }, icon(DB.TYPE_ICON[p.type] || 'text', 14), h('span', {}, p.name),
+    const th = h('div', { class: 'th' + (i === 0 ? ' first' : ''), role: 'columnheader', tabindex: '0', onclick: e => { if (!e.target.classList.contains('rz')) colMenu(dbr, v, p, th, draw); } }, icon(DB.TYPE_ICON[p.type] || 'text', 14), h('span', {}, p.label || p.name),
       h('span', { class: 'rz', 'aria-hidden': 'true', onpointerdown: e => resize(e, dbr, v, p) }));
     return th;
   }));
@@ -112,7 +118,8 @@ function cell(r, p, dbr, first, bg, ncom = 0) {
     const f = ed.matches?.('input,button') ? ed : ed.querySelector('input,button'); f && f.focus(); if (f && f.tagName === 'INPUT' && /text|url|search|number/.test(f.type)) try { const n = f.value.length; f.setSelectionRange(n, n); } catch {} if (f && f.tagName === 'BUTTON') f.click();
     if (f && f.tagName === 'INPUT') f.addEventListener('blur', () => setTimeout(fill, 0), { once: true });
   };
-  td.addEventListener('click', e => { if (e.target.closest('a,input,.open,.rz,.rzr,.colrz')) return; edit(); });
+  // a click inside the cell's own editor (its button opens the menu or date sheet) must not rebuild the editor: that looped and overflowed the stack
+  td.addEventListener('click', e => { if (e.target.closest('a,input,.open,.rz,.rzr,.colrz,.val')) return; edit(); });
   td.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target === td) { e.preventDefault(); edit(); } });
   return td;
 }
@@ -182,7 +189,8 @@ function colMenu(dbr, v, p, anchor, draw) {
     { label: 'Sort ascending', icon: 'sort', run: () => { saveView(dbr, { ...v, sort: [{ prop: p.id, dir: 'asc' }] }); draw(); } },
     { label: 'Sort descending', icon: 'sort', run: () => { saveView(dbr, { ...v, sort: [{ prop: p.id, dir: 'desc' }] }); draw(); } },
     { label: 'Filter by this', icon: 'filter', run: () => { saveView(dbr, { ...v, filter: [...(v.filter || []), { prop: p.id, op: DB.opsFor(p)[0], value: '' }] }); filterSheet(dbr, DB.views(dbr).find(x => x.id === v.id), draw); } },
-    { label: 'Hide in this view', icon: 'eye', run: () => { saveView(dbr, { ...v, hidden: [...(v.hidden || []), p.id] }); draw(); } },
+    shared(dbr) ? { label: 'Hide in all tables', icon: 'eye', run: () => { const c = C.cfg(dbr); c.hidden = [...new Set([...c.hidden, 'p:' + p.id])]; C.save(dbr, c); draw(); } }
+      : { label: 'Hide in this view', icon: 'eye', run: () => { saveView(dbr, { ...v, hidden: [...(v.hidden || []), p.id] }); draw(); } },
     { label: 'Edit property', icon: 'list', run: () => editProp(dbr, p, draw) }]);
 }
 
@@ -270,7 +278,7 @@ export function settingsSheet(dbr, v, draw) {
       h('div', { class: 'group' }, h('label', { class: 'grow' }, icon(v.type === 'board' ? 'board' : 'table', 20), name)),
       group(
         row({ icon: 'table', label: 'Layout', value: { table: 'Table', board: 'Board', calendar: 'Calendar', list: 'List' }[v.type || 'table'], onclick: e => menu(e.currentTarget, ['table', 'board', 'calendar', 'list'].map(t => ({ label: t[0].toUpperCase() + t.slice(1), checked: v.type === t, run: () => { saveView(dbr, { ...v, type: t }); paint(); } }))) }),
-        row({ icon: 'eye', label: 'Property visibility', value: String(ps.length - (v.hidden || []).length), onclick: visibility }),
+        row({ icon: 'eye', label: 'Property visibility', value: String(shared(dbr) ? C.columns(dbr, { computed: false }).length : ps.length - (v.hidden || []).length), onclick: visibility }),
         row({ icon: 'filter', label: 'Filter', value: (v.filter || []).map(f => ps.find(p => p.id === f.prop)?.name).filter(Boolean).join(', ') || 'None', onclick: () => { s.close(); filterSheet(dbr, v, draw); } }),
         row({ icon: 'sort', label: 'Sort', value: (v.sort || []).map(f => ps.find(p => p.id === f.prop)?.name).filter(Boolean).join(', ') || 'None', onclick: () => { s.close(); filterSheet(dbr, v, draw); } }),
         row({ icon: 'group', label: 'Group', value: ps.find(p => p.id === v.group)?.name || 'None', onclick: e => menu(e.currentTarget, [{ label: 'None', checked: !v.group, run: () => { saveView(dbr, { ...v, group: null }); paint(); } }, ...ps.filter(p => ['select', 'status', 'checkbox', 'date', 'multi'].includes(p.type)).map(p => ({ label: p.name, checked: v.group === p.id, run: () => { saveView(dbr, { ...v, group: p.id }); paint(); } }))]) }),
@@ -288,6 +296,7 @@ export function settingsSheet(dbr, v, draw) {
         row({ icon: 'lock', label: D.val(dbr, 'locked') ? 'Unlock database' : 'Lock database', chev: false, onclick: () => { D.update(dbr.id, { locked: !D.val(dbr, 'locked') }); toast(D.val(DB.db(dbr.id), 'locked') ? 'Locked: properties and views can’t be changed' : 'Unlocked'); paint(); } })));
   };
   function visibility() {
+    if (shared(dbr)) return C.visibilitySheet(dbr, { after: paint });
     const s2 = sheet('Property visibility', h('div', {}, group(...DB.props(dbr).map(p => { const shown = !(v.hidden || []).includes(p.id);
       return h('label', { class: 'grow' }, icon(DB.TYPE_ICON[p.type], 20), h('span', { class: 'gl' }, p.name), h('input', { type: 'checkbox', checked: shown ? true : null, disabled: p.type === 'title' ? true : null, onchange: e => { const hid = new Set(v.hidden || []); e.target.checked ? hid.delete(p.id) : hid.add(p.id); v = { ...v, hidden: [...hid] }; saveView(dbr, v); } })); }))), { onDone: paint });
   }

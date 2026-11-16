@@ -58,6 +58,9 @@ const P = {
   columns: '<rect x="3.5" y="4.5" width="17" height="15" rx="2" stroke-width="1.6"/><path d="M9.2 4.5v15M14.8 4.5v15" stroke-width="1.6"/>',
   linechart: '<path d="M4 4v16.5h16.5" stroke-width="1.6"/><path d="M7.5 15l4-4.5 3 3 5-6" stroke-width="1.6"/>',
   chevup: '<path d="M7 14.5l5-5 5 5" stroke-width="1.8"/>',
+  copy: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/>',
+  highlight: '<path d="M14.5 4.5l5 5-8 8H6.5v-5z"/><path d="M4 21h16" stroke-width="2.4" stroke="#E8B931"/>',
+  selectall: '<path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><path d="M8.5 9h7M8.5 12h7M8.5 15h4.5"/>',
   pages: '<path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4"/>',
   search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>',
   plus: '<path d="M12 5v14M5 12h14"/>', back: '<path d="M15 5l-7 7 7 7"/>', close: '<path d="M6 6l12 12M18 6L6 18"/>',
@@ -76,7 +79,7 @@ const P = {
   formula: '<path d="M17.5 5.5h-11l6 6.5-6 6.5h11" stroke-width="2"/>', checkbox: '<rect x="4.5" y="4.5" width="15" height="15" rx="2.5" stroke-width="1.8"/><path d="M8.5 12.2l2.5 2.5 4.6-5.2" stroke-width="1.8"/>',
   title: '<text x="12" y="17.5" text-anchor="middle" font-size="16" font-weight="600" font-family="-apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif" fill="currentColor" stroke="none">Aa</text>', number: '<path d="M9.5 4.5L8 19.5M16 4.5l-1.5 15M5 9h14.5M4.5 15H19" stroke-width="1.8"/>',
   lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>', trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
-  sort: '<path d="M8 4.5v15M4.5 16l3.5 3.5 3.5-3.5M16 19.5v-15M12.5 8L16 4.5 19.5 8" stroke-width="1.8"/>', eye: '<path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  sort: '<path d="M8 4.5v15M4.5 16l3.5 3.5 3.5-3.5M16 19.5v-15M12.5 8L16 4.5 19.5 8" stroke-width="1.8"/>', eyeoff: '<path d="M3 3l18 18"/><path d="M10.6 6.1A9.8 9.8 0 0 1 12 6c6.5 0 10 6 10 6a16 16 0 0 1-3.1 3.7M6.2 7.6C3.6 9.4 2 12 2 12s3.5 6 10 6c1.6 0 3-.4 4.2-1.1"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>', grip: '<g fill="currentColor" stroke="none"><circle cx="9" cy="6" r="1.4"/><circle cx="15" cy="6" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="9" cy="18" r="1.4"/><circle cx="15" cy="18" r="1.4"/></g>', eye: '<path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
   group: '<rect x="4" y="5" width="4" height="4" rx="1"/><rect x="10" y="5" width="4" height="4" rx="1"/><rect x="16" y="5" width="4" height="4" rx="1"/><rect x="4" y="13" width="4" height="4" rx="1"/><rect x="10" y="13" width="4" height="4" rx="1"/><rect x="16" y="13" width="4" height="4" rx="1"/>',
   paint: '<rect x="4" y="3" width="14" height="6" rx="1"/><path d="M18 6h2v5h-8v3"/><rect x="10" y="14" width="4" height="7" rx="1"/>',
   expand: '<path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7"/>', source: '<circle cx="18" cy="6" r="2"/><circle cx="6" cy="18" r="2"/><path d="M16 6H8a3 3 0 0 0 0 6h8a3 3 0 0 1 0 6H8"/>',
@@ -113,6 +116,9 @@ export function later(items, build, { first = 40, step = 60, into } = {}) {
 export const logo = (size = 30) => h('div', { class: 'logo', style: { width: size + 'px', height: size + 'px', fontSize: Math.round(size * 0.62) + 'px', borderRadius: Math.round(size * 0.27) + 'px' }, 'aria-hidden': 'true' }, 'F');
 
 // ---- sanitiser: only a small set of inline tags survives; never runs scripts ----
+/** text colours / highlights and sizes the editor keeps (span[data-c], mark[data-c], span[data-s]) */
+export const TEXT_COLORS = ['gray', 'brown', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'red'];
+export const TEXT_SIZES = ['s', 'l', 'xl'];
 const OK = new Set(['B', 'STRONG', 'I', 'EM', 'U', 'S', 'STRIKE', 'DEL', 'CODE', 'A', 'BR', 'SPAN', 'MARK']);
 export function sanitize(html) {
   const doc = new DOMParser().parseFromString(`<div>${html || ''}</div>`, 'text/html');
@@ -121,7 +127,7 @@ export function sanitize(html) {
       if (c.nodeType === 3) continue;
       if (c.nodeType !== 1 || !OK.has(c.tagName)) { if (c.nodeType === 1 && !['SCRIPT', 'STYLE', 'IFRAME', 'OBJECT'].includes(c.tagName)) { walk(c); c.replaceWith(...c.childNodes); } else c.remove(); continue; }
       for (const a of [...c.attributes]) {
-        const keep = (c.tagName === 'A' && a.name === 'href' && /^(https?:|mailto:|tel:|#)/i.test(a.value)) || (c.tagName === 'MARK' && a.name === 'data-c') || (c.tagName === 'SPAN' && a.name === 'data-c');
+        const keep = (c.tagName === 'A' && a.name === 'href' && /^(https?:|mailto:|tel:|#)/i.test(a.value)) || (c.tagName === 'MARK' && a.name === 'data-c' && TEXT_COLORS.includes(a.value)) || (c.tagName === 'SPAN' && a.name === 'data-c' && TEXT_COLORS.includes(a.value)) || (c.tagName === 'SPAN' && a.name === 'data-s' && TEXT_SIZES.includes(a.value));
         if (!keep) c.removeAttribute(a.name);
       }
       if (c.tagName === 'A') { c.setAttribute('target', '_blank'); c.setAttribute('rel', 'noopener noreferrer'); }
@@ -159,6 +165,8 @@ export function row({ icon: ic, label, value = '', chev = true, onclick, active 
 }
 
 // ---- small popover menu ----
+/** the zoom chosen in ⋯ → Zoom (1 = 100%) */
+export const zoomNow = () => document.documentElement.classList.contains('zoomed') ? (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--zoom')) || 1) : 1;
 export function menu(anchor, items, { width = 240 } = {}) {
   closeMenus();
   const r = anchor.getBoundingClientRect();
@@ -167,8 +175,12 @@ export function menu(anchor, items, { width = 240 } = {}) {
       h('button', { role: 'menuitem', class: it.danger ? 'danger' : '', onclick: () => { closeMenus(); it.run(); } },
         it.icon ? icon(it.icon, 16) : null, h('span', {}, it.label), it.checked ? icon('check', 16, 'chk') : null)));
   document.body.append(m);
-  const left = Math.min(Math.max(8, r.left), innerWidth - width - 8);
-  const top = r.bottom + 6 + m.offsetHeight > innerHeight ? Math.max(8, r.top - 6 - m.offsetHeight) : r.bottom + 6;
+  // with zoom on (⋯ → Zoom) the menu is scaled from its top-left corner, so place it by its scaled size
+  const z = zoomNow(), mw = Math.min(width * z, innerWidth - 16);
+  if (mw < width * z) m.style.width = (mw / z) + 'px'; // never wider than the screen
+  const mh = m.offsetHeight * z;
+  const left = Math.min(Math.max(8, r.left), innerWidth - mw - 8);
+  const top = r.bottom + 6 + mh > innerHeight ? Math.max(8, r.top - 6 - mh) : r.bottom + 6;
   Object.assign(m.style, { left: left + 'px', top: top + 'px' });
   setTimeout(() => document.addEventListener('pointerdown', outside, { once: true }), 0);
   function outside(e) { if (!m.isConnected) return; if (!m.contains(e.target)) closeMenus(); else document.addEventListener('pointerdown', outside, { once: true }); } // a menu that already closed must not close the next one
@@ -209,4 +221,39 @@ export function textbox({ value = '', placeholder = '', multiline = false, cls =
   el.addEventListener('paste', e => { if (el.contentEditable === 'plaintext-only') return; e.preventDefault(); document.execCommand('insertText', false, (e.clipboardData || window.clipboardData).getData('text/plain')); });
   if (onblur) el.addEventListener('blur', onblur);
   return el;
+}
+
+// ---- choose a photo (profile photo, cover, page icon) ----
+// The file input is put on the page while it is open: iPhone (especially from the Home Screen) ignores one that is not.
+// Big camera photos are made smaller before saving (max side `max` px, JPEG), which also turns HEIC into JPEG.
+export function pickImage(onFile, { max = 1600 } = {}) {
+  document.querySelector('input.imgpick')?.remove();
+  const inp = h('input', { type: 'file', accept: 'image/*', class: 'imgpick', 'aria-hidden': 'true', tabindex: '-1',
+    style: { position: 'fixed', left: '-1000px', top: '0', width: '1px', height: '1px', opacity: '0' } });
+  const done = () => setTimeout(() => inp.remove(), 1000);
+  inp.addEventListener('cancel', done);
+  inp.addEventListener('change', async () => {
+    const f = inp.files && inp.files[0]; done(); if (!f) return;
+    try {
+      if (f.type && !f.type.startsWith('image/') && !/\.(heic|heif)$/i.test(f.name)) { toast('Please choose a photo.'); return; }
+      await onFile(await shrinkImage(f, max));
+    } catch (e) { toast('The photo could not be added: ' + (e && e.message || 'please try another photo.')); }
+  });
+  document.body.append(inp);
+  inp.click();
+}
+async function shrinkImage(f, max) {
+  try {
+    const url = URL.createObjectURL(f);
+    const img = await new Promise((ok, bad) => { const i = new Image(); i.onload = () => ok(i); i.onerror = bad; i.src = url; });
+    URL.revokeObjectURL(url);
+    const w = img.naturalWidth, hh = img.naturalHeight; if (!w || !hh) return f;
+    const k = Math.min(1, max / Math.max(w, hh));
+    if (k === 1 && f.size < 1.5e6 && /jpe?g|png|webp/i.test(f.type)) return f; // already small: keep as it is
+    const c = document.createElement('canvas'); c.width = Math.round(w * k); c.height = Math.round(hh * k);
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    const blob = await new Promise(ok => c.toBlob(ok, 'image/jpeg', 0.86));
+    if (!blob) return f;
+    return new File([blob], (f.name || 'photo').replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' });
+  } catch { return f; } // the browser could not read it: save the original
 }

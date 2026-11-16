@@ -9,6 +9,7 @@ import { state, now as NOW, render, go, moreMenu, elabel, longPress, rowActions,
 import { popEdit } from './popedit.js';
 import { propEditor } from './page.js';
 import { ccTab, ccEligible } from './cc.js';
+import * as C from './cols.js';
 
 const { g } = E;
 const P = n => { const d = DB.kpiDb(); return d && DB.propByName(d, n); };
@@ -53,6 +54,8 @@ function field(rec, f) {
   if (f.tel && v) return h('span', { class: 'fvwrap' }, btn, h('a', { class: 'iconbtn sm', href: (f.tel === 'mail' ? 'mailto:' : 'tel:') + String(v).replace(/\s/g, ''), 'aria-label': (f.tel === 'mail' ? 'Email ' : 'Call ') + v }, icon(f.tel === 'mail' ? 'mail' : 'phone', 16)));
   return btn;
 }
+/** an editable field of a linked record (task, ECPAR, ECX), used by the Focus tables */
+export const linkedField = (rec, f) => field(rec, f);
 function dateSheet(title, v, set) {
   const inp = h('input', { type: 'date', class: 'field', value: toISODate(v) || '', 'aria-label': title });
   let cleared = false;
@@ -149,8 +152,8 @@ export async function editRejectionFlow(rec, reasons) {
 // =====================================================================================
 // Projects page
 // =====================================================================================
-export function setProjectFilter({ cat = '' } = {}) { pcat = cat; ptab = 'all'; pq = ''; pstat = ''; pdue = ''; }
-let pq = '', ptab = 'all', pcat = '', pstat = '', pdue = '', psort = 'due', pshow = 50;
+export function setProjectFilter({ cat = '' } = {}) { pcat = cat; ptab = 'all'; pq = ''; pstat = ''; pdue = ''; pfil = []; }
+let pq = '', ptab = 'all', pcat = '', pstat = '', pdue = '', psort = 'due', pshow = 50, pcol = null, pfil = [];
 const sel = new Set();
 const PTABS = [['all', 'All Projects'], ['progress', 'In Progress'], ['completed', 'Completed'], ['overdue', 'Overdue'], ['archived', 'Archived']];
 const bucket = t => t.archived ? 'archived' : t.status === 'Done' ? 'completed' : 'progress';
@@ -178,10 +181,13 @@ export function projectsScreen() {
     if (pcat) rows = rows.filter(t => t.category.includes(pcat));
     if (pstat) rows = rows.filter(t => t.status === pstat);
     if (pdue) rows = rows.filter(t => pdue === 'none' ? t.dueDays == null : t.dueDays != null && (pdue === 'overdue' ? t.dueDays < 0 : pdue === 'week' ? t.dueDays >= 0 && t.dueDays <= 7 : t.dueDays >= 0 && t.dueDays <= 31));
-    const by = { due: (a, b) => (a.dueDays ?? 99999) - (b.dueDays ?? 99999), name: (a, b) => a.title.localeCompare(b.title), assigned: (a, b) => (b.assigned || 0) - (a.assigned || 0) }[psort];
+    rows = C.applyFilters(dbr, rows, pfil, t => t.row, n);
+    const by = (pcol && (pcol.id === 'x:days' ? (a, b) => ((a.dueDays ?? 99999) - (b.dueDays ?? 99999)) * (pcol.dir === 'desc' ? -1 : 1) : C.comparer(dbr, pcol, t => t.row, n)))
+      || { due: (a, b) => (a.dueDays ?? 99999) - (b.dueDays ?? 99999), name: (a, b) => a.title.localeCompare(b.title), assigned: (a, b) => (b.assigned || 0) - (a.assigned || 0) }[psort];
     rows.sort((a, b) => by(a, b) || a.title.localeCompare(b.title));
+    cols = C.columns(dbr); C.gridOf(list, [30], cols, [32]);
     const shown = rows.slice(0, pshow);
-    list.replaceChildren(...[head(), ...shown.map(t => projectRow(t, n)), rows.length ? null : h('p', { class: 'hempty' }, pq || pcat || pstat || pdue ? 'No project matches. Clear the search or filters.' : ptab === 'archived' ? 'No archived projects.' : 'No projects here.')].filter(Boolean));
+    list.replaceChildren(...[head(), ...shown.map(t => projectRow(t, n)), rows.length ? null : h('p', { class: 'hempty' }, pq || pcat || pstat || pdue || pfil.length ? 'No project matches. Clear the search or filters.' : ptab === 'archived' ? 'No archived projects.' : 'No projects here.')].filter(Boolean));
     foot.replaceChildren(...[h('span', {}, rows.length ? `Showing 1–${shown.length} of ${rows.length} project${rows.length === 1 ? '' : 's'}` : ''),
       rows.length > shown.length ? h('button', { class: 'btn', onclick: () => { pshow += 100; draw(); } }, 'Show more') : null].filter(Boolean));
     bulk.replaceChildren(...[].concat(sel.size ? h('div', { class: 'hbulk' }, h('b', {}, sel.size + ' selected'),
@@ -189,23 +195,26 @@ export function projectsScreen() {
       h('button', { class: 'btn', onclick: () => { for (const id of sel) archive(D.live(id), true); toast(sel.size + ' archived'); sel.clear(); render(); } }, icon('archive', 15), 'Archive'),
       h('button', { class: 'btn', onclick: () => { sel.clear(); draw(); } }, 'Clear')) : []));
   };
-  const head = () => h('div', { class: 'hrow hhd prow', role: 'row' }, h('span', { class: 'c-chk' }), h('span', { class: 'c-cust' }, 'Customer'), h('span', { class: 'c-cat' }, 'Category'),
-    h('span', { class: 'c-ss' }, 'Site Survey'), h('span', { class: 'c-ep' }, 'ECPAR'), h('span', { class: 'c-ex' }, 'ECX'), h('span', { class: 'c-da' }, 'Date Assigned'),
-    h('span', { class: 'c-dd' }, 'Due Date'), h('span', { class: 'c-dl' }, 'Days Left'), h('span', { class: 'c-st' }, 'Status'), h('span', { class: 'c-act' }));
+  let cols = [];
+  const addFilter = pid => C.addFilterSheet(dbr, f => { pfil = [...pfil, f]; pshow = 50; render(); }, pid);
+  const head = () => h('div', { class: 'hrow hhd prow', role: 'row' }, h('span', { class: 'c-chk' }),
+    cols.map(c => h('span', { class: 'cc', role: 'columnheader' }, C.headCell(dbr, c, { sort: pcol, onSort: c.p || c.id === 'x:days' ? v => { pcol = v; render(); } : null, onFilter: addFilter }))), h('span', { class: 'c-act' }));
   function projectRow(t, n) {
     const row = t.row, rep = E.reportOnly(t.category), ss = E.surveyState(row, t), ep = rep ? '' : E.ecparStatus(row, t), xs = rep ? [] : E.ecxOf(t.id);
     const chk = h('input', { type: 'checkbox', class: 'hchk', 'aria-label': 'Select ' + t.title, checked: sel.has(t.id) ? true : null, onclick: e => e.stopPropagation(), onchange: e => { e.target.checked ? sel.add(t.id) : sel.delete(t.id); draw(); } });
+    const computed = {
+      'x:survey': () => ss === 'done' ? icon('check', 18, 'ok') : ss === 'pending' ? h('span', { class: 'muted sm' }, 'Pending') : h('span', { class: 'muted' }, '—'),
+      'x:ecpar': () => ep === 'Approved' ? icon('check', 18, 'ok') : ep ? badge(ep, undefined, false) : h('span', { class: 'muted' }, '—'),
+      'x:ecx': () => xs.length ? String(xs.length) : h('span', { class: 'muted' }, '—'),
+      'x:days': () => bucket(t) === 'progress' ? daysBadge(t.dueDays) : h('span', { class: 'muted' }, '—') };
+    const cellOf = c => {
+      if (!c.p) return h('span', { class: 'cc cx', 'data-col': c.id, title: c.label }, computed[c.id]());
+      const el = C.cell(dbr, c, row);
+      if (c.p.type === 'title') el.append(h('button', { class: 'copen', type: 'button', 'aria-label': 'Open ' + t.title, title: 'Open', onclick: e => { e.stopPropagation(); go('#/project/' + t.id); } }, icon('expand', 15)));
+      return el;
+    };
     const r = h('div', { class: 'hrow prow' + (sel.has(t.id) ? ' sel' : '') + (t.archived ? ' arch' : ''), role: 'row', onclick: () => go('#/project/' + t.id) },
-      h('span', { class: 'c-chk' }, chk),
-      h('span', { class: 'c-cust' }, h('span', {}, t.title)),
-      h('span', { class: 'c-cat' }, catPills(t.category)),
-      h('span', { class: 'c-ss', title: 'Site survey' }, ss === 'done' ? icon('check', 18, 'ok') : ss === 'pending' ? h('span', { class: 'muted sm' }, 'Pending') : h('span', { class: 'muted' }, '—')),
-      h('span', { class: 'c-ep', title: 'ECPAR' }, ep === 'Approved' ? icon('check', 18, 'ok') : ep ? badge(ep, undefined, false) : h('span', { class: 'muted' }, '—')),
-      h('span', { class: 'c-ex', title: 'ECX applications' }, xs.length ? String(xs.length) : h('span', { class: 'muted' }, '—')),
-      h('span', { class: 'c-da' }, dmy(t.assigned) || h('span', { class: 'muted' }, '—')),
-      h('span', { class: 'c-dd' }, dmy(t.dueDate) || h('span', { class: 'muted' }, '—')),
-      h('span', { class: 'c-dl' }, bucket(t) === 'progress' ? daysBadge(t.dueDays) : h('span', { class: 'muted' }, '—')),
-      h('span', { class: 'c-st' }, t.archived ? badge('Archived', 'gray') : t.status ? optPill('Status', t.status, true) : h('span', { class: 'muted' }, '—')),
+      h('span', { class: 'c-chk' }, chk), ...cols.map(cellOf),
       h('button', { class: 'c-act ebtn', 'aria-label': 'Actions for ' + t.title, onclick: e => { e.stopPropagation(); projectMenu(e.currentTarget, row); } }, icon('more', 18)));
     longPress(r, () => rowActions(t.id));
     return r;
@@ -216,16 +225,19 @@ export function projectsScreen() {
   const filterMenu = a => menu(a, [
     { el: h('div', { class: 'mhead' }, 'Category') }, { label: 'All categories', checked: !pcat, run: () => { pcat = ''; render(); } }, ...cats.map(c => ({ label: c, checked: pcat === c, run: () => { pcat = c; render(); } })), '-',
     { el: h('div', { class: 'mhead' }, 'Status') }, { label: 'Any status', checked: !pstat, run: () => { pstat = ''; render(); } }, ...stats.map(c => ({ label: c, checked: pstat === c, run: () => { pstat = c; render(); } })), '-',
-    { el: h('div', { class: 'mhead' }, 'Due date') }, ...[['', 'Any time'], ['overdue', 'Overdue'], ['week', 'Due in 7 days'], ['month', 'Due in 31 days'], ['none', 'No due date']].map(([k, l]) => ({ label: l, checked: pdue === k, run: () => { pdue = k; render(); } }))], { width: 260 });
-  const chips = [pcat && ['Category: ' + pcat, () => pcat = ''], pstat && ['Status: ' + pstat, () => pstat = ''], pdue && ['Due: ' + { overdue: 'Overdue', week: 'In 7 days', month: 'In 31 days', none: 'No date' }[pdue], () => pdue = '']].filter(Boolean)
+    { el: h('div', { class: 'mhead' }, 'Due date') }, ...[['', 'Any time'], ['overdue', 'Overdue'], ['week', 'Due in 7 days'], ['month', 'Due in 31 days'], ['none', 'No due date']].map(([k, l]) => ({ label: l, checked: pdue === k, run: () => { pdue = k; render(); } })), '-',
+    { label: 'Filter by any property…', icon: 'plus', run: () => addFilter() }], { width: 260 });
+  const chips = [pcat && ['Category: ' + pcat, () => pcat = ''], pstat && ['Status: ' + pstat, () => pstat = ''], pdue && ['Due: ' + { overdue: 'Overdue', week: 'In 7 days', month: 'In 31 days', none: 'No date' }[pdue], () => pdue = ''],
+    ...pfil.map(f => [C.filterText(dbr, f), () => pfil = pfil.filter(x => x !== f)]), pcol && ['Sorted by ' + C.label(dbr, pcol.id) + (pcol.dir === 'desc' ? ' ↓' : ' ↑'), () => pcol = null]].filter(Boolean)
     .map(([l, clear]) => h('button', { class: 'hchip', onclick: () => { clear(); render(); } }, l, icon('close', 13)));
   wrap.append(
     h('header', { class: 'hhead' },
       h('div', { class: 'htitle' }, h('div', { class: 'ptitle' }, icon('folder', 26), elabel('projects.title', 'Projects', 'h1')), elabel('projects.sub', 'Customers, projects, applications and tasks in one place.', 'p', { class: 'hsub' })),
       h('div', { class: 'hactions' },
         h('label', { class: 'hsearch glass' }, icon('search', 17), search),
-        h('button', { class: 'hbtn glass' + (pcat || pstat || pdue ? ' on' : ''), 'aria-label': 'Filter projects', onclick: e => filterMenu(e.currentTarget) }, icon('filter', 18)),
-        h('button', { class: 'hbtn glass', 'aria-label': 'Sort projects', onclick: e => menu(e.currentTarget, [['due', 'Due date'], ['name', 'Customer name'], ['assigned', 'Date assigned (newest)']].map(([k, l]) => ({ label: 'Sort by ' + l, checked: psort === k, run: () => { psort = k; render(); } }))) }, icon('sort', 18)),
+        h('button', { class: 'hbtn glass' + (pcat || pstat || pdue || pfil.length ? ' on' : ''), 'aria-label': 'Filter projects', onclick: e => filterMenu(e.currentTarget) }, icon('filter', 18)),
+        h('button', { class: 'hbtn glass', 'aria-label': 'Properties', title: 'Properties: show, hide and arrange columns', onclick: () => C.visibilitySheet(dbr) }, icon('sliders', 18)),
+        h('button', { class: 'hbtn glass', 'aria-label': 'Sort projects', onclick: e => menu(e.currentTarget, [['due', 'Due date'], ['name', 'Customer name'], ['assigned', 'Date assigned (newest)']].map(([k, l]) => ({ label: 'Sort by ' + l, checked: psort === k, run: () => { psort = k; pcol = null; render(); } }))) }, icon('sort', 18)),
         h('button', { class: 'hbtn glass', 'aria-label': 'More options', onclick: e => state.ctx.more(e.currentTarget) }, icon('more', 19)),
         h('button', { class: 'hnew', onclick: () => newProjectSheet() }, icon('plus', 17), h('span', {}, 'New Project')))),
     h('section', { class: 'hcard htable ptable' },
@@ -250,12 +262,12 @@ function projectMenu(anchor, row) {
 }
 
 /** New Project: customer (pick an existing one or type a new name), category and dates */
-export function newProjectSheet() {
+export function newProjectSheet({ cat: preCat = '' } = {}) {
   const dbr = DB.kpiDb(); if (!dbr) { go('#/projects'); return; }
   const names = [...new Set(E.customers().map(c => g(c, 'name')).filter(Boolean))].sort();
   const dl = h('datalist', { id: 'custlist' }, names.map(n => h('option', { value: n })));
   const cust = h('input', { class: 'field', list: 'custlist', placeholder: 'Customer name', 'aria-label': 'Customer name', autocomplete: 'off' });
-  const cat = h('select', { class: 'field', 'aria-label': 'Category' }, h('option', { value: '' }, 'Category'), (P('Project Category')?.options || []).map(o => h('option', { value: o.name }, o.name)));
+  const cat = h('select', { class: 'field', 'aria-label': 'Category' }, h('option', { value: '' }, 'Category'), (P('Project Category')?.options || []).map(o => h('option', { value: o.name, selected: o.name === preCat ? true : null }, o.name)));
   const da = h('input', { type: 'date', class: 'field', value: today(), 'aria-label': 'Date assigned' });
   const dd = h('input', { type: 'date', class: 'field', value: toISODate(dateAdd(new Date(NOW()), 7, 'days')), 'aria-label': 'Due date' });
   const ref = h('input', { class: 'field', placeholder: 'Project reference (optional)', 'aria-label': 'Project reference' });

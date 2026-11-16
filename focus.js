@@ -7,7 +7,8 @@ import * as E from './entities.js';
 import { h, icon, menu, toast, textbox, sheet } from './ui.js';
 import { formatDate, toISODate, parseDate, dateAdd, startOfDay } from './dates.js';
 import { state, now as NOW, render, go, moreMenu, longPress, exportList } from './app.js';
-import { badge, optPill, formModal, newProjectSheet, rejectEcparFlow, resubmitEcparFlow, approveEcparFlow, rejectEcxFlow, resubmitEcxFlow, approveEcxFlow, editRejectionFlow } from './project.js';
+import * as C from './cols.js';
+import { badge, optPill, linkedField, formModal, newProjectSheet, rejectEcparFlow, resubmitEcparFlow, approveEcparFlow, rejectEcxFlow, resubmitEcxFlow, approveEcxFlow, editRejectionFlow } from './project.js';
 import { dueItems, completeItem, pickProject, logSheet, coverInto } from './home.js';
 import { promptBox } from './ui.js';
 
@@ -26,7 +27,7 @@ const setRowProp = (row, name, v) => { const p = P(name); if (p) D.update(row.id
 
 // ---------- per-page state (filters stay while you move around) ----------
 const ST = {};
-const st = kind => ST[kind] || (ST[kind] = { tab: 'all', q: '', cat: '', pri: '', date: '', status: '', sort: 'due', show: 60, sel: new Set() });
+const st = kind => ST[kind] || (ST[kind] = { tab: 'all', q: '', cat: '', pri: '', date: '', status: '', sort: 'due', show: 60, sel: new Set(), pf: [], col: null });
 
 // =====================================================================================
 // Records for each page
@@ -134,11 +135,12 @@ export function focusScreen(kind) {
   // filters other than the tab: search, category, priority, status, date
   const q = S.q.trim().toLowerCase(), dateF = def.dates.find(d => d[0] === S.date);
   const base = all.filter(r => (!q || def.search(r).filter(Boolean).join(' ').toLowerCase().includes(q)) && (!S.cat || r.cats.includes(S.cat)) && (!S.pri || (r.priority || 'Not set') === S.pri)
-    && (!S.status || r.status === S.status) && (!dateF || dateF[2](r)));
+    && (!S.status || r.status === S.status) && (!dateF || dateF[2](r)) && (!S.pf.length || S.pf.every(f => r.row && C.matches(DB.kpiDb(), r.row, f, n))));
   const tab = def.tabs.find(t => t[0] === S.tab) || def.tabs[0];
   const sorters = { due: (a, b) => (a.days ?? 99999) - (b.days ?? 99999), cust: (a, b) => a.cust.localeCompare(b.cust), pri: (a, b) => ({ High: 0, Medium: 1, Low: 2 }[a.priority] ?? 3) - ({ High: 0, Medium: 1, Low: 2 }[b.priority] ?? 3),
     rejected: (a, b) => String(b.rejected || '').localeCompare(String(a.rejected || '')), sched: (a, b) => String(a.scheduled || '9').localeCompare(String(b.scheduled || '9')) };
-  const rows = base.filter(tab[3]).sort((a, b) => sorters[S.sort]?.(a, b) || sorters.due(a, b) || a.cust.localeCompare(b.cust));
+  const byCol = S.col && C.comparer(DB.kpiDb(), S.col, r => r.row, n);
+  const rows = base.filter(tab[3]).sort((a, b) => byCol?.(a, b) || sorters[S.sort]?.(a, b) || sorters.due(a, b) || a.cust.localeCompare(b.cust));
   for (const id of [...S.sel]) if (!rows.some(r => r.id === id)) S.sel.delete(id);
   wrap.append(metricsBar(def, base),
     h('div', { class: 'fgrid' }, tableCard(kind, def, S, base, rows, n), h('aside', { class: 'fside' }, donutCard(def, base), barsCard(def, base), quickCard(kind))));
@@ -177,7 +179,9 @@ function tableCard(kind, def, S, base, rows, n) {
   const search = textbox({ value: S.q, cls: 'hsearch-in', placeholder: { today: 'Search ECX, customer, task…', survey: 'Search project, customer or location…', ecpar: 'Search by ECPAR no., customer, reason…', ecx: 'Search ECX, customer, reason…' }[kind], label: 'Search',
     oninput: () => { S.q = search.value; clearTimeout(search._t); search._t = setTimeout(() => refreshInPlace(kind, search), 220); } });
   const active = [S.cat && ['Category: ' + short(S.cat), () => S.cat = ''], S.pri && ['Priority: ' + S.pri, () => S.pri = ''], S.status && ['Status: ' + S.status, () => S.status = ''],
-    S.date && ['Date: ' + def.dates.find(d => d[0] === S.date)[1], () => S.date = ''], S.q && ['Search: ' + S.q, () => S.q = '']].filter(Boolean);
+    S.date && ['Date: ' + def.dates.find(d => d[0] === S.date)[1], () => S.date = ''], S.q && ['Search: ' + S.q, () => S.q = ''],
+    ...S.pf.map(f => [C.filterText(DB.kpiDb(), f), () => S.pf = S.pf.filter(x => x !== f)]), S.col && ['Sorted by ' + C.label(DB.kpiDb(), S.col.id) + (S.col.dir === 'desc' ? ' ↓' : ' ↑'), () => S.col = null]].filter(Boolean);
+  const addFilter = pid => C.addFilterSheet(DB.kpiDb(), f => { S.pf = [...S.pf, f]; S.show = 60; render(); }, pid);
   const cats = [...new Set(DB.CATEGORIES.concat((P('Project Category')?.options || []).map(o => o.name)))];
   const filterMenu = a => menu(a, [
     { el: h('div', { class: 'mhead' }, 'Category') }, { label: 'All categories', checked: !S.cat, run: () => { S.cat = ''; render(); } }, ...cats.map(c => ({ label: c, checked: S.cat === c, run: () => { S.cat = c; render(); } })), '-',
@@ -185,16 +189,23 @@ function tableCard(kind, def, S, base, rows, n) {
     { el: h('div', { class: 'mhead' }, 'Status') }, ...['', ...def.statuses].map(p => ({ label: p || 'Any status', checked: S.status === p, run: () => { S.status = p; render(); } })), '-',
     { el: h('div', { class: 'mhead' }, 'Date') }, { label: 'Any date', checked: !S.date, run: () => { S.date = ''; render(); } }, ...def.dates.map(([k, l]) => ({ label: l, checked: S.date === k, run: () => { S.date = k; render(); } })), '-',
     { el: h('div', { class: 'mhead' }, 'Sort by') }, ...sortOptions(kind).map(([k, l]) => ({ label: l, checked: S.sort === k, run: () => { S.sort = k; render(); } })), '-',
-    { label: 'Clear filters', icon: 'close', run: () => clearFilters(S) }], { width: 260 });
+    { label: 'Filter by any property…', icon: 'plus', run: () => addFilter() }, { label: 'Clear filters', icon: 'close', run: () => clearFilters(S) }], { width: 260 });
   const shown = rows.slice(0, S.show);
+  const dbr = DB.kpiDb(), lay = layout(kind, dbr);
+  C.gridOf(list, [26, ...lay.lead.map(c => c.w)], lay.shared, [...lay.tail.map(c => c.w), 30]);
+  const pageHead = c => h('span', { class: 'cc', role: 'columnheader' }, h('button', { class: 'chd', type: 'button', 'aria-label': c.label + ' column options', onclick: e => { e.stopPropagation(); menu(e.currentTarget, [
+    { label: 'Rename column', icon: 'pencil', run: async () => { const v = await promptBox('Column name', c.label); if (v == null) return; const k = C.cfg(dbr), t = v.replace(/\s+/g, ' ').trim().slice(0, 60); if (!t || t === c.def) delete k.names[c.id]; else k.names[c.id] = t; C.save(dbr, k); render(); } },
+    ...(c.fixed ? [] : [{ label: 'Hide on this page', icon: 'eye', run: () => { const k = C.cfg(dbr); k.page = { ...k.page, [kind]: [...new Set([...(k.page[kind] || []), c.id])] }; C.save(dbr, k); render(); } }])], { width: 220 }); } }, h('span', {}, c.label)));
   const allChk = h('input', { type: 'checkbox', class: 'hchk', 'aria-label': 'Select all', checked: shown.length && shown.every(r => S.sel.has(r.id)) ? true : null, onchange: e => { shown.forEach(r => e.target.checked ? S.sel.add(r.id) : S.sel.delete(r.id)); render(); } });
-  list.append(...[h('div', { class: 'frow fhd', role: 'row' }, h('span', { class: 'fc-chk' }, allChk), def.cols.map((c, i) => h('span', { class: 'fc fc' + i }, c)), h('span', { class: 'fc-act' })),
-    ...shown.map(r => recordRow(kind, r, S, n)),
+  list.append(...[h('div', { class: 'frow fhd', role: 'row' }, h('span', { class: 'fc-chk' }, allChk), lay.lead.map(pageHead),
+      lay.shared.map(c => h('span', { class: 'cc', role: 'columnheader' }, C.headCell(dbr, c, { sort: S.col, onSort: c.p ? v => { S.col = v; render(); } : null, onFilter: addFilter }))), lay.tail.map(pageHead), h('span', { class: 'fc-act' })),
+    ...shown.map(r => recordRow(kind, r, S, n, lay)),
     rows.length ? null : h('p', { class: 'hempty' }, active.length ? 'Nothing matches these filters. Clear them to see everything.' : { today: 'Nothing due today. Nice.', survey: 'No site survey is pending.', ecpar: 'No rejected ECPAR needs action.', ecx: 'No rejected ECX application here.' }[kind])].filter(Boolean));
   return h('section', { class: 'hcard ftable' },
     h('div', { class: 'fbar' }, h('div', { class: 'dchips' }, tabEls),
       h('div', { class: 'ftools' }, h('label', { class: 'hsearch glass fsearch' }, icon('search', 16), search),
-        h('button', { class: 'hbtn sm glass' + (S.cat || S.pri || S.status || S.date ? ' on' : ''), 'aria-label': 'Filters and sorting', onclick: e => filterMenu(e.currentTarget) }, icon('filter', 17)))),
+        h('button', { class: 'hbtn sm glass' + (S.cat || S.pri || S.status || S.date || S.pf.length ? ' on' : ''), 'aria-label': 'Filters and sorting', onclick: e => filterMenu(e.currentTarget) }, icon('filter', 17)),
+        h('button', { class: 'hbtn sm glass', 'aria-label': 'Properties', title: 'Properties: show, hide and arrange columns', onclick: () => C.visibilitySheet(dbr, { page: kind, pageTitle: def.title, pageCols: [...lay.allLead, ...lay.allTail] }) }, icon('sliders', 17)))),
     active.length ? h('div', { class: 'hchips' }, active.map(([l, c]) => h('button', { class: 'hchip', onclick: () => { c(); render(); } }, l, icon('close', 13))), h('button', { class: 'link sm', onclick: () => clearFilters(S) }, 'Clear filters')) : null,
     S.sel.size ? bulkBar(kind, S, rows, n) : null,
     list,
@@ -207,7 +218,7 @@ function refreshInPlace(kind, search) {
   for (const sel of ['.fmetrics', '.fgrid']) { const a = wrap.querySelector(sel), b = fresh.querySelector(sel); if (a && b) a.replaceWith(b); }
   const slot = wrap.querySelector('.fsearch .tbox'); if (slot && slot !== search) slot.replaceWith(search);
 }
-const clearFilters = S => { Object.assign(S, { q: '', cat: '', pri: '', status: '', date: '', tab: 'all' }); render(); };
+const clearFilters = S => { Object.assign(S, { q: '', cat: '', pri: '', status: '', date: '', tab: 'all', pf: [], col: null }); render(); };
 const sortOptions = kind => [['due', 'Due date'], ['cust', 'Customer'], ['pri', 'Priority'], ...(kind === 'survey' ? [['sched', 'Survey date']] : []), ...(kind === 'ecpar' || kind === 'ecx' ? [['rejected', 'Rejected date (newest)']] : [])];
 function bulkBar(kind, S, rows, n) {
   const chosen = rows.filter(r => S.sel.has(r.id));
@@ -223,41 +234,58 @@ function bulkBar(kind, S, rows, n) {
     h('button', { class: 'btn', onclick: () => { S.sel.clear(); render(); } }, 'Clear'));
 }
 
+// ---------- columns of each page: its own working columns around the shared tracker properties ----------
+const muted = t => h('span', { class: 'muted' }, t);
+const dueCell = r => r.days == null ? muted('—') : h('span', { class: 'fdue' + (r.days < 0 ? ' late' : r.days === 0 ? ' today' : '') }, icon('date', 13), r.days === 0 ? 'Today' : formatDate(r.due, 'D/M/YYYY'));
+const PAGE_COLS = {
+  today: { lead: [{ k: 'task', def: 'eCX & WBS No / Task', w: 200, fixed: true, cell: r => h('span', { class: 'fid' }, h('b', { class: r.no ? 'mono' : 'muted' }, r.no || 'No eCX & WBS No'),
+      h('small', {}, r.kind === 'task' ? linkedField(r.task, { key: 'name', label: 'Task' }) : r.title, h('i', { class: 'ftype' }, r.type))) }],
+    tail: [{ k: 'pri', def: 'Priority', w: 96, cell: r => priPill(r.priority) }, { k: 'due', def: 'Due Date', w: 104, cell: r => dueBadge(r.days) },
+      { k: 'status', def: 'Status', w: 112, cell: r => badge(r.status, { Pending: 'blue', 'In Progress': 'yellow', 'On Hold': 'orange', Completed: 'green' }[r.status]) }] },
+  survey: { lead: [{ k: 'task', def: 'eCX & WBS No / Survey', w: 200, fixed: true, cell: r => h('span', { class: 'fid' }, h('b', { class: 'flink' }, r.title), h('small', { class: r.no ? 'mono' : 'muted' }, r.no || 'No eCX & WBS No')) }],
+    tail: [{ k: 'pri', def: 'Priority', w: 96, cell: r => priPill(r.priority) },
+      { k: 'sdate', def: 'Site Survey Date', w: 112, cell: r => r.scheduled ? h('span', { class: r.status === 'Overdue' && r.sdays < 0 ? 'late' : '' }, dmy(r.scheduled)) : muted('—') },
+      { k: 'status', def: 'Status', w: 112, cell: r => badge(r.status, undefined, false) }] },
+  ecpar: { lead: [{ k: 'no', def: 'ECPAR No.', w: 136, fixed: true, cell: r => h('span', { class: 'fid' }, linkedField(r.rec || E.ecpar(r.row), { key: 'ref', label: 'ECPAR No.', mono: true, ph: 'No ECPAR no.' }), h('small', {}, 'Revise and resubmit')) }],
+    tail: [{ k: 'rej', def: 'Rejection Details', w: 230, cell: r => rejectionDetails(r, () => editRejectionFlow(E.ecpar(r.row), E.ECPAR_REASONS)) },
+      { k: 'rdate', def: 'Rejected Date', w: 100, cell: r => r.rejected ? dmy(r.rejected) : muted('—') }, { k: 'due', def: 'Due Date', w: 104, cell: dueCell },
+      { k: 'status', def: 'Status', w: 132, cell: r => badge(r.status, undefined, false) }] },
+  ecx: { lead: [{ k: 'no', def: 'ECX No.', w: 136, fixed: true, cell: r => h('span', { class: 'fid' }, linkedField(r.x, { key: 'number', label: 'ECX No.', mono: true, ph: 'No ECX no.' }), h('small', {}, r.appid || 'Revise ECX application')) }],
+    tail: [{ k: 'rej', def: 'Rejection Details', w: 230, cell: r => rejectionDetails(r, () => editRejectionFlow(r.x, E.ECX_REASONS)) },
+      { k: 'rdate', def: 'Rejected Date', w: 100, cell: r => r.rejected ? dmy(r.rejected) : muted('—') }, { k: 'due', def: 'Due Date', w: 104, cell: dueCell },
+      { k: 'status', def: 'Status', w: 132, cell: r => badge(r.status, undefined, false) }] } };
+// the page already has its own status, due date and priority, so the project's ones are not repeated here
+const SKIP_SHARED = ['Status', 'Due Date', 'Priority'];
+function layout(kind, dbr) {
+  const hid = C.pageHidden(dbr, kind), pc = PAGE_COLS[kind];
+  const mk = c => ({ ...c, id: 'f:' + kind + ':' + c.k, label: C.pageLabel(dbr, 'f:' + kind + ':' + c.k, c.def) });
+  const allLead = pc.lead.map(mk), allTail = pc.tail.map(mk);
+  return { allLead, allTail, lead: allLead.filter(c => !hid.has(c.id)), tail: allTail.filter(c => !hid.has(c.id)),
+    shared: C.columns(dbr, { computed: false, skip: SKIP_SHARED }) };
+}
+
 // ---------- one row per page ----------
-function recordRow(kind, r, S, n) {
+function recordRow(kind, r, S, n, lay) {
   const chk = h('input', { type: 'checkbox', class: 'hchk', 'aria-label': 'Select ' + r.cust, checked: S.sel.has(r.id) ? true : null, onclick: e => e.stopPropagation(), onchange: e => { e.target.checked ? S.sel.add(r.id) : S.sel.delete(r.id); render(); } });
   const tab = { today: r.tab, survey: 'survey', ecpar: 'ecpar', ecx: 'ecx' }[kind] || '';
   const open = () => go('#/project/' + r.row.id + (tab ? '/' + tab : ''));
   const more = h('button', { class: 'c-act ebtn fc-act', 'aria-label': 'Actions for ' + r.cust, onclick: e => { e.stopPropagation(); rowMenu(kind, r, e.currentTarget, n); } }, icon('more', 18));
-  let cells;
-  if (kind === 'today') cells = [
-    h('span', { class: 'fc fc0 fid' }, h('b', { class: r.no ? 'mono' : 'muted' }, r.no || 'No eCX & WBS No'), h('small', {}, r.title, h('i', { class: 'ftype' }, r.type))),
-    h('span', { class: 'fc fc1' }, r.cust), h('span', { class: 'fc fc2' }, catPill(r.cats)), h('span', { class: 'fc fc3' }, priPill(r.priority)),
-    h('span', { class: 'fc fc4' }, dueBadge(r.days)), h('span', { class: 'fc fc5' }, badge(r.status, { Pending: 'blue', 'In Progress': 'yellow', 'On Hold': 'orange', Completed: 'green' }[r.status]))];
-  else if (kind === 'survey') cells = [
-    h('span', { class: 'fc fc0 fid' }, h('b', { class: 'flink' }, r.title), h('small', { class: r.no ? 'mono' : 'muted' }, r.no || 'No eCX & WBS No')),
-    h('span', { class: 'fc fc1' }, r.cust), h('span', { class: 'fc fc2' }, catPill(r.cats)), h('span', { class: 'fc fc3' }, priPill(r.priority)),
-    h('span', { class: 'fc fc4' }, r.scheduled ? h('span', { class: r.status === 'Overdue' && r.sdays < 0 ? 'late' : '' }, dmy(r.scheduled)) : h('span', { class: 'muted' }, '—')),
-    h('span', { class: 'fc fc5' }, badge(r.status, undefined, false))];
-  else cells = [
-    h('span', { class: 'fc fc0 fid' }, h('b', { class: 'flink mono' }, (kind === 'ecpar' ? r.ref : r.no) || (kind === 'ecpar' ? 'No ECPAR no.' : 'No ECX no.')), h('small', {}, kind === 'ecx' ? (r.appid || 'Revise ECX application') : 'Revise and resubmit')),
-    h('span', { class: 'fc fc1' }, r.cust),
-    h('span', { class: 'fc fc2 fproj' }, r.pref ? h('b', { class: 'mono' }, r.pref) : null, catPill(r.cats)),
-    h('span', { class: 'fc fc3' }, rejectionDetails(r)),
-    h('span', { class: 'fc fc4' }, r.rejected ? dmy(r.rejected) : h('span', { class: 'muted' }, '—')),
-    h('span', { class: 'fc fc5' }, r.days == null ? h('span', { class: 'muted' }, '—') : h('span', { class: 'fdue' + (r.days < 0 ? ' late' : r.days === 0 ? ' today' : '') }, icon('date', 13), r.days === 0 ? 'Today' : formatDate(r.due, 'D/M/YYYY'))),
-    h('span', { class: 'fc fc6' }, badge(r.status, undefined, false))];
-  const el = h('div', { class: 'frow' + (S.sel.has(r.id) ? ' sel' : ''), role: 'row', tabindex: '0', onclick: open, onkeydown: e => { if (e.key === 'Enter' && e.target === el) open(); } }, h('span', { class: 'fc-chk' }, chk), ...cells, more);
+  const dbr = DB.kpiDb();
+  const pageCell = c => h('span', { class: 'cc fc fpc-' + c.k, 'data-col': c.id }, c.cell(r));
+  const shared = c => { const el = C.cell(dbr, c, r.row); if (c.p.type === 'title') el.append(h('button', { class: 'copen', type: 'button', 'aria-label': 'Open ' + r.cust, title: 'Open', onclick: e => { e.stopPropagation(); open(); } }, icon('expand', 15))); return el; };
+  const el = h('div', { class: 'frow' + (S.sel.has(r.id) ? ' sel' : ''), role: 'row', tabindex: '0', onclick: open, onkeydown: e => { if (e.key === 'Enter' && e.target === el) open(); } },
+    h('span', { class: 'fc-chk' }, chk), ...lay.lead.map(pageCell), ...lay.shared.map(shared), ...lay.tail.map(pageCell), more);
   longPress(el, () => rowMenu(kind, r, el, n));
   return el;
 }
 /** reason category, reason, required correction and remarks; long text folds away */
-function rejectionDetails(r) {
+function rejectionDetails(r, edit) {
   const extra = [r.correction && ['Correction', r.correction], r.remarks && ['Remarks', r.remarks]].filter(Boolean);
   const long = (r.reason + extra.map(x => x[1]).join(' ')).length > 90;
   const body = [h('p', {}, r.reason || h('span', { class: 'muted' }, 'No reason recorded'))];
   const more = extra.map(([k, v]) => h('p', {}, h('b', {}, k + ': '), v));
-  return h('div', { class: 'rjd' }, h('span', { class: 'rjc' }, icon('info', 13), r.rcat || 'Not categorised'),
+  return h('div', { class: 'rjd' + (edit ? ' rjedit' : ''), title: edit ? 'Tap to edit the rejection details' : null, onclick: edit ? async e => { if (e.target.closest('summary')) return; e.stopPropagation(); if (await edit()) render(); } : null },
+    h('span', { class: 'rjc' }, icon('info', 13), r.rcat || 'Not categorised'),
     ...(long ? [h('details', { onclick: e => e.stopPropagation() }, h('summary', {}, body[0].textContent.slice(0, 70) + (body[0].textContent.length > 70 ? '…' : '')), ...body, ...more)] : [...body, ...more]));
 }
 

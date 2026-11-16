@@ -9,6 +9,7 @@ import { formatDate, toISODate, dateBetween, dateAdd, startOfDay, isDate, parseD
 import { state, now as NOW, render, go, moreMenu, L } from './app.js';
 import { newProjectSheet, setProjectFilter, badge } from './project.js';
 import { coverAndPhoto } from './page.js';
+import * as KF from './kpi.js';
 
 let dueFilter = 'all', calView = 'month', calAnchor = null;
 const TZ = 'Asia/Kuching';
@@ -70,9 +71,9 @@ export function kpiNumbers(all, n) {
   return { active: active.length, done: done.length, prog: prog.length, overdue: overdue.length, added, kpi: kpiPct(all.filter(t => t.archived || t.status === 'Done')) };
 }
 /** KPI achievement: completed within 7 days of Date Assigned, out of completed projects that have both dates */
-function kpiPct(list) {
-  const timed = list.filter(t => isDate(t.assigned) && isDate(t.completed));
-  return timed.length ? Math.round(timed.filter(t => dateBetween(t.completed, t.assigned, 'days') <= 7).length / timed.length * 100) : null;
+function kpiPct(list) { // same rule as the KPI page (configured start, completion event and day counting)
+  const s = KF.summary(list.map(t => KF.facts(t.row)));
+  return s.pct == null ? null : Math.round(s.pct);
 }
 function kpiBar(all, n) {
   const k = kpiNumbers(all, n), pc = v => k.active ? Math.round(v / k.active * 100) + '%' : '—';

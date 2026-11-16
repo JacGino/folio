@@ -2,7 +2,7 @@
 import * as D from './data.js';
 import * as DB from './db.js';
 import * as Sync from './sync.js';
-import { h, icon, toast, menu, sheet, group, row, confirmBox, promptBox, esc, textbox } from './ui.js';
+import { h, icon, toast, menu, sheet, group, row, confirmBox, promptBox, esc, textbox, pickImage } from './ui.js';
 import { mountEditor, blocksToMd, nb } from './editor.js';
 import { formatDate, toISODate, parseDate } from './dates.js';
 import { state, go, renderNav, download, layoutMode, browserUrl, now, moreMenu } from './app.js';
@@ -30,7 +30,7 @@ const fontClass = () => ''; // the font is now one setting for the whole app (â‹
 // ---------- cover + photo ----------
 export function coverAndPhoto(rec, { always = false } = {}) {
   const cover = D.val(rec, 'cover'), photo = D.val(rec, 'icon');
-  const pick = (field) => { const inp = h('input', { type: 'file', accept: 'image/*' }); inp.onchange = async () => { const f = inp.files[0]; if (!f) return; const ref = await addFile(f); D.update(rec.id, { [field]: ref }); go(location.hash); }; inp.click(); };
+  const pick = (field) => pickImage(async f => { const ref = await addFile(f); D.update(rec.id, { [field]: ref }); go(location.hash); }, { max: field === 'cover' ? 2000 : 800 });
   const out = [];
   if (cover || always || D.val(rec, 'db')) { // pages holding a database always show a cover; a soft default until one is picked
     const c = h('div', { class: 'cover' + (cover ? '' : ' default'), role: 'img', 'aria-label': 'Cover photo' }, h('button', { class: 'chg', onclick: () => menu(c.querySelector('.chg'), [{ label: 'Change cover', icon: 'paint', run: () => pick('cover') }, ...(cover ? [{ label: 'Reposition & resize', icon: 'expand', run: () => adjust(c, rec, 'cover') }] : []), { label: 'Remove cover', icon: 'trash', danger: true, run: () => { D.update(rec.id, { cover: null }); go(location.hash); } }]) }, 'Change cover'));

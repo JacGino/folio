@@ -3,7 +3,7 @@ import * as D from './data.js';
 import * as DB from './db.js';
 import * as Sync from './sync.js';
 import * as S from './store.js';
-import { h, icon, logo, $, toast, menu, sheet, promptBox, later } from './ui.js';
+import { h, icon, logo, $, toast, menu, sheet, promptBox, later, pickImage } from './ui.js';
 import { formatDate, toISODate } from './dates.js';
 import { renderPage, renderRow, newPage, propEditor } from './page.js';
 import { renderDb } from './table.js';
@@ -16,6 +16,8 @@ import { initKeyboardBar } from './kbar.js';
 import { commentsScreen, calendarScreen, inboxScreen } from './hub.js';
 import * as E from './entities.js';
 import { focusScreen, focusCounts } from './focus.js';
+import { setKpiRules } from './kpi.js';
+import { timelineScreen, boardScreen, reportsScreen, kpiScreen } from './views.js';
 import { projectsScreen, projectScreen, newProjectSheet, dueTaskList } from './project.js';
 import { homeScreen, activityScreen, soonScreen } from './home.js';
 
@@ -43,6 +45,10 @@ export function elabel(key, def, tag = 'span', attrs = {}) {
   return el;
 }
 
+// ---------- no pinch-zoom: it fought with editing (page jumping, lag). ⋯ → Zoom is the way to make everything bigger ----------
+for (const ev of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(ev, e => e.preventDefault(), { passive: false }); // iPhone / iPad Safari
+document.addEventListener('touchmove', e => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false }); // two-finger pinch anywhere else
+// double-tap zoom is stopped by touch-action in the CSS (blocking it here would swallow quick taps)
 // ---------- zoom (per device, ⋯ → Zoom) ----------
 let zoomPct = 100;
 try { zoomPct = Math.max(70, Math.min(200, +localStorage.getItem('folio-zoom') || 100)); } catch {}
@@ -67,7 +73,7 @@ export async function loadFont() {
   if (!f) { const p = D.all().find(r => r.k === 'page' && ['serif', 'mono'].includes(D.val(r, 'font'))); f = p ? D.val(p, 'font') : 'default'; } // keep a font chosen earlier on a page
   setFontClass(f);
   setGlass(ws.glass ?? 50);
-  labels = ws.labels || {}; if (ws.privSort) privSort = ws.privSort; if (ws.privShow != null) privShow = ws.privShow;
+  setKpiRules(ws.kpiRules); labels = ws.labels || {}; if (ws.privSort) privSort = ws.privSort; if (ws.privShow != null) privShow = ws.privShow;
 }
 /** Liquid Glass opacity, 0 = Clear … 100 = Tinted (like the iPhone's Appearance → Liquid Glass slider). */
 export function setGlass(pct) { const v = String(Math.max(0, Math.min(100, +pct || 0)) / 100); if (document.documentElement.style.getPropertyValue('--lg-a') !== v) document.documentElement.style.setProperty('--lg-a', v); }
@@ -99,7 +105,7 @@ export function moreMenu(anchor, { extra = [], rec = null, onTrash = null } = {}
     up.title = (D.val(rec, 'title') || 'Untitled') + ' (copy)'; up.created = up.edited = up.order = Date.now();
     const p = D.create('page', 'ws', up); toast('Duplicated'); go('#/p/' + p.id);
   };
-  const photo = (field, label) => () => { const inp = h('input', { type: 'file', accept: 'image/*' }); inp.onchange = async () => { const f = inp.files[0]; if (!f) return; const ref = await Sync.addFile(f); D.update(rec.id, { [field]: ref }); render(); }; inp.click(); };
+  const photo = (field, label) => () => pickImage(async f => { const ref = await Sync.addFile(null, f); Sync.soon(); D.update(rec.id, { [field]: ref }); render(); }, { max: field === 'cover' ? 2000 : 800 });
   const body = h('div', { class: 'actions' },
     h('div', { class: 'agrp fonts' }, fontCard('default', 'Default', '-apple-system, sans-serif'), fontCard('serif', 'Serif', 'var(--serif)'), fontCard('mono', 'Mono', 'var(--mono)')),
     h('div', { class: 'agrp' }, zoomRow()),
@@ -246,10 +252,10 @@ function renderNow() {
       case 'list': main.append(listScreen(['today', 'survey', 'ecpar', 'ecx'].includes(r[1]) ? r[1] : 'today')); break;
       case 'projects': main.append(projectsScreen()); break;
       case 'project': main.append(projectScreen(r[1], r[2])); break;
-      case 'kpi': main.append(soonScreen('KPI')); break;
-      case 'timeline': main.append(soonScreen('Timeline')); break;
-      case 'board': main.append(soonScreen('Board')); break;
-      case 'reports': main.append(soonScreen('Reports')); break;
+      case 'kpi': main.append(kpiScreen()); break;
+      case 'timeline': main.append(timelineScreen()); break;
+      case 'board': main.append(boardScreen()); break;
+      case 'reports': main.append(reportsScreen()); break;
       case 'today': main.append(focusScreen('today')); break;
       case 'survey': main.append(focusScreen('survey')); break;
       case 'ecpar': main.append(focusScreen('ecpar')); break;
@@ -270,7 +276,7 @@ function renderNow() {
     }
   } catch (e) { console.error(e); main.append(h('div', { class: 'wrap' }, h('p', { class: 'empty' }, 'Something went wrong showing this screen: ' + e.message))); }
   main.prepend(topbar());
-  document.body.classList.toggle('on-home', ['home', 'activity', 'projects', 'project', 'today', 'survey', 'ecpar', 'ecx'].includes(r[0]));
+  document.body.classList.toggle('on-home', ['home', 'activity', 'projects', 'project', 'today', 'survey', 'ecpar', 'ecx', 'timeline', 'board', 'reports', 'kpi'].includes(r[0]));
   if (layoutMode() !== 'wide') document.body.classList.remove('side-open');
   applyLock();
   if (['p', 'r'].includes(r[0]) && r[1]) noteRecent(r[1]);
@@ -318,10 +324,24 @@ export function toggleSide(force) {
   if (layoutMode() === 'wide') { b.classList.toggle('side-closed', force === undefined ? undefined : !force); try { localStorage.setItem('folio-side', b.classList.contains('side-closed') ? 'closed' : 'open'); } catch {} }
   else b.classList.toggle('side-open', force);
 }
+/** sidebar avatar: the profile photo, or the initials until one is added */
+function profileAvatar(initials) {
+  const ph = D.val(D.live('home') || { f: {} }, 'icon'), el = h('span', { class: 'nav-av' + (ph ? ' photo' : '') }, ph ? null : initials);
+  if (ph && ph.id) import('./page.js').then(m => m.fileUrl(ph.id)).then(u => { if (u) el.style.backgroundImage = `url("${u}")`; else el.textContent = initials; });
+  return el;
+}
 // the F logo opens a menu like Notion's workspace menu
+// the profile photo is the one on Home (kept on the 'home' record, synced with the workspace)
+const profileRec = () => D.live('home') || D.getRec('home') || D.create('home', 'ws', { id: 'home', created: Date.now() });
+function setProfilePhoto() {
+  pickImage(async f => { const ref = await Sync.addFile(null, f); Sync.soon(); D.update(profileRec().id, { icon: ref, iconPos: '50% 50%' }); toast('Profile photo saved'); render(); renderSide(); }, { max: 800 });
+}
 function workspaceMenu(anchor) {
+  const hasPhoto = !!D.val(profileRec(), 'icon');
   menu(anchor, [
     { label: 'Edit profile', icon: 'users', run: editProfile },
+    { label: hasPhoto ? 'Change profile photo' : 'Add profile photo', icon: 'person', run: setProfilePhoto },
+    ...(hasPhoto ? [{ label: 'Remove profile photo', icon: 'trash', danger: true, run: () => { D.update(profileRec().id, { icon: null }); render(); renderSide(); } }] : []),
     { label: 'Inbox', icon: 'inbox', run: () => go('#/inbox') },
     { label: 'Settings', icon: 'settings', run: () => go('#/settings') },
     { label: 'Trash', icon: 'trash', run: () => go('#/trash') },
@@ -404,7 +424,7 @@ function renderSide() {
         nav('#/trash', 'trash', 'Trash', cur === 'trash'))),
     h('div', { class: 'nfoot' },
       h('button', { class: 'nprofile', 'aria-label': 'Profile and settings', onclick: e => workspaceMenu(e.currentTarget) },
-        h('span', { class: 'nav-av' }, initials),
+        profileAvatar(initials),
         h('span', { class: 'npn' }, h('b', {}, L('profile.name', 'Your name')), h('small', {}, L('profile.role', 'Planning Technician'))),
         icon('chevd', 16)),
       h('a', { class: 'nsync' + (st.state === 'error' ? ' bad' : ''), href: '#/settings', title: syncText }, icon('sync', 14), h('span', {}, syncText))));
