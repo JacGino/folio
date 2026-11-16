@@ -54,7 +54,7 @@ export function value(row, p, now = Date.now(), depth = 0) {
 }
 export function display(row, p, now) {
   const v = value(row, p, now);
-  if (p.type === 'date') return v ? formatDate(v) : '';
+  if (p.type === 'date') return v ? formatDate(v, 'DD/MM/YYYY') : '';
   if (p.type === 'formula') return formulaToText(v);
   if (p.type === 'multi') return v.join(', ');
   if (p.type === 'checkbox') return v ? 'Yes' : 'No';

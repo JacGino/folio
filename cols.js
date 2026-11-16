@@ -3,10 +3,11 @@
 // It is stored on the tracker database record itself, so it syncs with the data and is the same on every device.
 import * as D from './data.js';
 import * as DB from './db.js';
-import { h, icon, menu, sheet, promptBox, toast } from './ui.js';
+import { h, icon, menu, sheet, promptBox, toast, confirmBox } from './ui.js';
 import { propEditor } from './page.js';
 import { parseDate, startOfDay, toISODate, formatDate } from './dates.js';
 import { render, now as NOW } from './app.js';
+import { editProp } from './table.js';
 
 /** columns worked out from linked records (not tracker properties): shown in Projects and Focus tables, never in the raw tracker table */
 export const COMPUTED = [
@@ -58,7 +59,7 @@ export function gridOf(list, lead, cols, tail) {
 
 /** one editable cell for a tracker property: tapping it edits the value and does not open the project */
 export function cell(dbr, col, row) {
-  const ed = propEditor(D.getRec(row.id) || row, col.p, dbr, { compact: true, dfmt: 'D/M/YYYY' });
+  const ed = propEditor(D.getRec(row.id) || row, col.p, dbr, { compact: true, dfmt: 'DD/MM/YYYY' });
   return h('span', { class: 'cc ce' + (col.p.type === 'title' ? ' ctitle' : ''), 'data-col': col.id, onclick: e => e.stopPropagation(), onkeydown: e => e.stopPropagation() }, ed);
 }
 // after an edit in a table: redraw when the person has finished (the row's other columns, counts and charts follow)
@@ -143,7 +144,7 @@ export const applyFilters = (dbr, list, fs, rowOf = r => r.row, n = NOW()) => fs
 export function filterText(dbr, f) {
   const p = DB.props(dbr).find(q => q.id === f.p); if (!p) return '';
   const name = label(dbr, 'p:' + p.id), op = (OPS[kindOf(p)].find(o => o[0] === f.op) || [, f.op])[1];
-  return name + ' ' + op + (noValue(f.op) ? '' : ' ' + (kindOf(p) === 'date' ? formatDate(parseDate(f.v), 'D/M/YYYY') : f.v));
+  return name + ' ' + op + (noValue(f.op) ? '' : ' ' + (kindOf(p) === 'date' ? formatDate(parseDate(f.v), 'DD/MM/YYYY') : f.v));
 }
 /** "Add a filter" for any tracker property; calls back with the new filter */
 export function addFilterSheet(dbr, onAdd, preset = null) {
@@ -172,6 +173,30 @@ export function addFilterSheet(dbr, onAdd, preset = null) {
     } }, 'Add filter')));
 }
 
+// ---------- add and delete properties ----------
+/** properties Folio itself works with (KPI, Focus pages, Alert, maps): they can be hidden or renamed, but not deleted */
+export const CORE_PROPS = ['Status', 'Project Category', 'Project Ref', 'Due Date', 'Date Assigned', 'Date Completed', 'ECPAR Rejected', 'ECX Rejected', 'Priority', 'Address', 'Pin Location', 'ECX & WBS NO', 'Station', 'Archive', 'Alert', 'Next Task'];
+export const isCore = p => p.type === 'title' || CORE_PROPS.includes(p.name);
+const TYPE_ORDER = ['text', 'number', 'select', 'multi', 'status', 'date', 'checkbox', 'url', 'files', 'formula'];
+async function newProperty(dbr, anchor) {
+  if (D.val(dbr, 'locked')) return toast('This database is locked.'), null;
+  const name = (await promptBox('New property name', '', 'e.g. Feeder'))?.replace(/\s+/g, ' ').trim(); if (!name) return null;
+  if (DB.props(dbr).some(p => p.name.toLowerCase() === name.toLowerCase())) { toast('There is already a property called ' + name + '.'); return null; }
+  const type = await new Promise(res => menu(anchor, [{ el: h('div', { class: 'mhead' }, 'Type of “' + name + '”') }, ...TYPE_ORDER.filter(t => DB.TYPES[t]).map(t => ({ label: DB.TYPES[t], icon: DB.TYPE_ICON[t], run: () => res(t) }))], { width: 240 }));
+  if (!type) return null;
+  const p = { id: 'p' + Date.now().toString(36), name, type, options: [], ...(type === 'formula' ? { formula: '""' } : {}) };
+  DB.saveProps(dbr, [...DB.props(dbr), p]);
+  const d2 = DB.db(dbr.id), c = cfg(d2); c.hidden = c.hidden.filter(x => x !== 'p:' + p.id); save(d2, c); // a new property is shown straight away
+  toast(name + ' added to every linked table'); return p;
+}
+async function deleteProperty(dbr, p) {
+  if (isCore(p)) { toast(p.name + ' is used by Folio (KPI, Focus pages, Alert…): hide it instead.'); return false; }
+  if (!await confirmBox(`Delete the property “${p.name}”? Its values in every project are removed, in every linked table.`, 'Delete property')) return false;
+  DB.saveProps(dbr, DB.props(DB.db(dbr.id)).filter(x => x.id !== p.id));
+  const c = cfg(DB.db(dbr.id)); delete c.names['p:' + p.id]; save(DB.db(dbr.id), c);
+  toast(p.name + ' deleted'); return true;
+}
+
 // ---------- Property visibility (one list for every linked table) ----------
 /** pageCols: columns that exist only on this page (Focus pages): [{ id, label }]; they can be hidden on this page */
 export function visibilitySheet(dbr, { page = null, pageTitle = '', pageCols = [], after = render } = {}) {
@@ -180,6 +205,14 @@ export function visibilitySheet(dbr, { page = null, pageTitle = '', pageCols = [
   const nameOf = id => c.names[id] || defLabel(dbr, id);
   const icOf = id => { const p = ps.find(x => 'p:' + x.id === id); return icon(p ? DB.TYPE_ICON[p.type] || 'text' : 'formula', 18); };
   const commit = () => { save(dbr, c); c = cfg(dbr); };
+  const fresh = () => { dbr = DB.db(dbr.id); c = cfg(dbr); paint(); };
+  const rowMenu = (anchor, id) => {
+    const p = DB.props(DB.db(dbr.id)).find(x => 'p:' + x.id === id);
+    menu(anchor, [{ label: 'Rename column', icon: 'pencil', run: async () => { await rename(dbr, id); fresh(); } },
+      ...(p && p.type !== 'title' ? [{ label: 'Edit property', icon: 'list', run: () => editProp(DB.db(dbr.id), p, fresh) }] : []),
+      ...(p ? [p && isCore(p) ? { label: 'Used by Folio — hide it instead', icon: 'lock', run: () => {} } : { label: 'Delete property', icon: 'trash', danger: true, run: async () => { if (await deleteProperty(DB.db(dbr.id), p)) fresh(); } }]
+        : [{ label: 'Worked out by Folio — hide it instead', icon: 'lock', run: () => {} }])], { width: 250 });
+  };
   const body = h('div', { class: 'pvis' });
   const search = h('input', { type: 'search', class: 'pvsearch', placeholder: 'Search for a property…', 'aria-label': 'Search for a property', oninput: e => { q = e.target.value.trim().toLowerCase(); paint(); } });
   const eye = (on, l, run, dis) => h('button', { class: 'pveye' + (on ? ' on' : ''), type: 'button', disabled: dis ? true : null, 'aria-pressed': on ? 'true' : 'false', 'aria-label': (on ? 'Hide ' : 'Show ') + l, onclick: run }, icon(on ? 'eye' : 'eyeoff', 19));
@@ -188,7 +221,8 @@ export function visibilitySheet(dbr, { page = null, pageTitle = '', pageCols = [
       drag ? h('button', { class: 'pvh', type: 'button', 'aria-label': 'Move ' + l + ' (drag, or use the arrow keys)' }, icon('grip', 16)) : h('span', { class: 'pvh off' }),
       h('span', { class: 'pvi' }, icOf(id)),
       h('button', { class: 'pvn', type: 'button', title: 'Rename', onclick: async () => { await rename(dbr, id); c = cfg(dbr); paint(); } }, l, c.names[id] ? h('small', {}, defLabel(dbr, id)) : null),
-      eye(shown, l, () => { const hid = new Set(c.hidden); shown ? hid.add(id) : hid.delete(id); c.hidden = [...hid]; commit(); paint(); }, fixed));
+      eye(shown, l, () => { const hid = new Set(c.hidden); shown ? hid.add(id) : hid.delete(id); c.hidden = [...hid]; commit(); paint(); }, fixed),
+      h('button', { class: 'pvmore', type: 'button', 'aria-label': 'More for ' + l, onclick: e => rowMenu(e.currentTarget, id) }, icon('more', 18)));
     if (drag) dragHandle(el.querySelector('.pvh'), el);
     return el;
   };
@@ -221,6 +255,7 @@ export function visibilitySheet(dbr, { page = null, pageTitle = '', pageCols = [
           h('button', { class: 'pvn', type: 'button', title: 'Rename', onclick: async () => { await rename(dbr, x.id, x.def); c = cfg(dbr); paint(); } }, c.names[x.id] || x.def),
           eye(on, x.def, () => { const s = new Set(c.page[page] || []); on ? s.add(x.id) : s.delete(x.id); c.page = { ...c.page, [page]: [...s] }; commit(); paint(); }, x.fixed));
       })) : []),
+      h('button', { class: 'pvnew', type: 'button', onclick: async e => { if (await newProperty(DB.db(dbr.id), e.currentTarget)) fresh(); } }, icon('plus', 18), 'New property'),
       h('p', { class: 'pvnote' }, 'Applies to every table linked to ' + (D.val(dbr, 'name') || 'the tracker') + ': Projects, the Focus pages and the full tracker table. Tap a name to rename the column.'));
   };
   paint();

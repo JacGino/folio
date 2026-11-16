@@ -14,7 +14,7 @@ import { promptBox } from './ui.js';
 
 const { g } = E;
 const P = n => { const d = DB.kpiDb(); return d && DB.propByName(d, n); };
-const dmy = v => { const d = parseDate(v); return d ? formatDate(d, 'D/M/YYYY') : ''; };
+const dmy = v => { const d = parseDate(v); return d ? formatDate(d, 'DD/MM/YYYY') : ''; };
 const today = () => toISODate(new Date(NOW()));
 const SHORT = { 'Turnkey Stage 1': 'Turnkey S1', 'Turnkey Stage 2': 'Turnkey S2', 'Substation Site Enquiry': 'Substation', 'Upgrading of Supply': 'Upgrading', 'Temporary Supply': 'Temporary' };
 const short = c => SHORT[c] || c;
@@ -236,7 +236,7 @@ function bulkBar(kind, S, rows, n) {
 
 // ---------- columns of each page: its own working columns around the shared tracker properties ----------
 const muted = t => h('span', { class: 'muted' }, t);
-const dueCell = r => r.days == null ? muted('—') : h('span', { class: 'fdue' + (r.days < 0 ? ' late' : r.days === 0 ? ' today' : '') }, icon('date', 13), r.days === 0 ? 'Today' : formatDate(r.due, 'D/M/YYYY'));
+const dueCell = r => r.days == null ? muted('—') : h('span', { class: 'fdue' + (r.days < 0 ? ' late' : r.days === 0 ? ' today' : '') }, icon('date', 13), r.days === 0 ? 'Today' : formatDate(r.due, 'DD/MM/YYYY'));
 const PAGE_COLS = {
   // the status column already says what is due (Site Survey, Estimation, Rejected…), so only the number is shown; a task you named keeps its name
   today: { lead: [{ k: 'task', def: 'eCX & WBS No', w: 180, fixed: true, cell: r => h('span', { class: 'fid' }, h('b', { class: r.no ? 'mono' : 'muted' }, r.no || 'No eCX & WBS No'),

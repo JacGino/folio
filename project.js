@@ -13,7 +13,7 @@ import * as C from './cols.js';
 
 const { g } = E;
 const P = n => { const d = DB.kpiDb(); return d && DB.propByName(d, n); };
-const dmy = v => { const d = parseDate(v); return d ? formatDate(d, 'D/M/YYYY') : ''; };
+const dmy = v => { const d = parseDate(v); return d ? formatDate(d, 'DD/MM/YYYY') : ''; };
 const today = () => toISODate(new Date(NOW()));
 
 // ---------- small pieces ----------
@@ -63,7 +63,7 @@ function dateSheet(title, v, set) {
     h('button', { class: 'btn block danger', onclick: () => { cleared = true; inp.value = ''; s.close(); } }, 'Clear')), { onDone: () => set(cleared ? null : inp.value || (v ?? null)) });
 }
 const kv = (ic, label, value) => h('div', { class: 'kv' }, h('span', { class: 'kl' }, icon(ic, 16), label), h('div', { class: 'kvv' }, value));
-const propVal = (row, name) => { const p = P(name); return h('div', { class: 'props pv' }, p ? propEditor(row, p, DB.kpiDb(), { dfmt: 'D/M/YYYY' }) : h('span', { class: 'muted' }, '—')); };
+const propVal = (row, name) => { const p = P(name); return h('div', { class: 'props pv' }, p ? propEditor(row, p, DB.kpiDb(), { dfmt: 'DD/MM/YYYY' }) : h('span', { class: 'muted' }, '—')); };
 
 /** Liquid Glass modal (only shown after a button is pressed): date + remarks, then Cancel / confirm */
 export function glassModal({ title, dateLabel = 'Date', textLabel = 'Remarks', ok = 'Confirm', danger = false, needText = false }) {
@@ -317,7 +317,7 @@ export function projectScreen(id, tab = 'overview') {
     h('header', { class: 'pdhead' },
       h('span', { class: 'pdic' }, icon('building', 26)),
       h('div', { class: 'pdname' }, h('div', { class: 'pdt' }, h('h1', {}, info.title), catPills(info.category, false), info.archived ? badge('Archived', 'gray') : null),
-        h('p', { class: 'hsub' }, [ref || 'No reference', created ? 'Created ' + formatDate(new Date(created), 'D/M/YYYY') : ''].filter(Boolean).join(' · '))),
+        h('p', { class: 'hsub' }, [ref || 'No reference', created ? 'Created ' + formatDate(new Date(created), 'DD/MM/YYYY') : ''].filter(Boolean).join(' · '))),
       h('div', { class: 'hactions' },
         h('button', { class: 'hbtn glass', 'aria-label': 'Project actions', onclick: e => projectMenu(e.currentTarget, row) }, icon('more', 19)),
         h('button', { class: 'hnew', onclick: () => editProjectSheet(row) }, icon('pencil', 16), h('span', {}, 'Edit Project')))),
@@ -454,7 +454,7 @@ function historyBlock(title, hist) {
   return h('details', { class: 'rhist', open: hist.length ? true : null },
     h('summary', {}, icon('chevd', 14), title + ' (' + hist.filter(x => x.ev === 'rejected').length + ' rejected)'),
     hist.length ? h('div', { class: 'rtable' }, h('div', { class: 'rr rhd' }, h('span', {}, '#'), h('span', {}, 'Date'), h('span', {}, 'Event'), h('span', {}, 'Reason / Remarks')),
-      hist.map((x, i) => h('div', { class: 'rr' }, h('span', {}, i + 1), h('span', {}, dmy(x.date) || formatDate(new Date(x.t), 'D/M/YYYY')), h('span', {}, badge(x.ev === 'rejected' ? 'Rejected' : x.ev === 'approved' ? 'Approved' : 'Resubmitted', undefined, false)), h('span', {}, x.reason || h('span', { class: 'muted' }, '—')))))
+      hist.map((x, i) => h('div', { class: 'rr' }, h('span', {}, i + 1), h('span', {}, dmy(x.date) || formatDate(new Date(x.t), 'DD/MM/YYYY')), h('span', {}, badge(x.ev === 'rejected' ? 'Rejected' : x.ev === 'approved' ? 'Approved' : 'Resubmitted', undefined, false)), h('span', {}, x.reason || h('span', { class: 'muted' }, '—')))))
       : h('p', { class: 'muted small pad' }, 'No rejection record yet.'));
 }
 
@@ -514,7 +514,7 @@ function logTab(row) {
     h('div', { class: 'phbar' }, h('h3', { class: 'ph' }, icon('history', 17), 'Activity Log', h('span', { class: 'hcount' }, ev.length)),
       h('div', { class: 'wfacts' }, h('button', { class: 'sbtn', onclick: () => { logOrder = logOrder === 'new' ? 'old' : 'new'; render(); } }, icon('sort', 13), logOrder === 'new' ? 'Newest first' : 'Oldest first'),
         h('button', { class: 'hnew sm', onclick: add }, icon('plus', 15), h('span', {}, 'Add entry')))),
-    h('ol', { class: 'alog' }, ev.map(x => h('li', {}, h('time', {}, formatDate(new Date(x.t), 'D/M/YYYY'), h('small', {}, new Date(x.t).toTimeString().slice(0, 5))),
+    h('ol', { class: 'alog' }, ev.map(x => h('li', {}, h('time', {}, formatDate(new Date(x.t), 'DD/MM/YYYY'), h('small', {}, new Date(x.t).toTimeString().slice(0, 5))),
       h('div', {}, h('div', { class: 'atags' }, badge(x.type, tone(x.type), false), x.ecx && xs[x.ecx] ? h('span', { class: 'mono small muted' }, xs[x.ecx]) : null, x.ecpar ? h('span', { class: 'small muted' }, 'ECPAR') : null),
         h('p', {}, x.text))))));
 }

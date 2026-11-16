@@ -102,7 +102,7 @@ export function dueItems(n) {
   // rejected follow-ups count once they are due (today or overdue)
   return [...out.values()].filter(it => !(it.kind === 'ecpar' || it.kind === 'ecx') || (it.days != null && it.days <= 0)).sort((a, b) => (a.days ?? 999) - (b.days ?? 999) || a.cust.localeCompare(b.cust));
 }
-const dueText = it => it.days == null ? '—' : it.days === 0 ? 'Today' : it.days === 1 ? 'Tomorrow' : it.days === -1 ? 'Yesterday' : it.due ? formatDate(it.due, 'D/M/YYYY') : '—';
+const dueText = it => it.days == null ? '—' : it.days === 0 ? 'Today' : it.days === 1 ? 'Tomorrow' : it.days === -1 ? 'Yesterday' : it.due ? formatDate(it.due, 'DD/MM/YYYY') : '—';
 export async function completeItem(it, n) {
   const day = iso(new Date(n));
   if (it.kind === 'task') { E.completeTask(it.task, true, n); toast('Task completed'); }
@@ -185,7 +185,7 @@ const feedItem = e => h('li', {}, h('button', { onclick: () => go('#/project/' +
   h('small', { class: 'twhen' }, e.when)));
 function when(t, n) {
   const d = new Date(t), days = Math.round((startOfDay(new Date(n)) - startOfDay(d)) / 864e5);
-  return days <= 0 ? new Intl.DateTimeFormat('en-US', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hour12: true }).format(d) : days === 1 ? 'Yesterday' : formatDate(d, 'D/M/YYYY');
+  return days <= 0 ? new Intl.DateTimeFormat('en-US', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hour12: true }).format(d) : days === 1 ? 'Yesterday' : formatDate(d, 'DD/MM/YYYY');
 }
 /** latest entries of every project's Activity Log (and comments), newest first */
 export function activity(limit = 6, n = NOW()) {

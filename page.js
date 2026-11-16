@@ -192,7 +192,7 @@ export function propEditor(rec, p, dbr, { compact = false, dfmt } = {}) {
         const inp = h('input', { type: 'date', class: 'field', value: toISODate(v) || '' });
         const s = sheet(p.name, h('div', {}, inp, h('button', { class: 'btn block', onclick: () => { inp.value = toISODate(new Date(now())); } }, 'Today'),
           h('button', { class: 'btn block danger', onclick: () => { inp.value = ''; s.close(); } }, 'Clear')), { onDone: () => { set(inp.value || null); refresh(btn); } });
-      } }, v ? formatDate(v, dfmt) : 'Empty');
+      } }, v ? formatDate(v, dfmt || 'DD/MM/YYYY') : 'Empty');
       return btn;
     }
     case 'files': {

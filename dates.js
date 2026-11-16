@@ -80,6 +80,8 @@ export function dateBetween(a, b, unit = 'days') {
 const WD = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const cap = s => s[0].toUpperCase() + s.slice(1);
 /** Format: tokens YYYY MMMM MMM MM M DD D dddd ddd HH mm. Default "D MMMM YYYY". */
+/** how date properties (Due Date, Date Assigned …) are shown everywhere */
+export const DATE_FMT = 'DD/MM/YYYY';
 export function formatDate(d, fmt = 'D MMMM YYYY') {
   d = parseDate(d); if (!d) return '';
   const p = n => String(n).padStart(2, '0');

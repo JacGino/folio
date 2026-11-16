@@ -127,7 +127,7 @@ function lastEdited(rec) {
   let t = 0; for (const f of Object.values(rec.f || {})) { const w = parseInt(String(f.ts).split(':')[0], 36); if (w > t) t = w; }
   if (!t) t = D.val(rec, 'edited', D.val(rec, 'created', Date.now()));
   const d = new Date(t), n = new Date(NOW()), days = Math.round((new Date(n.toDateString()) - new Date(d.toDateString())) / 864e5), hm = d.toTimeString().slice(0, 5);
-  return days === 0 ? 'Today at ' + hm : days === 1 ? 'Yesterday at ' + hm : formatDate(d, 'D/M/YYYY') + ' at ' + hm;
+  return days === 0 ? 'Today at ' + hm : days === 1 ? 'Yesterday at ' + hm : formatDate(d, 'DD/MM/YYYY') + ' at ' + hm;
 }
 // ---------- press and hold a task: Actions sheet (like Notion) ----------
 /** Calls fn after holding ~0.5s without moving (or on right-click). The tap that follows a hold is swallowed. */
@@ -168,7 +168,7 @@ export function rowActions(id) {
       dbr ? act('pages', 'Duplicate', duplicate) : null,
       act('trash', 'Move to Trash', () => { D.trash(id); if (state.pane === id) state.pane = null; render(); toast('Moved to Trash. Restore it from Trash.'); }, { danger: true })),
     h('div', { class: 'agrp ainfo' }, h('b', {}, 'Last edited'), h('span', {}, lastEdited(rec)),
-      h('b', { style: { marginTop: '8px' } }, 'Activity'), h('span', {}, 'Edited ' + lastEdited(rec)), created ? h('span', {}, 'Created ' + formatDate(new Date(created), 'D/M/YYYY') + ' at ' + new Date(created).toTimeString().slice(0, 5)) : null));
+      h('b', { style: { marginTop: '8px' } }, 'Activity'), h('span', {}, 'Edited ' + lastEdited(rec)), created ? h('span', {}, 'Created ' + formatDate(new Date(created), 'DD/MM/YYYY') + ' at ' + new Date(created).toTimeString().slice(0, 5)) : null));
   s = sheet('Actions', body, { done: 'Done' });
 }
 // every property of a task in one sheet; changes save straight away
@@ -550,7 +550,7 @@ function taskRow(t, color, kind) {
       t.status ? [h('i', { style: { background: DB.optColor(sp, t.status)[1] } }), t.status] : 'Status');
   // the date shown is the one that sets the countdown: ECPAR Rejected for amendments, Due Date otherwise
   const dateProp = kind === 'ecpar' || t.amend ? 'ECPAR Rejected' : 'Due Date';
-  const meta = kind === 'ecpar' ? (t.rejected ? 'Rejected ' + formatDate(t.rejected, 'D/M/YYYY') : 'Add rejected date') : (t.due ? 'Due ' + formatDate(t.due, 'D/M/YYYY') : 'Add due date');
+  const meta = kind === 'ecpar' ? (t.rejected ? 'Rejected ' + formatDate(t.rejected, 'DD/MM/YYYY') : 'Add rejected date') : (t.due ? 'Due ' + formatDate(t.due, 'DD/MM/YYYY') : 'Add due date');
   const dueBtn = h('button', { class: 'due ebtn' + (/^Add/.test(meta) ? ' empty' : ''), 'aria-label': 'Change ' + dateProp, onclick: () => ed.date(dateProp) }, meta);
   const map = t.map && /^https?:/i.test(t.map) ? t.map : '';
   const editMap = () => ed.text(mapRow, 'Pin Location');

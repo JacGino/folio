@@ -14,7 +14,7 @@ import { coverInto } from './home.js';
 const DAY = 864e5;
 /** set CSS custom properties (the h() helper only sets normal style properties) */
 const vars = (el, o) => { for (const [k, v] of Object.entries(o)) el.style.setProperty(k, v); return el; };
-const dm = d => d ? formatDate(d, 'D/M/YYYY') : '—';
+const dm = d => d ? formatDate(d, 'DD/MM/YYYY') : '—';
 const dShort = d => d ? formatDate(d, 'D MMM') : '—';
 const days = n => n == null ? '—' : (Math.round(n * 10) / 10).toLocaleString('en-MY', { maximumFractionDigits: 1 }) + (n === 1 ? ' day' : ' days');
 const pctTxt = p => p == null ? '—' : (Math.round(p * 10) / 10) + '%';

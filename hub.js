@@ -8,7 +8,7 @@ import { reminderOn, setReminder } from './notify.js';
 
 const head = (title, sub, ic) => h('div', { class: 'head' }, h('span', { class: 'hubicon' }, icon(ic, 26)), h('div', {}, elabel('title.' + title.toLowerCase(), title, 'h1'), sub ? h('p', { class: 'date' }, sub) : null));
 const when = t => { const d = new Date(t), n = new Date(now()); const days = Math.round((new Date(n.toDateString()) - new Date(d.toDateString())) / 864e5);
-  return days === 0 ? 'Today ' + d.toTimeString().slice(0, 5) : days === 1 ? 'Yesterday' : formatDate(d, 'D/M/YYYY'); };
+  return days === 0 ? 'Today ' + d.toTimeString().slice(0, 5) : days === 1 ? 'Yesterday' : formatDate(d, 'DD/MM/YYYY'); };
 
 // ---------- Comments: every comment on your tasks, newest first ----------
 let cFrom = '', cTo = ''; // Comments date filter (YYYY-MM-DD), kept while the app is open
@@ -21,7 +21,7 @@ export function commentsScreen() {
   const list = all.filter(c => (!cFrom && !cTo) || (dayOf(c) && (!cFrom || dayOf(c) >= cFrom) && (!cTo || dayOf(c) <= cTo))).sort((a, b) => D.val(b, 'created', 0) - D.val(a, 'created', 0));
   const field = (label, val, set) => h('label', { class: 'dfield' }, h('span', {}, label), h('input', { type: 'date', class: 'field', value: val, onchange: e => { set(e.target.value); render(); } }));
   const filtered = cFrom || cTo;
-  const sub = filtered ? `${list.length} of ${all.length} comments` + (cFrom || cTo ? ` · ${cFrom ? formatDate(cFrom, 'D/M/YYYY') : 'start'} – ${cTo ? formatDate(cTo, 'D/M/YYYY') : 'today'}` : '') : list.length + (list.length === 1 ? ' comment' : ' comments');
+  const sub = filtered ? `${list.length} of ${all.length} comments` + (cFrom || cTo ? ` · ${cFrom ? formatDate(cFrom, 'DD/MM/YYYY') : 'start'} – ${cTo ? formatDate(cTo, 'DD/MM/YYYY') : 'today'}` : '') : list.length + (list.length === 1 ? ' comment' : ' comments');
   return h('div', { class: 'wrap' }, head('Comments', sub, 'comment'),
     h('div', { class: 'dfilter' }, h('span', { class: 'dftitle' }, icon('filter', 16), 'Date Assigned'),
       field('From', cFrom, v => { cFrom = v; if (cTo && v && v > cTo) cTo = v; }),
@@ -33,7 +33,7 @@ export function commentsScreen() {
       return h('div', { class: 'hubitem', role: 'button', tabindex: '0', onclick: () => openTask(task.id) },
         h('span', { class: 'hi-ic' }, icon('comment', 20)),
         h('span', { class: 'hi-body' }, h('span', { class: 'hi-top' }, h('b', {}, title), h('small', {}, when(D.val(c, 'created', 0)))),
-          assigned(c) ? h('span', { class: 'asgd' }, icon('date', 13), 'Assigned ' + formatDate(assigned(c), 'D/M/YYYY')) : null,
+          assigned(c) ? h('span', { class: 'asgd' }, icon('date', 13), 'Assigned ' + formatDate(assigned(c), 'DD/MM/YYYY')) : null,
           ecx ? h('a', { class: 'ecxlink', href: '#/r/' + task.id, onclick: e => { e.stopPropagation(); e.preventDefault(); openTask(task.id); } }, icon('filelink', 15), ecx) : null,
           h('span', { class: 'hi-text' }, strip(D.val(c, 'text', '')).slice(0, 240))));
     })) : h('p', { class: 'empty' }, filtered ? 'No comments on tasks assigned between these dates.' : 'No comments yet. Comments you add on a task show up here.'));
@@ -81,7 +81,7 @@ export function inboxScreen() {
     h('label', { class: 'remind' }, icon('today', 20), h('span', {}, h('b', {}, 'Reminder at 08:00'), h('small', {}, 'Every morning: overdue, due today and due tomorrow tasks')), sw),
     groups.map(([label, test, c]) => { const list = tasks.filter(test); return list.length ? [h('div', { class: 'inboxh ' + c }, label),
       h('div', { class: 'hublist' }, list.map(t => h('button', { class: 'hubitem', onclick: () => openTask(t.id) },
-        h('span', { class: 'hi-dot ' + c }), h('span', { class: 'hi-body' }, h('span', { class: 'hi-top' }, h('b', {}, t.title), h('small', {}, formatDate(t.due, 'D/M/YYYY'))), h('span', { class: 'hi-text' }, msg(t))))))] : []; }),
+        h('span', { class: 'hi-dot ' + c }), h('span', { class: 'hi-body' }, h('span', { class: 'hi-top' }, h('b', {}, t.title), h('small', {}, formatDate(t.due, 'DD/MM/YYYY'))), h('span', { class: 'hi-text' }, msg(t))))))] : []; }),
     tasks.length ? null : h('p', { class: 'empty' }, 'Nothing overdue, due today or due tomorrow.'));
 }
 

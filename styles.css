@@ -1849,3 +1849,6 @@ span[data-s="s"] { font-size: .85em; } span[data-s="l"] { font-size: 1.25em; } s
 /* formula cells (Alert): one line; the full text shows on hover / long-press */
 .grid .td.fx { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
 .cc.ce .val { white-space: nowrap; }
+.pvmore { display: grid; place-items: center; width: 36px; height: 40px; border: 0; background: transparent; color: var(--ink3); border-radius: 10px; flex: none; cursor: pointer; }
+.pvmore:hover, .pvmore:focus-visible { background: var(--bg2); color: var(--ink); }
+.pvnew { display: flex; align-items: center; gap: 10px; min-height: 48px; margin-top: 8px; padding: 0 14px; border: 0; border-radius: 12px; background: var(--bg); color: var(--blue); font: inherit; font-size: 16px; cursor: pointer; }
