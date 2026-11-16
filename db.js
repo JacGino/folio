@@ -13,7 +13,18 @@ const FORMULAS = new Map();
 const compiled = src => { let f = FORMULAS.get(src); if (!f) { f = compile(src); FORMULAS.set(src, f); } return f; };
 export const TYPE_ICON = { title: 'title', text: 'text', number: 'number', select: 'list', multi: 'list', status: 'status', date: 'date', checkbox: 'checkbox', url: 'link', files: 'clip', formula: 'formula', created: 'date' };
 
-export const ALERT_FORMULA = `if(prop("Status") == "Rejected","❌ REJECTED",if(prop("Status") == "Done","✅ COMPLETED",if(prop("Status") == "To Amend",if(dateBetween(dateAdd(prop("ECPAR Rejected"), 1, "days"), today(), "days") < 0,"🚨 AMENDMENT OVERDUE","🟠 AMENDMENT DUE (" + format(dateBetween(dateAdd(prop("ECPAR Rejected"), 1, "days"), today(), "days")) + " days left)"),if(dateBetween(prop("Due Date"), today(), "days") < 0,"🔴 OVERDUE (" + format(abs(dateBetween(prop("Due Date"), today(), "days"))) + " days)",if(dateBetween(prop("Due Date"), today(), "days") <= 2,"🟠 " + format(dateBetween(prop("Due Date"), today(), "days")) + " days left","🔵 " + format(dateBetween(prop("Due Date"), today(), "days")) + " days left")))))`;
+/** the Alert formula (the user's Notion formula), with "1 day" instead of "1 days" */
+export const ALERT_FORMULA = `if(prop("Status") == "Rejected","❌ REJECTED",if(prop("Status") == "Done","✅ COMPLETED",if(prop("Status") == "To Amend",if(dateBetween(dateAdd(prop("ECPAR Rejected"), 1, "days"), today(), "days") < 0,"🚨 AMENDMENT OVERDUE","🟠 AMENDMENT DUE (" + format(dateBetween(dateAdd(prop("ECPAR Rejected"), 1, "days"), today(), "days")) + if(dateBetween(dateAdd(prop("ECPAR Rejected"), 1, "days"), today(), "days") == 1, " day left)", " days left)")),if(dateBetween(prop("Due Date"), today(), "days") < 0,"🔴 OVERDUE (" + format(abs(dateBetween(prop("Due Date"), today(), "days"))) + if(abs(dateBetween(prop("Due Date"), today(), "days")) == 1, " day)", " days)"),if(dateBetween(prop("Due Date"), today(), "days") <= 2,"🟠 " + format(dateBetween(prop("Due Date"), today(), "days")) + if(dateBetween(prop("Due Date"), today(), "days") == 1, " day left", " days left"),"🔵 " + format(dateBetween(prop("Due Date"), today(), "days")) + if(dateBetween(prop("Due Date"), today(), "days") == 1, " day left", " days left"))))))`;
+/** the earlier Alert formula (same as the Notion one): upgraded once to ALERT_FORMULA; a formula you changed yourself is left alone */
+const OLD_ALERT_FORMULA = `if(prop("Status") == "Rejected","❌ REJECTED",if(prop("Status") == "Done","✅ COMPLETED",if(prop("Status") == "To Amend",if(dateBetween(dateAdd(prop("ECPAR Rejected"), 1, "days"), today(), "days") < 0,"🚨 AMENDMENT OVERDUE","🟠 AMENDMENT DUE (" + format(dateBetween(dateAdd(prop("ECPAR Rejected"), 1, "days"), today(), "days")) + " days left)"),if(dateBetween(prop("Due Date"), today(), "days") < 0,"🔴 OVERDUE (" + format(abs(dateBetween(prop("Due Date"), today(), "days"))) + " days)",if(dateBetween(prop("Due Date"), today(), "days") <= 2,"🟠 " + format(dateBetween(prop("Due Date"), today(), "days")) + " days left","🔵 " + format(dateBetween(prop("Due Date"), today(), "days")) + " days left")))))`;
+export function upgradeAlert() {
+  const d = kpiDb(); if (!d) return false;
+  const squash = x => String(x || '').replace(/\s+/g, '');
+  const ps = props(d), i = ps.findIndex(p => p.type === 'formula' && /^alert$/i.test(p.name));
+  if (i < 0 || squash(ps[i].formula) !== squash(OLD_ALERT_FORMULA)) return false;
+  const next = ps.map((p, k) => k === i ? { ...p, formula: ALERT_FORMULA } : p);
+  D.update(d.id, { props: next }); return true;
+}
 
 export const dbs = () => D.all('db');
 export const db = id => D.live(id);

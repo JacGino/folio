@@ -10,8 +10,9 @@ import { state, now as NOW, render, go, moreMenu, L } from './app.js';
 import { newProjectSheet, setProjectFilter, badge } from './project.js';
 import { coverAndPhoto } from './page.js';
 import * as KF from './kpi.js';
+import * as C from './cols.js';
 
-let dueFilter = 'all', calView = 'month', calAnchor = null;
+let dueFilter = 'all', calView = 'month', calAnchor = null, duePf = [], dueSort = 'due';
 const TZ = 'Asia/Kuching';
 const SHORT = { 'Turnkey Stage 1': 'Turnkey S1', 'Turnkey Stage 2': 'Turnkey S2', 'Substation Site Enquiry': 'Substation', 'Upgrading of Supply': 'Upgrading', 'Temporary Supply': 'Temporary' };
 const short = c => SHORT[c] || c;
@@ -115,24 +116,47 @@ export async function completeItem(it, n) {
   render();
 }
 function dueCard(n) {
-  const items = dueItems(n);
+  const dbr = DB.kpiDb(), all = dueItems(n);
+  // filter by any project property (same filter as the Projects table), then sort
+  const items = C.applyFilters(dbr, all, duePf, it => it.row, n);
+  const pv = (row, name) => { const p = P(name); return p ? DB.value(row, p) : ''; };
+  const addr = it => String(pv(it.row, 'Address') || '').trim(), pin = it => String(pv(it.row, 'Pin Location') || '').trim();
+  const by = { due: (a, b) => (a.days ?? 99999) - (b.days ?? 99999), cust: (a, b) => a.cust.localeCompare(b.cust), addr: (a, b) => (addr(a) || '\uffff').localeCompare(addr(b) || '\uffff') }[dueSort];
+  items.sort((a, b) => by(a, b) || a.cust.localeCompare(b.cust));
   const groups = { all: items, survey: items.filter(i => i.kind === 'survey'), rejected: items.filter(i => i.kind === 'ecpar' || i.kind === 'ecx') };
   const list = groups[dueFilter];
   const chip = (k, ic, label) => h('button', { class: 'dchip' + (dueFilter === k ? ' on' : ''), 'aria-pressed': dueFilter === k ? 'true' : 'false', onclick: () => { dueFilter = k; render(); } }, ic ? icon(ic, 14) : null, label, h('span', { class: 'dcount' }, groups[k].length));
   const pill = (text, tone) => badge(text, tone, false);
   const statusPill = it => it.status === 'Rejected' ? pill('Rejected', 'red') : it.status === 'Site Survey' ? pill('Site Survey', 'blue') : pill(it.status, { 'In Progress': 'blue', Completed: 'green', 'On Hold': 'orange', Estimation: 'yellow' }[it.status] || 'gray');
+  // a pin is a map link, or coordinates ("1.33, 103.2") that open in Maps
+  const mapLink = v => /^https?:\/\//i.test(v) ? v : /^-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?$/.test(v) ? 'https://maps.apple.com/?q=' + encodeURIComponent(v.replace(/\s+/g, '')) : null;
+  const pinText = v => { try { const u = new URL(v); return u.hostname.replace(/^www\./, '') + (u.pathname.length > 1 ? u.pathname.slice(0, 18) + (u.pathname.length > 18 ? '…' : '') : ''); } catch { return v; } };
   const row = it => {
-    const late = it.days != null && it.days < 0;
-    return h('div', { class: 'drow', role: 'row', tabindex: '0', onclick: () => go('#/project/' + it.row.id + '/' + it.tab), onkeydown: e => { if (e.key === 'Enter') go('#/project/' + it.row.id + '/' + it.tab); } },
+    const late = it.days != null && it.days < 0, a = addr(it), pn = pin(it), href = pn && mapLink(pn);
+    const open = () => go('#/project/' + it.row.id + '/' + it.tab);
+    return h('div', { class: 'drow', role: 'row', tabindex: '0', onclick: open, onkeydown: e => { if (e.key === 'Enter') open(); } },
       h('input', { type: 'checkbox', class: 'hchk', 'aria-label': 'Complete ' + it.title + ' for ' + it.cust, onclick: e => e.stopPropagation(), onchange: () => completeItem(it, n) }),
-      h('div', { class: 'dmain' }, h('b', {}, it.title), h('small', {}, h('span', { class: 'dcust' }, it.cust), it.cats.length ? h('span', { class: 'dcat' }, short(it.cats[0])) : null, it.ecx ? h('span', { class: 'mono' }, String(it.ecx).split('\n')[0]) : null)),
+      h('div', { class: 'dmain' },
+        h('b', { class: 'dname' }, it.cust),
+        h('span', { class: 'daddr' + (a ? '' : ' muted') }, icon('home', 13), a || 'No address'),
+        pn ? (href ? h('a', { class: 'dpin', href, target: '_blank', rel: 'noopener', onclick: e => e.stopPropagation(), 'aria-label': 'Open pin location for ' + it.cust }, icon('pin', 13), pinText(pn))
+          : h('span', { class: 'dpin' }, icon('pin', 13), pn)) : h('span', { class: 'dpin muted' }, icon('pin', 13), 'No pin location'),
+        h('small', {}, it.kind === 'task' ? h('span', {}, it.title) : null, it.cats.length ? h('span', { class: 'dcat' }, short(it.cats[0])) : null, it.ecx ? h('span', { class: 'mono' }, String(it.ecx).split('\n')[0]) : null)),
       h('span', { class: 'dstat' }, statusPill(it)),
       h('span', { class: 'ddue' + (late ? ' late' : '') }, icon('date', 14), dueText(it)));
   };
+  const addFilter = pid => C.addFilterSheet(dbr, f => { duePf = [...duePf, f]; render(); }, pid);
+  const filterMenu = a => menu(a, [
+    { el: h('div', { class: 'mhead' }, 'Sort by') }, ...[['due', 'Due date'], ['cust', 'Customer Name'], ['addr', 'Address']].map(([k, l]) => ({ label: l, checked: dueSort === k, run: () => { dueSort = k; render(); } })), '-',
+    { label: 'Filter by any property…', icon: 'plus', run: () => addFilter() }, ...(duePf.length ? [{ label: 'Clear filters', icon: 'close', run: () => { duePf = []; render(); } }] : [])], { width: 250 });
+  const chips = duePf.map(f => h('button', { class: 'hchip', onclick: () => { duePf = duePf.filter(x => x !== f); render(); } }, C.filterText(dbr, f), icon('close', 13)));
   return h('section', { class: 'hcard dcard c-due' },
-    h('div', { class: 'chead' }, icon('date', 18), h('h2', {}, 'Due Today'), h('span', { class: 'hcount' }, items.length), h('a', { class: 'hall', href: '#/today' }, 'View All', icon('chevr', 13))),
-    h('div', { class: 'dchips' }, chip('all', null, 'All'), chip('survey', 'target', 'Site Survey'), chip('rejected', 'xcircle', 'Rejected Queue')),
-    h('div', { class: 'dlist', role: 'table' }, list.length ? list.map(row) : h('p', { class: 'hempty' }, { all: 'Nothing due today. Nice.', survey: 'No site survey due today.', rejected: 'No rejected ECPAR or ECX waiting.' }[dueFilter])));
+    h('div', { class: 'chead' }, icon('folder', 18), h('h2', {}, 'All Project'), h('span', { class: 'hcount' }, items.length),
+      h('button', { class: 'hbtn sm glass dfilter' + (duePf.length || dueSort !== 'due' ? ' on' : ''), 'aria-label': 'Filter and sort', onclick: e => { e.stopPropagation(); filterMenu(e.currentTarget); } }, icon('filter', 16)),
+      h('a', { class: 'hall', href: '#/today' }, 'View All', icon('chevr', 13))),
+    h('div', { class: 'dchips' }, chip('all', 'date', 'Due Today'), chip('survey', 'target', 'Site Survey'), chip('rejected', 'xcircle', 'Rejected Queue')),
+    chips.length ? h('div', { class: 'hchips' }, chips) : null,
+    h('div', { class: 'dlist', role: 'table' }, list.length ? list.map(row) : h('p', { class: 'hempty' }, duePf.length ? 'Nothing matches these filters.' : { all: 'Nothing due today. Nice.', survey: 'No site survey due today.', rejected: 'No rejected ECPAR or ECX waiting.' }[dueFilter])));
 }
 
 // ---------- live clock + Recent Activity ----------

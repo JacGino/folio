@@ -106,7 +106,7 @@ function cell(r, p, dbr, first, bg, ncom = 0) {
     if (p.type === 'multi') { for (const x of v) td.append(chip(p, x)); return; }
     if (p.type === 'url' && v) { td.append(h('a', { href: browserUrl(v), target: '_blank', rel: 'noopener', style: { color: 'var(--ink)', textDecoration: 'underline', textDecorationColor: 'var(--rule)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }, onclick: e => e.stopPropagation() }, v.replace(/^https?:\/\//, ''))); return; }
     const txt = DB.display(r, p, now());
-    if (p.type === 'formula') { td.style.fontWeight = /[🔴🚨🟠✅❌🔵]/u.test(txt) ? 600 : 400; td.style.color = /OVERDUE|REJECTED/.test(txt) ? 'var(--red)' : /COMPLETED/.test(txt) ? '#448361' : /🟠/.test(txt) ? 'var(--orange)' : ''; }
+    if (p.type === 'formula') { td.classList.add('fx'); td.title = txt; td.style.fontWeight = /[🔴🚨🟠✅❌🔵]/u.test(txt) ? 600 : 400; td.style.color = /OVERDUE|REJECTED/.test(txt) ? 'var(--red)' : /COMPLETED/.test(txt) ? '#448361' : /🟠/.test(txt) ? 'var(--orange)' : ''; }
     if (p.type === 'date') td.style.color = 'var(--ink2)';
     td.append(txt);
   };

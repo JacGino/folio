@@ -93,7 +93,7 @@ const PAGES = {
     dates: [['overdue', 'Overdue', r => r.days < 0], ['today', 'Due today', r => r.days === 0], ['soon', 'Next 2 days', r => r.days > 0]],
     donut: { title: 'Due Today by Type', key: r => r.type, order: ['ECX', 'ECPAR', 'Site Survey', 'Report', 'Other'], colors: { ECX: '#3B82F6', ECPAR: '#E5484D', 'Site Survey': '#3FA45B', Report: '#A78BFA', Other: '#B4B2AD' } },
     bars: { title: 'Priority Breakdown', icon: 'barchart', key: r => r.priority || 'Not set', order: ['High', 'Medium', 'Low', 'Not set'], colors: { High: '#E5484D', Medium: '#E5A50A', Low: '#3FA45B', 'Not set': '#B4B2AD' } },
-    cols: ['eCX & WBS No / Task', 'Customer', 'Project Type', 'Priority', 'Due Date', 'Status'] },
+    cols: ['eCX & WBS No', 'Customer', 'Project Type', 'Priority', 'Due Date', 'Status'] },
   survey: { title: 'Pending Site Survey', icon: 'target', desc: 'Site survey requests that are pending action, scheduling or completion.', records: surveyRecords, unit: 'Surveys',
     tabs: [['all', 'All', null, () => true], ['to', 'To Schedule', 'date', r => r.status === 'To Schedule'], ['sch', 'Scheduled', 'okcircle', r => r.status === 'Scheduled'], ['over', 'Overdue', 'info', r => r.status === 'Overdue']],
     metrics: rs => [['target', 'Total Pending', rs.length, null], ['date', 'To Schedule', rs.filter(r => r.status === 'To Schedule').length, 'blue'], ['okcircle', 'Scheduled', rs.filter(r => r.status === 'Scheduled').length, 'green'], ['info', 'Overdue', rs.filter(r => r.status === 'Overdue').length, 'red']],
@@ -101,7 +101,7 @@ const PAGES = {
     dates: [['overdue', 'Past due date', r => r.days != null && r.days < 0], ['week', 'Survey in 7 days', r => r.sdays != null && r.sdays >= 0 && r.sdays <= 7], ['none', 'No survey date', r => !r.scheduled]],
     donut: { title: 'Site Survey by Status', key: r => r.status, order: ['To Schedule', 'Scheduled', 'Overdue'], colors: { 'To Schedule': '#3B82F6', Scheduled: '#3FA45B', Overdue: '#E5484D' } },
     bars: { title: 'By Project Category', icon: 'layers', key: r => r.cats[0] || 'No category', order: [...DB.CATEGORIES, 'No category'], label: short, colors: {} },
-    cols: ['eCX & WBS No / Survey', 'Customer', 'Category', 'Priority', 'Site Survey Date', 'Status'] },
+    cols: ['eCX & WBS No', 'Customer', 'Category', 'Priority', 'Site Survey Date', 'Status'] },
   ecpar: { title: 'Rejected ECPAR', icon: 'ecpar', desc: 'ECPAR submissions that were rejected and require review, revision or resubmission.', records: ecparRecords, unit: 'ECPAR',
     tabs: [['all', 'All', null, () => true], ['pending', 'Pending Revision', 'redo', r => r.status === 'Pending Revision'], ['ready', 'Ready to Resubmit', 'play', r => r.status === 'Ready to Resubmit'], ['over', 'Overdue', 'info', r => r.days != null && r.days < 0]],
     metrics: rs => [['ecpar', 'Total Rejected ECPAR', rs.length, null], ['redo', 'Pending Revision', rs.filter(r => r.status === 'Pending Revision').length, 'red'], ['play', 'Ready to Resubmit', rs.filter(r => r.status === 'Ready to Resubmit').length, 'green'], ['today', 'Overdue', rs.filter(r => r.days != null && r.days < 0).length, 'red']],
@@ -238,19 +238,20 @@ function bulkBar(kind, S, rows, n) {
 const muted = t => h('span', { class: 'muted' }, t);
 const dueCell = r => r.days == null ? muted('—') : h('span', { class: 'fdue' + (r.days < 0 ? ' late' : r.days === 0 ? ' today' : '') }, icon('date', 13), r.days === 0 ? 'Today' : formatDate(r.due, 'D/M/YYYY'));
 const PAGE_COLS = {
-  today: { lead: [{ k: 'task', def: 'eCX & WBS No / Task', w: 200, fixed: true, cell: r => h('span', { class: 'fid' }, h('b', { class: r.no ? 'mono' : 'muted' }, r.no || 'No eCX & WBS No'),
-      h('small', {}, r.kind === 'task' ? linkedField(r.task, { key: 'name', label: 'Task' }) : r.title, h('i', { class: 'ftype' }, r.type))) }],
+  // the status column already says what is due (Site Survey, Estimation, Rejected…), so only the number is shown; a task you named keeps its name
+  today: { lead: [{ k: 'task', def: 'eCX & WBS No', w: 180, fixed: true, cell: r => h('span', { class: 'fid' }, h('b', { class: r.no ? 'mono' : 'muted' }, r.no || 'No eCX & WBS No'),
+      r.kind === 'task' ? h('small', {}, linkedField(r.task, { key: 'name', label: 'Task' })) : null) }],
     tail: [{ k: 'pri', def: 'Priority', w: 96, cell: r => priPill(r.priority) }, { k: 'due', def: 'Due Date', w: 104, cell: r => dueBadge(r.days) },
       { k: 'status', def: 'Status', w: 112, cell: r => badge(r.status, { Pending: 'blue', 'In Progress': 'yellow', 'On Hold': 'orange', Completed: 'green' }[r.status]) }] },
-  survey: { lead: [{ k: 'task', def: 'eCX & WBS No / Survey', w: 200, fixed: true, cell: r => h('span', { class: 'fid' }, h('b', { class: 'flink' }, r.title), h('small', { class: r.no ? 'mono' : 'muted' }, r.no || 'No eCX & WBS No')) }],
+  survey: { lead: [{ k: 'task', def: 'eCX & WBS No', w: 180, fixed: true, cell: r => h('span', { class: 'fid' }, h('b', { class: r.no ? 'mono' : 'muted' }, r.no || 'No eCX & WBS No')) }],
     tail: [{ k: 'pri', def: 'Priority', w: 96, cell: r => priPill(r.priority) },
       { k: 'sdate', def: 'Site Survey Date', w: 112, cell: r => r.scheduled ? h('span', { class: r.status === 'Overdue' && r.sdays < 0 ? 'late' : '' }, dmy(r.scheduled)) : muted('—') },
       { k: 'status', def: 'Status', w: 112, cell: r => badge(r.status, undefined, false) }] },
-  ecpar: { lead: [{ k: 'no', def: 'ECPAR No.', w: 136, fixed: true, cell: r => h('span', { class: 'fid' }, linkedField(r.rec || E.ecpar(r.row), { key: 'ref', label: 'ECPAR No.', mono: true, ph: 'No ECPAR no.' }), h('small', {}, 'Revise and resubmit')) }],
+  ecpar: { lead: [{ k: 'no', def: 'ECPAR No.', w: 136, fixed: true, cell: r => h('span', { class: 'fid' }, linkedField(r.rec || E.ecpar(r.row), { key: 'ref', label: 'ECPAR No.', mono: true, ph: 'No ECPAR no.' }) ) }],
     tail: [{ k: 'rej', def: 'Rejection Details', w: 230, cell: r => rejectionDetails(r, () => editRejectionFlow(E.ecpar(r.row), E.ECPAR_REASONS)) },
       { k: 'rdate', def: 'Rejected Date', w: 100, cell: r => r.rejected ? dmy(r.rejected) : muted('—') }, { k: 'due', def: 'Due Date', w: 104, cell: dueCell },
       { k: 'status', def: 'Status', w: 132, cell: r => badge(r.status, undefined, false) }] },
-  ecx: { lead: [{ k: 'no', def: 'ECX No.', w: 136, fixed: true, cell: r => h('span', { class: 'fid' }, linkedField(r.x, { key: 'number', label: 'ECX No.', mono: true, ph: 'No ECX no.' }), h('small', {}, r.appid || 'Revise ECX application')) }],
+  ecx: { lead: [{ k: 'no', def: 'ECX No.', w: 136, fixed: true, cell: r => h('span', { class: 'fid' }, linkedField(r.x, { key: 'number', label: 'ECX No.', mono: true, ph: 'No ECX no.' }), r.appid ? h('small', {}, r.appid) : null) }],
     tail: [{ k: 'rej', def: 'Rejection Details', w: 230, cell: r => rejectionDetails(r, () => editRejectionFlow(r.x, E.ECX_REASONS)) },
       { k: 'rdate', def: 'Rejected Date', w: 100, cell: r => r.rejected ? dmy(r.rejected) : muted('—') }, { k: 'due', def: 'Due Date', w: 104, cell: dueCell },
       { k: 'status', def: 'Status', w: 132, cell: r => badge(r.status, undefined, false) }] } };

@@ -271,4 +271,5 @@ export function ensureModel() {
 
 DB.setEcxSource(rejectedEcx);
 /** everything the app needs in the data before showing it: new fields, categories, links */
-export function ensureAll() { try { DB.ensureHomeFields(); ensureModel(); } catch (e) { console.error(e); } }
+export function ensureAll() {
+  DB.upgradeAlert(); try { DB.ensureHomeFields(); ensureModel(); } catch (e) { console.error(e); } }

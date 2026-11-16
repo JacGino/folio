@@ -1831,3 +1831,21 @@ span[data-s="s"] { font-size: .85em; } span[data-s="l"] { font-size: 1.25em; } s
 @media (max-width: 560px) { .ltxrow { grid-template-columns: 1fr 1fr 34px; } .ltxrow > :first-child { grid-column: 1 / -1; } }
 .ltextras .btn { align-self: flex-start; }
 .ltform [hidden], .ltextras[hidden] { display: none !important; }
+/* Home "All Project" card: Customer Name, Address, Pin Location */
+.c-due .chead .dfilter { margin-left: auto; } .c-due .chead .dfilter + .hall { margin-left: 8px; }
+.drow .dmain { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.drow .dname { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.drow .daddr, .drow .dpin { display: flex; align-items: center; gap: 5px; font-size: 13px; color: var(--ink2); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.drow .daddr svg, .drow .dpin svg { flex: none; color: var(--ink3); }
+.drow a.dpin { color: var(--blue); text-decoration: none; align-self: flex-start; max-width: 100%; } .drow a.dpin:hover { text-decoration: underline; }
+.drow .dpin.muted, .drow .daddr.muted { color: var(--ink3); }
+.c-due .hchips { margin: 4px 0 2px; }
+.c-due .chead .dfilter { width: 32px; height: 32px; border: 0.5px solid var(--line); background: var(--bg); color: var(--ink2); box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; display: inline-grid; place-items: center; border-radius: 16px; }
+.c-due .chead .dfilter svg { color: var(--ink2); filter: none !important; }
+.c-due .chead .dfilter.on { background: var(--cream); color: var(--ink); border-color: transparent; }
+.drow .dmain > small { margin-top: 2px; }
+.c-due .chead .dfilter svg { display: block !important; width: 16px; height: 16px; }
+.c-due .chead .dfilter + .hall { margin-left: 10px !important; }
+/* formula cells (Alert): one line; the full text shows on hover / long-press */
+.grid .td.fx { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+.cc.ce .val { white-space: nowrap; }
