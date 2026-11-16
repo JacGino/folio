@@ -1989,3 +1989,24 @@ body:not([data-layout="wide"]):not([data-layout="rail"]) .hero:has(.hnav) .cover
   body:not([data-layout="wide"]):not([data-layout="rail"]) .hero:has(.hnav) .cover { height: 168px !important; }
   body:not([data-layout="wide"]):not([data-layout="rail"]) .hero:has(.hnav) .hero-in, body:not([data-layout="wide"]):not([data-layout="rail"]) .fhead:has(.hnav) .fhead-in { padding-top: 52px !important; }
 }
+
+/* one size for every round button in the cover: quick actions, bell, ⋯, and menu / back / forward */
+.hero, .fhead { --hb: 40px; }
+@container dash (max-width: 640px) { .hero { --hb: 34px; } }
+@container focus (max-width: 640px) { .fhead { --hb: 34px; } }
+@media (max-width: 520px) { .hero, .fhead { --hb: 32px; } }
+.hero-a .hbtn, .fhead-a .hbtn, .hnav .hbtn { width: var(--hb) !important; height: var(--hb) !important; }
+.hero-a .qs, .fhead-a .qs { height: var(--hb) !important; border-radius: calc(var(--hb) / 2); }
+@media (max-width: 1180px) { .hero-a .qs, .fhead-a .qs { width: var(--hb) !important; } }
+.hero-a .qs svg, .fhead-a .qs svg { width: calc(var(--hb) * .46); height: calc(var(--hb) * .46); }
+.hero-a .qbar, .fhead-a .qbar { gap: inherit; }
+
+/* every cover's buttons sit on one line: same top, same edge distance, same gap, on every screen */
+.hero, .fhead { --hg: 8px; --he: 14px; }
+@media (max-width: 520px) { .hero, .fhead { --hg: 4px; --he: 10px; } }
+.hero .hero-a, .fhead .fhead-a { position: absolute !important; top: 12px !important; right: var(--he) !important; margin: 0 !important; z-index: 3; align-items: center; gap: var(--hg) !important; flex-wrap: nowrap !important; }
+.hnav { top: 12px !important; left: var(--he) !important; gap: var(--hg) !important; align-items: center; }
+.hero-a .qbar, .fhead-a .qbar { gap: var(--hg) !important; margin: 0 !important; flex-wrap: nowrap !important; }
+/* where the buttons now float over the cover, keep the greeting clear of them */
+body[data-layout="wide"] .hero .hero-in { padding-top: 58px; }
+body[data-layout="wide"] .hero .cover { height: 168px; }
