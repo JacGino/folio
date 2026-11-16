@@ -266,13 +266,53 @@ export function visibilitySheet(dbr, { page = null, pageTitle = '', pageCols = [
     if (drag) dragHandle(el.querySelector('.pvh'), el);
     return el;
   };
+  // Notion-style reordering: press the ⋮⋮ handle (or long-press the row), the row lifts and follows your finger,
+  // the others slide out of the way, let go to drop it there. The sheet scrolls when you reach its edge.
   const dragHandle = (hd, el) => {
-    hd.addEventListener('pointerdown', e => {
-      e.preventDefault(); const list = el.parentElement; hd.setPointerCapture(e.pointerId); el.classList.add('drag');
-      const move = ev => { const sibs = [...list.children].filter(x => x !== el && !x.classList.contains('fixed')); const before = sibs.find(s => { const r = s.getBoundingClientRect(); return ev.clientY < r.top + r.height / 2; }); before ? list.insertBefore(el, before) : list.append(el); };
-      const up = () => { hd.removeEventListener('pointermove', move); el.classList.remove('drag'); order(list); };
-      hd.addEventListener('pointermove', move); hd.addEventListener('pointerup', up, { once: true }); hd.addEventListener('pointercancel', up, { once: true });
-    });
+    const begin = (y0, touch, pid) => {
+      const list = el.parentElement, rows = [...list.children].filter(x => x.classList.contains('pvrow'));
+      const movable = rows.filter(x => !x.classList.contains('fixed')), from = movable.indexOf(el); if (from < 0) return;
+      const tops = movable.map(r => r.getBoundingClientRect().top), hgt = el.getBoundingClientRect().height;
+      const scroller = el.closest('.sheet-body') || el.closest('.sheet'), s0 = scroller ? scroller.scrollTop : 0;
+      let to = from, y = y0, raf = 0;
+      el.classList.add('drag'); list.classList.add('pvdragging');
+      try { navigator.vibrate && navigator.vibrate(8); } catch {}
+      const place = () => {
+        const ds = scroller ? scroller.scrollTop - s0 : 0, dy = y - y0 + ds;
+        el.style.transform = `translateY(${dy}px)`;
+        const mid = tops[from] + hgt / 2 + dy;
+        to = 0; for (let k = 0; k < movable.length; k++) if (k !== from && mid > tops[k] + hgt / 2) to = k < from ? k + 1 : k;
+        if (to > from) to = Math.min(to, movable.length - 1);
+        movable.forEach((r, k) => { if (r === el) return; const shift = from < to && k > from && k <= to ? -hgt : from > to && k >= to && k < from ? hgt : 0; r.style.transform = shift ? `translateY(${shift}px)` : ''; });
+      };
+      const edge = () => { // keep scrolling while the finger rests near the top or bottom of the sheet
+        if (!scroller) return; const b = scroller.getBoundingClientRect(), z = 48;
+        const v = y < b.top + z ? -8 : y > b.bottom - z ? 8 : 0;
+        if (v) { scroller.scrollTop += v; place(); }
+        raf = requestAnimationFrame(edge);
+      };
+      raf = requestAnimationFrame(edge);
+      const move = ev => { const t = ev.touches ? ev.touches[0] : ev; if (!t) return; if (ev.cancelable) ev.preventDefault(); y = t.clientY; place(); };
+      const end = () => {
+        cancelAnimationFrame(raf);
+        document.removeEventListener('touchmove', move, { passive: false }); document.removeEventListener('touchend', end); document.removeEventListener('touchcancel', end);
+        document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', end); document.removeEventListener('pointercancel', end);
+        movable.forEach(r => { r.style.transform = ''; }); el.classList.remove('drag'); list.classList.remove('pvdragging');
+        if (to !== from) { const ref = movable[to]; to > from ? ref.after(el) : ref.before(el); order(list); }
+      };
+      if (touch) { document.addEventListener('touchmove', move, { passive: false }); document.addEventListener('touchend', end); document.addEventListener('touchcancel', end); }
+      else { document.addEventListener('pointermove', move); document.addEventListener('pointerup', end); document.addEventListener('pointercancel', end); }
+    };
+    // the handle: drag straight away (finger or mouse)
+    hd.addEventListener('touchstart', e => { if (e.touches.length !== 1) return; e.preventDefault(); begin(e.touches[0].clientY, true); }, { passive: false });
+    hd.addEventListener('pointerdown', e => { if (e.pointerType === 'touch') return; e.preventDefault(); begin(e.clientY, false); });
+    // the rest of the row: long-press to drag (a tap still renames, a swipe still scrolls)
+    let lp = null, sy = 0;
+    el.addEventListener('touchstart', e => { if (e.target.closest('.pvh, .pveye, .pvmore') || e.touches.length !== 1) return; sy = e.touches[0].clientY;
+      lp = setTimeout(() => { lp = 'on'; el._noTap = true; begin(sy, true); }, 420); }, { passive: true });
+    el.addEventListener('touchmove', e => { if (lp && lp !== 'on' && Math.abs(e.touches[0].clientY - sy) > 8) { clearTimeout(lp); lp = null; } }, { passive: true });
+    el.addEventListener('touchend', () => { if (lp && lp !== 'on') clearTimeout(lp); lp = null; setTimeout(() => { el._noTap = false; }, 50); });
+    el.addEventListener('click', e => { if (el._noTap) { e.stopPropagation(); e.preventDefault(); } }, true);
     hd.addEventListener('keydown', e => {
       if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return; e.preventDefault();
       const list = el.parentElement, sib = e.key === 'ArrowUp' ? el.previousElementSibling : el.nextElementSibling;

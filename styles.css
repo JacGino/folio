@@ -1951,3 +1951,10 @@ span[data-s="s"] { font-size: .85em; } span[data-s="l"] { font-size: 1.25em; } s
 .chd span { overflow-wrap: break-word !important; word-break: normal !important; }
 .cc.ce > .val, .cc.ce > span > .val, .cc.ctitle > .val { overflow-wrap: break-word !important; word-break: normal !important; }
 .cc.ce .val .url, .cc.ce .val .url b, .cc.ce .val .url i, .drow a.dpin, .grid .td a { word-break: break-all; }
+/* Property visibility: Notion-style drag to reorder */
+.pvlist.pvdragging .pvrow { transition: transform .16s ease; }
+.pvlist.pvdragging .pvrow.drag { transition: none; position: relative; z-index: 5; box-shadow: 0 8px 24px rgba(0,0,0,.16), 0 0 0 1px rgba(0,0,0,.04); border-radius: 10px; background: var(--bg); }
+.pvrow { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+/* tables scroll with the page: no inner vertical scrolling, and swipes that start on a resize line still scroll the page */
+.ctbl { overflow-y: hidden !important; }
+.crz, .rrz { touch-action: auto !important; }
