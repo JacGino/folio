@@ -156,9 +156,9 @@ export function setProjectFilter({ cat = '' } = {}) { pcat = cat; ptab = 'all'; 
 let pq = '', ptab = 'all', pcat = '', pstat = '', pdue = '', psort = 'due', pshow = 50, pcol = null, pfil = [];
 const sel = new Set();
 const PTABS = [['all', 'All Projects'], ['progress', 'In Progress'], ['completed', 'Completed'], ['overdue', 'Overdue'], ['archived', 'Archived']];
-const bucket = t => t.archived ? 'archived' : t.status === 'Done' ? 'completed' : 'progress';
+const bucket = t => t.archived ? 'archived' : t.finished ? 'completed' : 'progress';
 function searchText(t) {
-  return [t.title, t.ecx, P('Project Ref') ? DB.value(t.row, P('Project Ref')) : '', ...E.ecxOf(t.id).map(x => [g(x, 'number'), g(x, 'appid')].join(' '))].join(' ').toLowerCase();
+  return [t.title, t.ecx, DB.projectRef(t.row), ...E.ecxOf(t.id).map(x => [g(x, 'number'), g(x, 'appid')].join(' '))].join(' ').toLowerCase();
 }
 function projectList(n) {
   const dbr = DB.kpiDb(); if (!dbr) return [];
@@ -270,22 +270,22 @@ export function newProjectSheet({ cat: preCat = '' } = {}) {
   const cat = h('select', { class: 'field', 'aria-label': 'Category' }, h('option', { value: '' }, 'Category'), (P('Project Category')?.options || []).map(o => h('option', { value: o.name, selected: o.name === preCat ? true : null }, o.name)));
   const da = h('input', { type: 'date', class: 'field', value: today(), 'aria-label': 'Date assigned' });
   const dd = h('input', { type: 'date', class: 'field', value: toISODate(dateAdd(new Date(NOW()), 7, 'days')), 'aria-label': 'Due date' });
-  const ref = h('input', { class: 'field', placeholder: 'Project reference (optional)', 'aria-label': 'Project reference' });
+  const ref = h('input', { class: 'field', placeholder: 'ECX & WBS No (optional)', 'aria-label': 'ECX & WBS No' });
   const lab = (t, el) => h('label', { class: 'flabel' }, h('span', {}, t), el);
   const s = sheet('New project', h('form', { class: 'npform', onsubmit: e => {
     e.preventDefault(); const name = cust.value.trim(); if (!name) { cust.focus(); return; }
-    const vals = { [DB.titleProp(dbr).name]: name, 'Date Assigned': da.value || null, 'Due Date': dd.value || null, Status: 'Site Survey', 'Project Ref': ref.value.trim() || null };
+    const vals = { [DB.titleProp(dbr).name]: name, 'Date Assigned': da.value || null, 'Due Date': dd.value || null, Status: 'Site Survey', 'ECX & WBS NO': ref.value.trim() || null }; // the project reference is the ECX & WBS NO
     if (cat.value) vals['Project Category'] = [cat.value];
     const r = DB.newRow(dbr, vals); E.ensureAll(); s.close(); go('#/project/' + r.id);
   } }, dl, lab('Customer', cust), h('p', { class: 'muted small' }, names.length ? 'Pick an existing customer to link this project to them, or type a new name.' : 'Type the customer name.'),
-    lab('Category', cat), h('div', { class: 'f2' }, lab('Date assigned', da), lab('Due date', dd)), lab('Reference', ref),
+    lab('Category', cat), h('div', { class: 'f2' }, lab('Date assigned', da), lab('Due date', dd)), lab('ECX & WBS No (project reference)', ref),
     h('button', { class: 'btn primary block', type: 'submit' }, 'Create project')), { done: 'Cancel' });
   setTimeout(() => cust.focus(), 80);
 }
 /** Edit Project: every project field in one sheet; changes save straight away */
 export function editProjectSheet(row) {
   const dbr = DB.kpiDb();
-  const names = [DB.titleProp(dbr)?.name, 'Project Category', 'Project Ref', 'Station', 'Date Assigned', 'Due Date', 'Date Completed', 'Status', 'Scope / Remarks', 'Archive'];
+  const names = [DB.titleProp(dbr)?.name, 'Project Category', 'ECX & WBS NO', 'Station', 'Date Assigned', 'Due Date', 'Date Completed', 'Status', 'Scope / Remarks', 'Archive'];
   const rows = names.map(n => n && DB.propByName(dbr, n)).filter(Boolean).map(p => {
     let ed;
     if (['text', 'title', 'number', 'url'].includes(p.type)) ed = h('input', { class: 'field', value: DB.raw(D.getRec(row.id), p) ?? '', 'aria-label': p.name, onchange: e => { D.update(row.id, { ['p:' + p.id]: e.target.value }); if (p.type === 'title') E.ensureAll(); } });
@@ -310,7 +310,7 @@ export function projectScreen(id, tab = 'overview') {
     ...(rep ? [] : [['ecpar', 'ECPAR', 'ecpar']]), ...(ccEligible(info.category) ? [['cc', 'Connection Charge', 'table']] : []), ...(rep ? [] : [['ecx', 'ECX', 'filex', xs.length]]), ['docs', 'Documents', 'clip'], ['log', 'Activity Log', 'history']];
   if (!TABS.some(t => t[0] === tab)) tab = 'overview';
   state.ctx = { export: a => exportList('today', a), more: a => projectMenu(a, row) };
-  const ref = P('Project Ref') ? DB.value(row, P('Project Ref')) : '';
+  const ref = DB.projectRef(row);
   const created = D.val(row, 'created', 0);
   const wrap = h('div', { class: 'wrap home pdetail' },
     h('nav', { class: 'crumbs', 'aria-label': 'Breadcrumb' }, h('a', { href: '#/projects' }, icon('folder', 16), 'Projects'), icon('chevr', 14), h('span', {}, 'Project Details')),
@@ -325,7 +325,7 @@ export function projectScreen(id, tab = 'overview') {
       h('div', { class: 'kcell' }, h('div', {}, h('small', {}, 'Status'), propVal(row, 'Status'))),
       h('div', { class: 'kcell' }, h('div', {}, h('small', {}, 'Date Assigned'), propVal(row, 'Date Assigned'))),
       h('div', { class: 'kcell' }, h('div', {}, h('small', {}, 'Due Date'), propVal(row, 'Due Date'))),
-      h('div', { class: 'kcell' }, h('div', {}, h('small', {}, 'Days Left'), info.status === 'Done' || info.archived ? h('span', { class: 'muted' }, '—') : daysBadge(dueDays))),
+      h('div', { class: 'kcell' }, h('div', {}, h('small', {}, 'Days Left'), info.finished || info.archived ? h('span', { class: 'muted' }, '—') : daysBadge(dueDays))),
       h('div', { class: 'kcell kprog' }, h('div', {}, h('small', {}, 'KPI Progress'), h('div', { class: 'pbar' }, h('b', {}, pct + '%'), h('span', { class: 'bar' }, h('i', { style: { width: pct + '%' } }))),
         h('small', { class: 'kd' + (kd != null && kd > 7 ? ' late' : '') }, kd == null ? 'Set Date Assigned for KPI' : (info.completed ? 'Done in ' : 'Day ') + kd + (info.completed ? ' days' : ' of 7') + (kd > 7 ? ' · over KPI' : ' · within KPI'))))),
     h('div', { class: 'ptabs htabs', role: 'tablist' }, TABS.map(([k, l, ic, c]) => h('a', { class: 'htab' + (tab === k ? ' on' : ''), role: 'tab', 'aria-selected': tab === k ? 'true' : 'false', href: `#/project/${id}/${k}`, onclick: e => { e.preventDefault(); go(`#/project/${id}/${k}`, { replace: true }); } },
@@ -356,7 +356,7 @@ function overview(row, info, n) {
         cf('today', 'Meter Type', 'meter', { type: 'select', options: E.METER_TYPES }),
         cf('building', 'Premise Type', 'premise', { type: 'select', options: E.PREMISE_TYPES })),
       h('h3', { class: 'ph' }, icon('info', 17), 'Project Information'),
-      h('div', { class: 'kvs' }, kv('layers', 'Category', propVal(row, 'Project Category')), kv('text', 'Project Reference', propVal(row, 'Project Ref')), kv('pin', 'Station', propVal(row, 'Station')),
+      h('div', { class: 'kvs' }, kv('layers', 'Category', propVal(row, 'Project Category')), kv('text', 'Project Reference (ECX & WBS No)', propVal(row, 'ECX & WBS NO')), kv('pin', 'Station', propVal(row, 'Station')),
         kv('date', 'Date Assigned', propVal(row, 'Date Assigned')), kv('date', 'Due Date', propVal(row, 'Due Date')), kv('status', 'Status', propVal(row, 'Status')), kv('text', 'Scope / Remarks', propVal(row, 'Scope / Remarks')))),
     h('div', { class: 'pside' },
       h('section', { class: 'hcard pcard' },

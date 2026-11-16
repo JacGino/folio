@@ -66,10 +66,10 @@ function hero(n) {
 // ---------- KPI summary bar ----------
 export function kpiNumbers(all, n) {
   const today = new Date(n), mStart = new Date(today.getFullYear(), today.getMonth(), 1);
-  const active = all.filter(t => !t.archived), done = active.filter(t => t.status === 'Done'), prog = active.filter(t => t.status !== 'Done');
+  const active = all.filter(t => !t.archived), done = active.filter(t => t.finished), prog = active.filter(t => !t.finished);
   const t0 = startOfDay(today), overdue = prog.filter(t => { const d = t.row && DB.value(t.row, P('Due Date')); return d && startOfDay(d) < t0; });
   const added = active.filter(t => { const d = t.assigned || new Date(D.val(t.row, 'created', 0)); return d >= mStart; }).length;
-  return { active: active.length, done: done.length, prog: prog.length, overdue: overdue.length, added, kpi: kpiPct(all.filter(t => t.archived || t.status === 'Done')) };
+  return { active: active.length, done: done.length, prog: prog.length, overdue: overdue.length, added, kpi: kpiPct(all.filter(t => t.archived || t.finished)) };
 }
 /** KPI achievement: completed within 7 days of Date Assigned, out of completed projects that have both dates */
 function kpiPct(list) { // same rule as the KPI page (configured start, completion event and day counting)
@@ -220,7 +220,7 @@ export function kpiTrend(all, n) {
   const now = new Date(n), out = [];
   for (let i = 5; i >= 0; i--) {
     const m = new Date(now.getFullYear(), now.getMonth() - i, 1), m2 = new Date(m.getFullYear(), m.getMonth() + 1, 1);
-    const inMonth = all.filter(t => isDate(t.completed) && t.completed >= m && t.completed < m2 && (t.archived || t.status === 'Done'));
+    const inMonth = all.filter(t => isDate(t.completed) && t.completed >= m && t.completed < m2 && (t.archived || t.finished));
     out.push({ label: formatDate(m, 'MMM'), month: formatDate(m, 'MMMM YYYY'), v: kpiPct(inMonth), count: inMonth.length });
   }
   return out;
@@ -255,7 +255,7 @@ function trendCard(all, n) {
 
 // ---------- By Project Category ----------
 function categoryCard(all) {
-  const done = all.filter(t => t.archived || t.status === 'Done');
+  const done = all.filter(t => t.archived || t.finished);
   return h('section', { class: 'hcard ccard c-cat' },
     h('div', { class: 'chead' }, icon('layers', 18), h('h2', {}, 'By Project Category'), h('a', { class: 'hall', href: '#/kpi' }, 'View KPI', icon('chevr', 13))),
     h('div', { class: 'ctiles' }, DB.CATEGORIES.map(c => { const v = kpiPct(done.filter(t => t.category.includes(c)));

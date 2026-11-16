@@ -142,6 +142,29 @@ export function createKpiTracker(parentPage = null) {
   return { page, db: d };
 }
 
+// ---------- project reference = ECX & WBS NO ----------
+/** the project's reference: its ECX & WBS NO (one line); an older separate Project Ref only if ECX & WBS NO is empty */
+export function projectRef(row) {
+  const d = kpiDb(); if (!d || !row) return '';
+  const e = propByName(d, 'ECX & WBS NO'), o = propByName(d, 'Project Ref');
+  const v = String((e && value(row, e)) || (o && value(row, o)) || '').trim();
+  return v.split(/\r?\n/).map(x => x.trim()).filter(Boolean).join(' / ');
+}
+/** split ECX & WBS NO into the ECX number and the WBS / project number (e.g. "ECX_202608_3006" and "BTU-260476") */
+export function refParts(row) {
+  const all = projectRef(row).split(/\s*(?:\/|,|;|\s{2,})\s*/).filter(Boolean);
+  const ecx = all.find(x => /^ECX/i.test(x)) || '', wbs = all.find(x => x !== ecx) || '';
+  return { ecx, wbs, all: projectRef(row) };
+}
+/** once: a value typed in the old Project Ref field moves into ECX & WBS NO where that is empty */
+export function mergeProjectRef() {
+  const d = kpiDb(); if (!d) return 0;
+  const e = propByName(d, 'ECX & WBS NO'), o = propByName(d, 'Project Ref'); if (!e || !o) return 0;
+  let n = 0;
+  for (const r of rows(d.id)) { const ov = String(value(r, o) || '').trim(); if (ov && !String(value(r, e) || '').trim()) { D.update(r.id, { ['p:' + e.id]: ov }); n++; } }
+  return n;
+}
+
 /** Classify a KPI task for the Today / Survey / ECPAR screens. */
 export function kpiInfo(row, dbr, now = Date.now()) {
   const P = n => propByName(dbr, n), today = startOfDay(new Date(now));
@@ -156,7 +179,9 @@ export function kpiInfo(row, dbr, now = Date.now()) {
   return { id: row.id, row, status, closed, amend, due, days, title: title(row), address: g('Address') || '', map: g('Pin Location') || '',
     station: g('Station') || '', ecx: g('ECX & WBS NO') || '', rejected: g('ECPAR Rejected'), alert: P('Alert') ? formulaToText(value(row, P('Alert'), now)) : '',
     category: [].concat(g('Project Category') || []), priority: g('Priority') || '', next: g('Next Task') || '', ecxRejected: g('ECX Rejected'),
-    assigned: g('Date Assigned'), completed: g('Date Completed'), archived };
+    assigned: g('Date Assigned'), completed: g('Date Completed'), archived,
+    // finished: Done, or Rejected once its Date Completed is filled in (then it stops counting days, like a Done project)
+    finished: status === 'Done' || (status === 'Rejected' && !!g('Date Completed')) };
 }
 export function kpiTasks(now = Date.now()) { const d = kpiDb(); if (!d) return []; return rows(d.id).map(r => kpiInfo(r, d, now)).filter(t => !t.closed); }
 const byDays = (a, b) => (a.days ?? 9999) - (b.days ?? 9999);
@@ -191,7 +216,7 @@ export function ensureHomeFields() {
   const want = [{ id: 'p_nexttask', name: 'Next Task', type: 'text' },
     { id: 'p_priority', name: 'Priority', type: 'select', options: [{ name: 'High', color: 'red' }, { name: 'Medium', color: 'orange' }, { name: 'Low', color: 'blue' }] },
     { id: 'p_ecxrejected', name: 'ECX Rejected', type: 'date' },
-    { id: 'p_projref', name: 'Project Ref', type: 'text' }, { id: 'p_remarks', name: 'Scope / Remarks', type: 'text' }];
+    { id: 'p_remarks', name: 'Scope / Remarks', type: 'text' }]; // Project Ref is the ECX & WBS NO (no separate field)
   for (const w of want) if (!list.some(x => x.id === w.id || x.name === w.name)) { list.push(w); changed = true; }
   if (changed) saveProps(d, list);
   return changed;

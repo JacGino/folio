@@ -63,7 +63,7 @@ function ecparRecords(n) {
     const e = E.ecparOf(t.row) || { f: {} }, s = g(e, 'status');
     const status = E.ECPAR_ACTIVE.includes(s) ? s : 'Pending Revision';
     const rj = g(e, 'rejected') || (t.rejected ? toISODate(t.rejected) : null), due = rj ? dateAdd(parseDate(rj), 1, 'days') : null;
-    return { id: 'ep' + t.id, row: t.row, rec: D.live(e.id), cust: t.title, cats: t.category, ref: g(e, 'ref', ''), pref: P('Project Ref') ? DB.value(t.row, P('Project Ref')) || '' : '',
+    return { id: 'ep' + t.id, row: t.row, rec: D.live(e.id), cust: t.title, cats: t.category, ref: g(e, 'ref', ''), pref: DB.projectRef(t.row),
       status, rejected: rj, due, days: due ? Math.round((startOfDay(due) - t0) / 864e5) : null, rcat: g(e, 'rcat') || '', reason: g(e, 'reason', ''), correction: g(e, 'correction', ''), remarks: g(e, 'remarks', ''), priority: priOf(t.row) };
   });
 }

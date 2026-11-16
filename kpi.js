@@ -70,7 +70,7 @@ const PRI = { High: 0, Medium: 1, Low: 2 };
 export function facts(row, now = Date.now()) {
   const dbr = DB.kpiDb(), info = DB.kpiInfo(row, dbr, now), ev = eventDates(row), t0 = startOfDay(new Date(now));
   const cats = info.category, cat = mainCat(cats), rep = isReportOnly(cats);
-  const done = info.status === 'Done' || info.archived && !!ev.completed;
+  const done = info.finished || info.archived && !!ev.completed;
   const dueDays = ev.due ? Math.round((startOfDay(ev.due) - t0) / 864e5) : null;
   const state = done ? 'Completed' : info.archived ? 'Archived' : dueDays != null && dueDays < 0 ? 'Overdue' : dueDays != null && dueDays <= 2 ? 'Due ≤ 2 Days' : 'On Track';
   // workflow stage (shown inside Board cards)
@@ -89,7 +89,7 @@ export function facts(row, now = Date.now()) {
   const endDate = { completed: ev.completed, survey: ev.survey, report: ev.report, ecpar: ev.ecparSubmitted }[endKey] || null;
   const kpiDone = endKey === 'completed' ? done && !!ev.completed : !!endDate;
   const turnaround = kpiDone && start && endDate ? dayCount(start, endDate) : null;
-  const ref = val(row, 'Project Ref') || '';
+  const ref = DB.projectRef(row); // Project Ref = ECX & WBS NO
   return { id: row.id, row, info, cats, cat, code: CODE[cat], rep, ref, title: info.title, status: info.status, stage, state, done, archived: info.archived, priority: info.priority, pri: PRI[info.priority] ?? 3,
     due: ev.due ? startOfDay(ev.due) : null, dueDays, assigned: start, completed: ev.completed ? startOfDay(ev.completed) : null, ev,
     kpiEnd: kpiDone ? endDate : null, kpiEndKey: endKey, turnaround, within: turnaround == null ? null : turnaround <= 7,

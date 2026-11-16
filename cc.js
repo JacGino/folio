@@ -315,7 +315,7 @@ function compareSheet(a, b) {
 function exportPdf(row, info, w) {
   const res = calculate(w), c = w.loadedId && D.live(w.loadedId), I = w.inputs;
   const ref = P => DB.propByName(DB.kpiDb(), P);
-  const pref = ref('Project Ref') ? DB.value(row, ref('Project Ref')) : '';
+  const pref = DB.projectRef(row);
   const doc = h('div', { id: 'ccprint' },
     h('h1', {}, 'Connection Charge — Calculation Summary'),
     h('p', { class: 'cpn' }, 'Estimate prepared from ' + GUIDELINE.name + ' (' + GUIDELINE.rev + '). This is not an invoice or bill. Rates are reference values from this guideline version, exclusive of Service Tax and subject to review.'),
@@ -341,7 +341,7 @@ function ltDefaults(row, info, w, res) {
   const c = E.customerOf(row), P = n => DB.propByName(DB.kpiDb(), n), pv = n => P(n) ? DB.value(row, P(n)) : '';
   const ecx = E.ecxOf(row.id)[0], tariff = c && g(c, 'tariff'), sub = c && g(c, 'subsidy');
   const d = new Date(NOW());
-  return { shortTitle: '', ref: (ecx && g(ecx, 'number')) || String(info.ecx || '').split('\n')[0], projectRef: pv('Project Ref') || '', title: '', consultant: '', client: info.title, ic: '', contact: (c && g(c, 'phone')) || '',
+  return { shortTitle: '', ref: (ecx && g(ecx, 'number')) || DB.refParts(row).ecx || DB.refParts(row).all, projectRef: DB.refParts(row).wbs || DB.refParts(row).all, title: '', consultant: '', client: info.title, ic: '', contact: (c && g(c, 'phone')) || '',
     appType: tariff || 'Domestic', load: w.inputs.applied || '', target: String(d.getFullYear()), cat: w.inputs.cat || '', use: '', scheme: schemeDraft(res.lines),
     costOH: '', costNoOH: '', sst: tariff === 'Commercial' ? '6' : '0', subsidy: tariff === 'Commercial' || sub === 'No' ? 'none' : sub === 'Yes' && g(c, 'subsidyPct') ? (g(c, 'subsidyPct') === '70%' ? '70' : '100') : 'auto',
     subsidyBV: ltRemember('subsidyBV') || 'PLS-260221', cdpBV: ltRemember('cdpBV') || 'PLS-260205', source: '', feeder: 'RYB', r: '', y: '', b: '',

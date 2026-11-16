@@ -1852,3 +1852,33 @@ span[data-s="s"] { font-size: .85em; } span[data-s="l"] { font-size: 1.25em; } s
 .pvmore { display: grid; place-items: center; width: 36px; height: 40px; border: 0; background: transparent; color: var(--ink3); border-radius: 10px; flex: none; cursor: pointer; }
 .pvmore:hover, .pvmore:focus-visible { background: var(--bg2); color: var(--ink); }
 .pvnew { display: flex; align-items: center; gap: 10px; min-height: 48px; margin-top: 8px; padding: 0 14px; border: 0; border-radius: 12px; background: var(--bg); color: var(--blue); font: inherit; font-size: 16px; cursor: pointer; }
+
+/* ---------- wrap text in every table column (instead of cutting it off with …); Alert stays on one line ---------- */
+/* Projects + Focus tables (shared columns) */
+.plist.ctbl > .prow, .flist.ctbl > .frow { align-items: start; }
+.plist.ctbl > .prow > *, .flist.ctbl > .frow > * { align-items: flex-start !important; padding-top: 4px; padding-bottom: 4px; }
+.cc.ce > .val, .cc.ce > span > .val, .cc.ctitle > .val { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; flex-wrap: wrap; height: auto; align-items: flex-start; overflow-wrap: anywhere; word-break: break-word; line-height: 1.35; }
+.cc.ce .val .tag, .cc.ce .val .pill { white-space: normal; overflow-wrap: anywhere; }
+.cc.ce .val .url, .cc.ce .val .url b, .cc.ce .val .url i { white-space: normal !important; overflow-wrap: anywhere; word-break: break-all; }
+.cc.ce > span[style] { flex-wrap: wrap; align-items: flex-start !important; }
+.cc { overflow: visible; }
+.chd { height: auto; min-height: 30px; align-items: flex-start; padding-top: 5px; padding-bottom: 5px; }
+.chd span { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; overflow-wrap: anywhere; line-height: 1.3; text-align: left; }
+.chd svg { margin-top: 2px; }
+.prow .c-cust > span, .prow.hhd span, .frow.fhd .fc, .fc1, .fid b, .fproj .hp, .frow .fc2 .hp { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; overflow-wrap: anywhere; }
+.fid .val { white-space: normal !important; overflow-wrap: anywhere; }
+.copen { margin-top: 2px; }
+/* the formula Alert keeps one line; everything else wraps */
+.cc.ce .val.fxv { white-space: nowrap !important; }
+/* full tracker table */
+.grid .th { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; line-height: 1.3; }
+.grid .td { overflow-wrap: anywhere; word-break: break-word; }
+.grid .td a { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; overflow-wrap: anywhere; word-break: break-all; }
+.grid .td .tag, .grid .td .pill { white-space: normal; }
+/* Home "All Project" rows */
+.drow .dname, .drow .daddr, .drow .dpin { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; overflow-wrap: anywhere; align-items: flex-start; }
+.drow .daddr svg, .drow .dpin svg { margin-top: 2px; }
+.drow a.dpin { word-break: break-all; }
+/* Reports, KPI, Timeline, Board and the ECPAR rejection list */
+.rrow > *, .prw > *, .rjr b, .rjr small, .kcust, .gleft > * { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; overflow-wrap: anywhere; }
+.rrow, .rjr { align-items: start; }

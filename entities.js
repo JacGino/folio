@@ -231,7 +231,7 @@ export const revisions = (row, ecxId = null) => history(row).filter(e => (ecxId 
 
 // ---------------- progress and KPI ----------------
 export function milestones(row, info = DB.kpiInfo(row, DB.kpiDb())) {
-  const cats = info.category, rep = reportOnly(cats), w = workOf(row), done = info.status === 'Done' || info.archived;
+  const cats = info.category, rep = reportOnly(cats), w = workOf(row), done = info.finished || info.archived;
   const list = [];
   if (!rep && cats.length) list.push({ key: 'docs', label: 'Documents checked', done: !!(w && g(w, 'docs')), toggle: true });
   list.push({ key: 'survey', label: 'Site survey', done: surveyState(row, info) === 'done' });
@@ -272,4 +272,4 @@ export function ensureModel() {
 DB.setEcxSource(rejectedEcx);
 /** everything the app needs in the data before showing it: new fields, categories, links */
 export function ensureAll() {
-  DB.upgradeAlert(); try { DB.ensureHomeFields(); ensureModel(); } catch (e) { console.error(e); } }
+  DB.upgradeAlert(); DB.mergeProjectRef(); try { DB.ensureHomeFields(); ensureModel(); } catch (e) { console.error(e); } }

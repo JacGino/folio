@@ -203,7 +203,7 @@ export function propEditor(rec, p, dbr, { compact = false, dfmt } = {}) {
     case 'formula': {
       const txt = DB.display(rec, p, now());
       const c = /OVERDUE|REJECTED/.test(txt) ? 'var(--red)' : /COMPLETED/.test(txt) ? '#448361' : /🟠/.test(txt) ? 'var(--orange)' : 'inherit';
-      return h('span', { class: 'val', style: { fontWeight: /[🔴🚨🟠✅❌🔵]/u.test(txt) ? 600 : 400, color: c } }, txt || h('span', { class: 'muted' }, 'Empty'));
+      return h('span', { class: 'val fxv', style: { fontWeight: /[🔴🚨🟠✅❌🔵]/u.test(txt) ? 600 : 400, color: c } }, txt || h('span', { class: 'muted' }, 'Empty'));
     }
     case 'created': return h('span', { class: 'val' }, formatDate(D.val(rec, 'created', 0)));
   }
