@@ -2119,3 +2119,7 @@ body[data-layout="rail"]:has(#main .pgcover) .topbar .tpill:not(:first-child) { 
 body[data-layout="rail"] .wrap .cover.pgcover { margin-top: 52px !important; }
 .hi-type { display: inline-block; padding: 0 6px; border-radius: 5px; background: var(--bg2); color: var(--ink2); font-size: 11.5px; margin-right: 2px; }
 .logo.logo-img { background: none !important; box-shadow: none !important; border-radius: 22%; object-fit: contain; display: inline-block; }
+
+/* opening splash: the Folio app icon (fanned cards + pin), same pop-in */
+#splash .sp-logo.sp-icon { width: 132px; height: 132px; border-radius: 30px; overflow: hidden; filter: drop-shadow(0 14px 28px rgba(94, 82, 70, .22)); }
+#splash .sp-logo.sp-icon img { display: block; width: 100%; height: 100%; border-radius: 30px; }
