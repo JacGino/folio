@@ -10,7 +10,8 @@ import { popEdit } from './popedit.js';
 import { propEditor } from './page.js';
 import { ccTab, ccEligible } from './cc.js';
 import * as C from './cols.js';
-import { viewTabs } from './views.js';
+import { viewTabs, head as coverHead } from './views.js';
+import { heroNav } from './home.js';
 import { checklistsFor, guessSide } from './checklists.js';
 
 const { g } = E;
@@ -158,7 +159,8 @@ export function setProjectFilter({ cat = '' } = {}) { pcat = cat; ptab = 'all'; 
 let pq = '', ptab = 'all', pcat = '', pstat = '', pdue = '', psort = 'due', pshow = 50, pcol = null, pfil = [];
 const sel = new Set();
 const PTABS = [['all', 'All Projects'], ['progress', 'In Progress'], ['completed', 'Completed'], ['overdue', 'Overdue'], ['archived', 'Archived']];
-const bucket = t => t.archived ? 'archived' : t.finished ? 'completed' : 'progress';
+// Rejected projects sit with Completed (they still show in the Rejected Queue / ECPAR & ECX rejected pages until resubmitted)
+const bucket = t => t.archived ? 'archived' : (t.finished || /^rejected$/i.test(String(t.status || '').trim())) ? 'completed' : 'progress';
 function searchText(t) {
   return [t.title, t.ecx, DB.projectRef(t.row), ...E.ecxOf(t.id).map(x => [g(x, 'number'), g(x, 'appid')].join(' '))].join(' ').toLowerCase();
 }
@@ -234,15 +236,14 @@ export function projectsScreen() {
     ...pfil.map(f => [C.filterText(dbr, f), () => pfil = pfil.filter(x => x !== f)]), pcol && ['Sorted by ' + C.label(dbr, pcol.id) + (pcol.dir === 'desc' ? ' ↓' : ' ↑'), () => pcol = null]].filter(Boolean)
     .map(([l, clear]) => h('button', { class: 'hchip', onclick: () => { clear(); render(); } }, l, icon('close', 13)));
   wrap.append(
-    h('header', { class: 'hhead' },
-      h('div', { class: 'htitle' }, h('div', { class: 'ptitle' }, icon('folder', 26), elabel('projects.title', 'Projects', 'h1')), elabel('projects.sub', 'Customers, projects, applications and tasks in one place.', 'p', { class: 'hsub' }), viewTabs('projects', 'projects')),
-      h('div', { class: 'hactions' },
+    // same cover header as Board / Timeline / Reports (cover photo, menu ← →, bell, ⋯); tools in the row under it
+    coverHead({ group: 'projects', cur: 'projects', crumb: 'Table', title: elabel('projects.title', 'Projects', 'span'), desc: elabel('projects.sub', 'Customers, projects, applications and tasks in one place.', 'span'), ic: 'folder', more: a => state.ctx.more(a),
+      tools: [
         h('label', { class: 'hsearch glass' }, icon('search', 17), search),
         h('button', { class: 'hbtn glass' + (pcat || pstat || pdue || pfil.length ? ' on' : ''), 'aria-label': 'Filter projects', onclick: e => filterMenu(e.currentTarget) }, icon('filter', 18)),
         h('button', { class: 'hbtn glass', 'aria-label': 'Properties', title: 'Properties: show, hide and arrange columns', onclick: () => C.visibilitySheet(dbr) }, icon('sliders', 18)),
         h('button', { class: 'hbtn glass', 'aria-label': 'Sort projects', onclick: e => menu(e.currentTarget, [['due', 'Due date'], ['name', 'Customer name'], ['assigned', 'Date assigned (newest)']].map(([k, l]) => ({ label: 'Sort by ' + l, checked: psort === k, run: () => { psort = k; pcol = null; render(); } }))) }, icon('sort', 18)),
-        h('button', { class: 'hbtn glass', 'aria-label': 'More options', onclick: e => state.ctx.more(e.currentTarget) }, icon('more', 19)),
-        h('button', { class: 'hnew', onclick: () => newProjectSheet() }, icon('plus', 17), h('span', {}, 'New Project')))),
+        h('button', { class: 'hnew', onclick: () => newProjectSheet() }, icon('plus', 17), h('span', {}, 'New Project'))] }),
     h('section', { class: 'hcard htable ptable' },
       h('div', { class: 'hbar' }, h('div', { class: 'htabs', role: 'tablist' }, PTABS.map(([k, l]) => h('button', { class: 'htab' + (ptab === k ? ' on' : ''), role: 'tab', 'aria-selected': ptab === k ? 'true' : 'false',
         onclick: () => { ptab = k; pshow = 50; sel.clear(); render(); } }, h('span', {}, l), h('span', { class: 'hcount' + (k === 'overdue' && counts.overdue ? ' red' : '') }, counts[k]))))),
@@ -288,7 +289,7 @@ export function newProjectSheet({ cat: preCat = '' } = {}) {
 /** Edit Project: every project field in one sheet; changes save straight away */
 export function editProjectSheet(row) {
   const dbr = DB.kpiDb();
-  const names = [DB.titleProp(dbr)?.name, 'Project Category', 'ECX & WBS NO', 'Station', 'Date Assigned', 'Due Date', 'Date Completed', 'Status', 'Scope / Remarks', 'Archive'];
+  const names = [DB.titleProp(dbr)?.name, 'Project Category', 'ECX & WBS NO', 'Station', 'Date Assigned', 'Due Date', 'Date Completed', 'Status', DB.WAYLEAVE, 'Archive'];
   const rows = names.map(n => n && DB.propByName(dbr, n)).filter(Boolean).map(p => {
     let ed;
     if (['text', 'title', 'number', 'url'].includes(p.type)) ed = h('input', { class: 'field', value: DB.raw(D.getRec(row.id), p) ?? '', 'aria-label': p.name, onchange: e => { D.update(row.id, { ['p:' + p.id]: e.target.value }); if (p.type === 'title') E.ensureAll(); } });
@@ -315,14 +316,18 @@ export function projectScreen(id, tab = 'overview') {
   state.ctx = { export: a => exportList('today', a), more: a => projectMenu(a, row) };
   const ref = DB.projectRef(row);
   const created = D.val(row, 'created', 0);
+  const n0 = NOW(), alerts = DB.kpiDb() ? DB.kpiTasks(n0).filter(t => t.days != null && t.days <= 0).length + E.dueTasks(n0).length : 0;
   const wrap = h('div', { class: 'wrap home pdetail' },
+    // same round buttons as every other page (menu ← → left, bell ⋯ right), without a cover photo
+    h('div', { class: 'pdnav' }, heroNav(), h('div', { class: 'pdnav-a' },
+      h('button', { class: 'hbtn glass', 'aria-label': alerts ? `Notifications, ${alerts} due or overdue` : 'Notifications', onclick: () => go('#/inbox') }, icon('bell', 19), alerts ? h('i', { class: 'hdot' }) : null),
+      h('button', { class: 'hbtn glass', 'aria-label': 'Project actions', onclick: e => projectMenu(e.currentTarget, row) }, icon('more', 19)))),
     h('nav', { class: 'crumbs', 'aria-label': 'Breadcrumb' }, h('a', { href: '#/projects' }, icon('folder', 16), 'Projects'), icon('chevr', 14), h('span', {}, 'Project Details')),
     h('header', { class: 'pdhead' },
       h('span', { class: 'pdic' }, icon('building', 26)),
       h('div', { class: 'pdname' }, h('div', { class: 'pdt' }, h('h1', {}, info.title), info.archived ? badge('Archived', 'gray') : null),
         created ? h('p', { class: 'hsub' }, 'Created ' + formatDate(new Date(created), 'DD/MM/YYYY')) : null),
       h('div', { class: 'hactions' },
-        h('button', { class: 'hbtn glass', 'aria-label': 'Project actions', onclick: e => projectMenu(e.currentTarget, row) }, icon('more', 19)),
         h('button', { class: 'hnew', onclick: () => editProjectSheet(row) }, icon('pencil', 16), h('span', {}, 'Edit Project')))),
     h('section', { class: 'kstrip pstrip' },
       h('div', { class: 'kcell' }, h('div', {}, h('small', {}, 'Status'), propVal(row, 'Status'))),
@@ -460,6 +465,11 @@ function taskRow(t, row, n) {
 }
 
 // ---------- Site Survey ----------
+/** Pin Location as the link itself (editable; 🌐 opens it) — kept on the customer, same as Overview; tracker column when there is no customer */
+function pinField(row) {
+  const c = E.customerOf(row);
+  return c ? field(c, { key: 'map', label: 'Pin Location', type: 'url', onSet: v => E.setCustomer(c, 'map', v) }) : propVal(row, 'Pin Location');
+}
 function surveyTab(row, info, n) {
   const rep = E.reportOnly(info.category), st = E.surveyState(row, info), w = E.workOf(row) || { id: 'wk' + row.id, f: {} };
   const wf = (key, label, extra = {}) => field(E.workOf(row) || E.work(row), { key, label, ...extra });
@@ -472,11 +482,13 @@ function surveyTab(row, info, n) {
     h('div', { class: 'kvs two' },
       kv('date', 'Survey date', wf('survey', 'Survey date', { type: 'date' })),
       rep ? kv('page', 'Report prepared', toggle('report', 'Report prepared')) : kv('listcheck', 'Documents checked', toggle('docs', 'Documents checked')),
-      kv('text', 'Technical findings', wf('findings', 'Technical findings')),
+
       rep ? null : kv('linechart', 'Transformer & feeder loading', wf('loading', 'Transformer & feeder loading')),
       kv('pin', 'Site address', h('span', {}, E.custAddress(row) || h('span', { class: 'muted' }, '—'))),
-      kv('globe', 'Pin Location', E.custMap(row) ? h('a', { class: 'lnk', href: browserUrl(E.custMap(row)), target: '_blank', rel: 'noopener' }, 'Open map') : h('span', { class: 'muted' }, '—')),
-      kv('text', 'Scope / Remarks', propVal(row, 'Scope / Remarks'))));
+      kv('globe', 'Pin Location', pinField(row)),
+      kv('text', 'Wayleave (Private/Utilities)', propVal(row, DB.WAYLEAVE)),
+      // full width at the bottom, with a taller box to type in
+      h('div', { class: 'kv kvwide' }, h('span', { class: 'kl' }, icon('text', 16), 'Technical findings'), h('div', { class: 'kvv' }, wf('findings', 'Technical findings')))));
 }
 
 // ---------- ECPAR ----------

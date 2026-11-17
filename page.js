@@ -6,6 +6,7 @@ import { h, icon, toast, menu, sheet, group, row, confirmBox, promptBox, esc, te
 import { mountEditor, blocksToMd, nb } from './editor.js';
 import { formatDate, toISODate, parseDate } from './dates.js';
 import { state, go, renderNav, download, layoutMode, browserUrl, now, moreMenu } from './app.js';
+import { heroNav, coverInto } from './home.js';
 import { renderDbBlock } from './table.js';
 import { popEdit } from './popedit.js';
 
@@ -85,7 +86,17 @@ function adjust(el, rec, kind) {
 export function renderPage(id, { view } = {}) {
   const rec = D.live(id);
   if (!rec) return h('div', { class: 'wrap' }, h('p', { class: 'empty' }, 'This page was deleted or has not synced yet.'));
-  const { out, av, hasPhotoUi } = coverAndPhoto(rec);
+  const { out, av, hasPhotoUi } = coverAndPhoto(rec, { always: true });
+  // every page has a cover like the other pages (its own, or the workspace cover until one is picked) with the same round buttons on it
+  if (out[0] && !D.val(rec, 'cover')) coverInto(out[0]);
+  if (out[0]) {
+    const fav = !!D.val(rec, 'fav'), ctx = () => state.ctx || {};
+    out[0].classList.add('pgcover');
+    out[0].append(heroNav(), h('div', { class: 'hero-a pgcover-a' },
+      h('button', { class: 'hbtn glass', 'aria-label': 'Share or export', onclick: e => { e.stopPropagation(); ctx().export ? ctx().export(e.currentTarget) : window.print(); } }, icon('export', 19)),
+      h('button', { class: 'hbtn glass' + (fav ? ' on' : ''), 'aria-label': fav ? 'Remove from Favourites' : 'Add to Favourites', onclick: e => { e.stopPropagation(); D.update(rec.id, { fav: !fav }); toast(fav ? 'Removed from Favourites' : 'Added to Favourites'); go(location.hash); } }, icon(fav ? 'starf' : 'star', 19)),
+      h('button', { class: 'hbtn glass', 'aria-label': 'More options', onclick: e => { e.stopPropagation(); (ctx().more || (a => moreMenu(a)))(e.currentTarget); } }, icon('more', 19))));
+  }
   const title = h('h1', { contenteditable: 'true', 'aria-label': 'Page title', 'data-ph': 'Untitled', oninput: e => D.update(id, { title: e.target.textContent, edited: Date.now() }), onkeydown: e => { if (e.key === 'Enter') { e.preventDefault(); editor && editor.focusEnd(); } } }, D.val(rec, 'title', ''));
   const body = h('div', {});
   const wrap = h('div', { class: 'wrap ' + fontClass(rec) + (D.val(rec, 'db') ? ' wide-page' : '') }, out, h('div', { class: 'ptitle' }, hasPhotoUi || D.val(rec, 'db') ? av : null, title), body);

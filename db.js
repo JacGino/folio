@@ -157,6 +157,7 @@ export function refParts(row) {
   return { ecx, wbs, all: projectRef(row) };
 }
 /** once: a value typed in the old Project Ref field moves into ECX & WBS NO where that is empty */
+export const WAYLEAVE = 'Wayleave (Private/Utilities)';
 export function mergeProjectRef() {
   const d = kpiDb(); if (!d) return 0;
   const e = propByName(d, 'ECX & WBS NO'), o = propByName(d, 'Project Ref'); if (!e || !o) return 0;
@@ -213,10 +214,13 @@ export function ensureHomeFields() {
     const colors = { 'SAL100KW': 'brown', 'Substation Site Enquiry': 'purple', 'Turnkey Stage 1': 'green', 'Turnkey Stage 2': 'green', 'NEM Solar': 'orange', 'Temporary Supply': 'yellow', 'Upgrading of Supply': 'blue', 'Non Turnkey': 'gray' };
     const add = CATEGORIES.filter(n => !have.has(n.toLowerCase())).map(n => ({ name: n, color: colors[n] }));
     if (add.length) { cat.options = [...(cat.options || []), ...add]; changed = true; } }
+  // 'Scope / Remarks' is now 'Wayleave (Private/Utilities)' (data kept; only renamed once, so a later rename by you stays)
+  { const old = list.find(x => x.id === 'p_remarks' || x.name.trim().toLowerCase() === 'scope / remarks');
+    if (old && old.name.trim().toLowerCase() === 'scope / remarks') { old.name = WAYLEAVE; changed = true; } }
   const want = [{ id: 'p_nexttask', name: 'Next Task', type: 'text' },
     { id: 'p_priority', name: 'Priority', type: 'select', options: [{ name: 'High', color: 'red' }, { name: 'Medium', color: 'orange' }, { name: 'Low', color: 'blue' }] },
     { id: 'p_ecxrejected', name: 'ECX Rejected', type: 'date' },
-    { id: 'p_remarks', name: 'Scope / Remarks', type: 'text' }, { id: 'p_ecxlink', name: 'ECX Link', type: 'url' }]; // Project Ref is the ECX & WBS NO (no separate field)
+    { id: 'p_remarks', name: WAYLEAVE, type: 'text' }, { id: 'p_ecxlink', name: 'ECX Link', type: 'url' }]; // Project Ref is the ECX & WBS NO (no separate field)
   for (const w of want) if (!list.some(x => x.id === w.id || x.name.toLowerCase() === w.name.toLowerCase())) { list.push(w); changed = true; }
   if (changed) saveProps(d, list);
   return changed;

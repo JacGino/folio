@@ -1974,7 +1974,7 @@ html.contrasted { filter: contrast(var(--contrast)); }
 /* menu / back / forward in the cover (top-left), same round buttons as the right side; the floating bar goes away there */
 .hnav { position: absolute; top: 12px; left: 14px; z-index: 3; display: flex; gap: 8px; }
 .hnav .hbtn { background: rgba(255,255,255,calc(var(--lg-a, .5) + .2)); }
-body[data-layout="wide"] .hnav, body[data-layout="rail"] .hnav { display: none; }
+body[data-layout="rail"] .hnav { display: none; } /* PC / iPad landscape show them too: ☰ hides the sidebar */
 body:not([data-layout="wide"]):not([data-layout="rail"]):has(#main .hnav) .topbar { display: none; }
 body:not([data-layout="wide"]):not([data-layout="rail"]):has(#main .hnav) #main > .wrap { padding-top: calc(env(safe-area-inset-top) + 12px) !important; }
 /* room for the buttons above the cover's text */
@@ -2009,6 +2009,7 @@ body:not([data-layout="wide"]):not([data-layout="rail"]) .hero:has(.hnav) .cover
 .hero-a .qbar, .fhead-a .qbar { gap: var(--hg) !important; margin: 0 !important; flex-wrap: nowrap !important; }
 /* where the buttons now float over the cover, keep the greeting clear of them */
 body[data-layout="wide"] .hero .hero-in { padding-top: 58px; }
+body[data-layout="wide"] .fhead:has(.hnav) .fhead-in { padding-top: 58px !important; }
 body[data-layout="wide"] .hero .cover { height: 168px; }
 
 /* settleViewport() in app.js puts the page back after a rotation, app switch or the keyboard closing */
@@ -2073,3 +2074,47 @@ html.zoomed .kbar { max-width: calc((100vw - 20px) / var(--zoom, 1)) !important;
 .entry-ed { display: flex; flex-direction: column; gap: 8px; }
 .entry-ed .entry-ta { min-height: 120px; resize: vertical; font: inherit; line-height: 1.45; }
 .entry-ed .btn.danger { margin-top: 10px; }
+.vtools .hbtn { width: 36px !important; height: 36px !important; } .vtools .hsearch { height: 36px; } .vtools .hnew { height: 36px; }
+
+/* Project Details: the same round buttons as the cover pages, on a plain top row (no cover photo) */
+.pdnav { --hb: 40px; --hg: 8px; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 6px; min-height: var(--hb); }
+@media (max-width: 640px) { .pdnav { --hb: 34px; } }
+@media (max-width: 520px) { .pdnav { --hb: 32px; --hg: 4px; } }
+.pdnav .hnav { position: static !important; display: flex; gap: var(--hg) !important; }
+.pdnav .pdnav-a { display: flex; align-items: center; gap: var(--hg); margin-left: auto; }
+.pdnav .hbtn { width: var(--hb) !important; height: var(--hb) !important; background: var(--bg); box-shadow: 0 1px 3px rgba(0,0,0,.08), 0 0 0 0.5px var(--line); position: relative; }
+body[data-layout="rail"] .pdnav .hnav { display: none; }
+body:not([data-layout="wide"]):not([data-layout="rail"]):has(#main .pdnav) #main > .wrap { padding-top: calc(env(safe-area-inset-top) + 12px) !important; }
+body[data-layout="rail"] .pdnav { justify-content: flex-end; }
+/* Duo outer (rail): bell and ⋯ on the same line as the back button */
+body[data-layout="rail"] .pdnav { margin-top: calc(33px - 70px - var(--hb) / 2); margin-bottom: calc(70px - 33px - var(--hb) / 2 - 6px); }
+
+/* Site Survey: Technical findings across the full width at the bottom, label above a roomy text area */
+.kvs .kv.kvwide { grid-column: 1 / -1; display: flex; flex-direction: column; align-items: stretch; gap: 6px; border-bottom: 0; }
+.kvs .kv.kvwide .kvv { width: 100%; }
+.kvs .kv.kvwide .kvv > .val, .kvs .kv.kvwide .kvv > .props { width: 100%; min-height: 4.6em; display: block; text-align: left; white-space: pre-wrap; padding: 8px 10px; border-radius: 8px; background: var(--bg2); }
+.kvs.two .kv:nth-last-child(2):nth-child(odd) { border-bottom: 0.5px solid var(--line); }
+.calpage .vtools .calnav { margin: 0; display: flex; align-items: center; gap: 8px; } .calpage .vtools .calnav .btn { height: 36px; }
+body[data-layout="wide"]:has(#main .fhead, #main .hero) .topbar { display: none; }
+
+/* pages: cover with the same round buttons as every other page */
+.cover.pgcover { position: relative; --hb: 40px; --hg: 8px; --he: 14px; }
+@media (max-width: 640px) { .cover.pgcover { --hb: 34px; } }
+@media (max-width: 520px) { .cover.pgcover { --hb: 32px; --hg: 4px; --he: 10px; } }
+.cover.pgcover .hnav { top: 12px !important; left: var(--he) !important; }
+.cover.pgcover .hnav .hbtn, .cover.pgcover .pgcover-a .hbtn { width: var(--hb) !important; height: var(--hb) !important; }
+.cover.pgcover .pgcover-a { position: absolute; top: 12px; right: var(--he); display: flex; gap: var(--hg); z-index: 3; }
+.cover.pgcover .chg { top: auto !important; bottom: 10px; }
+body:not([data-layout="wide"]):not([data-layout="rail"]):has(#main .pgcover) .topbar,
+body[data-layout="wide"]:has(#main .pgcover) .topbar { display: none; }
+body:not([data-layout="wide"]):not([data-layout="rail"]):has(#main .pgcover) #main > .wrap { padding-top: calc(env(safe-area-inset-top) + 12px) !important; }
+body[data-layout="rail"] .cover.pgcover .pgcover-a { top: 12px; }
+/* page cover = a rounded card like every other page's cover (no longer slid up under a floating bar) */
+.wrap .cover.pgcover { margin: 0 0 10px !important; height: 150px; border-radius: 18px; box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 6px 20px rgba(0,0,0,.05); background-size: cover; }
+body[data-orient="landscape"] .wrap .cover.pgcover { height: 130px; }
+.wrap .cover.pgcover.default { background-image: var(--home-cover); }
+.cover.pgcover + .ptitle { margin-top: 4px !important; }
+/* Duo outer (rail): the page's own buttons replace the floating ones on the right; keep only the back button there */
+body[data-layout="rail"]:has(#main .pgcover) .topbar .tpill:not(:first-child) { display: none; }
+body[data-layout="rail"] .wrap .cover.pgcover { margin-top: 52px !important; }
+.hi-type { display: inline-block; padding: 0 6px; border-radius: 5px; background: var(--bg2); color: var(--ink2); font-size: 11.5px; margin-right: 2px; }

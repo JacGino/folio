@@ -6,6 +6,7 @@ import * as M from './model.js';
 import { setupKeys, unlockKeys, changePassphrase } from './crypto.js';
 import { h, icon, logo, group, row, sheet, toast, confirmBox } from './ui.js';
 import { go, render, state, download, setGlass } from './app.js';
+import { pageHead } from './views.js';
 import { lockSettings } from './lock.js';
 import { importNotion } from './import.js';
 import { enableNotifications } from './notify.js';
@@ -19,7 +20,7 @@ export async function startupSync() {
 export function renderSettings(sub) {
   state.ctx = {};
   if (sub === 'import') { history.replaceState(null, '', '#/settings'); state.route = ['settings']; setTimeout(importSheet, 50); }
-  const wrap = h('div', { class: 'wrap' }, h('div', { class: 'head' }, logo(40), h('div', {}, h('h1', {}, 'Settings'), h('p', { class: 'date' }, 'Folio v2'))));
+  const wrap = h('div', { class: 'wrap home' }, pageHead('Settings', 'Folio v2', 'settings'));
   const body = h('div'); wrap.append(body);
   (async () => {
     const cfg = await S.meta.get('gh'); const st = Sync.getStatus(); const ws = (await S.meta.get('ws-settings')) || {};

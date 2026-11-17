@@ -17,7 +17,7 @@ import { commentsScreen, calendarScreen, inboxScreen } from './hub.js';
 import * as E from './entities.js';
 import { focusScreen, focusCounts } from './focus.js';
 import { setKpiRules } from './kpi.js';
-import { timelineScreen, boardScreen, reportsScreen, kpiScreen } from './views.js';
+import { timelineScreen, boardScreen, reportsScreen, kpiScreen, pageHead } from './views.js';
 import { projectsScreen, projectScreen, newProjectSheet, dueTaskList } from './project.js';
 import { homeScreen, activityScreen, soonScreen } from './home.js';
 
@@ -445,7 +445,7 @@ function renderSide() {
       head('pages', 'Pages', h('button', { class: 'smore', 'aria-label': 'Private options', onclick: e => privateMenu(e.currentTarget) }, icon('more', 16))),
       h('div', { class: 'ngroup npages' }, pages.map(item),
         h('button', { class: 'nitem sm muted', onclick: () => go('#/p/' + newPage().id) }, icon('plus', 18), h('span', { class: 'nl' }, 'New page')),
-        nav('#/comments', 'comment', 'Comments', cur === 'comments'),
+        nav('#/comments', 'history', 'Activity Log', cur === 'comments'),
         nav('#/trash', 'trash', 'Trash', cur === 'trash'))),
     h('div', { class: 'nfoot' },
       h('button', { class: 'nprofile', 'aria-label': 'Profile and settings', onclick: e => workspaceMenu(e.currentTarget) },
@@ -456,7 +456,7 @@ function renderSide() {
 }
 
 // ---------- top bar (Notion style): menu, back, forward, title, share, favourite, more ----------
-const SCREEN = { home: ['Home', 'home'], activity: ['Recent Activity', 'history'], ecx: ['Rejected ECX', 'ecxs'], projects: ['Projects', 'folder'], project: ['Project Details', 'building'], kpi: ['KPI', 'barchart'], timeline: ['Timeline', 'timeline'], board: ['Board', 'columns'], reports: ['Reports', 'linechart'], comments: ['Comments', 'comment'], calendar: ['Calendar', 'date'], inbox: ['Inbox', 'inbox'], today: ['Due Today', 'today'], survey: ['Pending Site Survey', 'target'], ecpar: ['Rejected ECPAR', 'ecpar'], pages: ['Pages', 'pages'], search: ['Search', 'search'], settings: ['Settings', 'settings'], trash: ['Trash', 'trash'] };
+const SCREEN = { home: ['Home', 'home'], activity: ['Recent Activity', 'history'], ecx: ['Rejected ECX', 'ecxs'], projects: ['Projects', 'folder'], project: ['Project Details', 'building'], kpi: ['KPI', 'barchart'], timeline: ['Timeline', 'timeline'], board: ['Board', 'columns'], reports: ['Reports', 'linechart'], comments: ['Activity Log', 'history'], calendar: ['Calendar', 'date'], inbox: ['Inbox', 'inbox'], today: ['Due Today', 'today'], survey: ['Pending Site Survey', 'target'], ecpar: ['Rejected ECPAR', 'ecpar'], pages: ['Pages', 'pages'], search: ['Search', 'search'], settings: ['Settings', 'settings'], trash: ['Trash', 'trash'] };
 function topbar() {
   const r = state.route[0], ctx = state.ctx;
   const kp = DB.kpiDb() && D.val(DB.kpiDb(), 'page');
@@ -514,8 +514,8 @@ let commentCount = new Map(); // task id -> number of comments, built once per l
 function listScreen(kind) {
   commentCount = new Map(); for (const c of D.all('cmt')) { const k = D.val(c, 'parent'); commentCount.set(k, (commentCount.get(k) || 0) + 1); }
   const n = NOW(); state.ctx = { export: a => exportList(kind, a), more: a => moreMenu(a, { extra: [{ label: 'Open Planning KPI Tracker', icon: 'table', run: () => go('#/tracker') }] }) };
-  const head = h('div', { class: 'head' }, logo(40), h('div', {}, elabel('title.' + kind, TITLES[kind], 'h1'), h('p', { class: 'date' }, formatDate(new Date(n), 'dddd, D MMMM YYYY'))));
-  const wrap = h('div', { class: 'wrap' }, head);
+  const head = pageHead(elabel('title.' + kind, TITLES[kind], 'span'), formatDate(new Date(n), 'dddd, D MMMM YYYY'), (SCREEN[kind] || [0, 'today'])[1], { crumb: TITLES[kind] });
+  const wrap = h('div', { class: 'wrap home' }, head);
   if (!DB.kpiDb()) { wrap.append(emptyTracker(true)); return wrap; }
   const g = kind === 'today' ? DB.todayGroups(n) : kind === 'survey' ? DB.surveyGroups(n) : kind === 'ecx' ? DB.ecxGroups(n) : DB.ecparGroups(n);
   const dueT = kind === 'today' ? E.dueTasks(n) : [];
@@ -630,14 +630,14 @@ function emptyTracker(inList) {
 function pagesScreen() {
   state.ctx = {};
   const list = D.all('page', p => !D.val(p, 'db')).sort((a, b) => (D.val(b, 'edited', 0) - D.val(a, 'edited', 0)));
-  return h('div', { class: 'wrap' }, h('div', { class: 'head' }, logo(40), h('div', {}, elabel('title.pages', 'Pages', 'h1'), h('p', { class: 'date' }, list.length + ' pages'))),
+  return h('div', { class: 'wrap home' }, pageHead(elabel('title.pages', 'Pages', 'span'), list.length + ' pages', 'pages', { crumb: 'Pages' }),
     h('div', { class: 'group', style: { marginTop: '24px' } }, list.map(p => h('a', { class: 'grow', href: '#/p/' + p.id }, icon('pages', 18), h('span', { class: 'gl' }, D.val(p, 'title') || 'Untitled'), icon('chevr', 14, 'chev'))),
       h('button', { class: 'grow', onclick: () => go('#/p/' + newPage().id) }, icon('plus', 18), h('span', { class: 'gl' }, 'New page'))));
 }
 function trashScreen() {
   state.ctx = {};
   const items = [...D.deleted('page'), ...D.deleted('row')];
-  return h('div', { class: 'wrap' }, h('div', { class: 'head' }, h('h1', {}, 'Trash')),
+  return h('div', { class: 'wrap home' }, pageHead('Trash', 'Deleted items you can restore', 'archive'),
     items.length ? h('div', { class: 'group', style: { marginTop: '20px' } }, items.map(r => h('div', { class: 'grow' }, h('span', { class: 'gl' }, r.k === 'row' ? DB.title(r) : (D.val(r, 'title') || 'Untitled')),
       h('button', { class: 'btn', onclick: () => { D.restore(r.id); render(); toast('Restored'); } }, 'Restore')))) : h('p', { class: 'empty' }, 'Trash is empty.'));
 }

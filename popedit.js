@@ -20,7 +20,7 @@ export function popEdit(anchor, rec, p, after) {
   const box = h('div', { class: 'cellpop' }, inp);
   const place = () => {
     const a = anchor.getBoundingClientRect(), hr = host.getBoundingClientRect();
-    const w = Math.min(Math.max(a.width + 2, 260), 460, host.clientWidth - 16);
+    const w = Math.min(Math.max(a.width + 2, 260), anchor.closest('.kvwide') ? 1200 : 460, host.clientWidth - 16); // full-width rows edit at full width
     const left = Math.max(8, Math.min(a.left - hr.left + host.scrollLeft - 1, host.clientWidth - w - 8));
     box.style.left = left + 'px'; box.style.top = (a.top - hr.top + host.scrollTop - 1) + 'px'; box.style.width = w + 'px';
   };
@@ -41,7 +41,9 @@ export function popEdit(anchor, rec, p, after) {
       else if (r.top < top - 3 && r.bottom + (top - r.top) < bottom) host.scrollTop -= top - r.top + 12; // only move down if that doesn't hide it at the bottom
     });
   };
-  const grow = () => { inp.style.height = 'auto'; inp.style.height = Math.min(inp.scrollHeight, innerHeight * 0.35) + 'px'; };
+  // long text (a full-width row such as Technical findings) opens as a taller box
+  const tall = !single && !!anchor.closest('.kvwide');
+  const grow = () => { inp.style.height = 'auto'; inp.style.height = Math.max(tall ? 120 : 0, Math.min(inp.scrollHeight, innerHeight * (tall ? 0.42 : 0.35))) + 'px'; };
   let done = false;
   const vvOn = () => setTimeout(reveal, 30);
   const close = save => {

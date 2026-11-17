@@ -42,11 +42,13 @@ export function viewTabs(group, cur) {
     return h('a', { class: 'vtab' + (on ? ' on' : ''), href, role: 'tab', 'aria-selected': on ? 'true' : 'false', onclick: e => { if (on) e.preventDefault(); } }, icon(ic, 15), h('span', {}, l));
   }));
 }
-function head({ crumb, title, desc, ic, tools, more, group, cur }) {
+/** the cover header for simple pages (Comments, Inbox, Search, Settings, Pages, Trash…) — same as every other page */
+export const pageHead = (title, desc, ic, { tools = null, crumb = null } = {}) => head({ crumb: crumb || (typeof title === 'string' ? title : ''), title, desc, ic, tools, more: a => (state.ctx && state.ctx.more ? state.ctx.more(a) : moreMenu(a)) }); // the page's own ⋯ items when it has them
+export function head({ crumb, title, desc, ic, tools, more, group, cur }) {
   const n = NOW(), alerts = DB.kpiDb() ? DB.kpiTasks(n).filter(t => t.days != null && t.days <= 0).length + E.dueTasks(n).length : 0;
   return h('header', { class: 'fhead vhead' }, coverInto(h('div', { class: 'fcover', 'aria-hidden': 'true' })), heroNav(),
     h('div', { class: 'fhead-in' },
-      h('nav', { class: 'crumbs fcrumbs', 'aria-label': 'Breadcrumb' }, h('a', { href: '#/home', 'aria-label': 'Home' }, icon('home', 16)), icon('chevr', 14), group ? h('a', { class: 'cv', href: TABS[group].items[0][0] === '#/kpi' ? '#/kpi' : '#/projects' }, TABS[group].label) : h('span', { class: 'cv' }, 'Views'), icon('chevr', 14), h('span', {}, crumb)),
+      h('nav', { class: 'crumbs fcrumbs', 'aria-label': 'Breadcrumb' }, h('a', { href: '#/home', 'aria-label': 'Home' }, icon('home', 16)), icon('chevr', 14), ...(group ? [h('a', { class: 'cv', href: TABS[group].items[0][0] === '#/kpi' ? '#/kpi' : '#/projects' }, TABS[group].label) , icon('chevr', 14)] : []), h('span', {}, crumb)),
       h('div', { class: 'ftitle' }, h('span', { class: 'fic' }, icon(ic, 26)), h('div', {}, h('h1', {}, title), h('p', {}, desc))),
       group ? viewTabs(group, cur) : null),
     h('div', { class: 'hero-a fhead-a' },

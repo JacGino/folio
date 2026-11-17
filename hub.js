@@ -1,48 +1,55 @@
 // Folio v2 — the menu's Notion-style screens: Comments, Calendar, Inbox (reminders).
 import * as D from './data.js';
 import * as DB from './db.js';
+import * as E from './entities.js';
 import { h, icon, logo, sanitize, strip } from './ui.js';
 import { formatDate, toISODate } from './dates.js';
-import { state, openTask, now, render, download, elabel } from './app.js';
+import { state, openTask, now, render, download, elabel, moreMenu } from './app.js';
+import { head as coverHead, pageHead } from './views.js';
 import { reminderOn, setReminder } from './notify.js';
 
-const head = (title, sub, ic) => h('div', { class: 'head' }, h('span', { class: 'hubicon' }, icon(ic, 26)), h('div', {}, elabel('title.' + title.toLowerCase(), title, 'h1'), sub ? h('p', { class: 'date' }, sub) : null));
+const head = (title, sub, ic) => pageHead(elabel('title.' + title.toLowerCase(), title, 'span'), sub || '', ic, { crumb: title });
 const when = t => { const d = new Date(t), n = new Date(now()); const days = Math.round((new Date(n.toDateString()) - new Date(d.toDateString())) / 864e5);
   return days === 0 ? 'Today ' + d.toTimeString().slice(0, 5) : days === 1 ? 'Yesterday' : formatDate(d, 'DD/MM/YYYY'); };
 
-// ---------- Comments: every comment on your tasks, newest first ----------
-let cFrom = '', cTo = ''; // Comments date filter (YYYY-MM-DD), kept while the app is open
+// ---------- Activity Log: every project's log entries (comments, notes, ECPAR / ECX events…), newest first ----------
+let cFrom = '', cTo = ''; // date filter (YYYY-MM-DD) on the project's Date Assigned, kept while the app is open
 export function commentsScreen() {
   state.ctx = {};
-  // the date filter uses each task's Date Assigned (My Task)
-  const assigned = c => { const t = D.live(D.val(c, 'parent')); const d = t && t.k === 'row' && DB.db(D.val(t, 'db')); const p = d && DB.propByName(d, 'Date Assigned'); return p ? toISODate(DB.value(t, p)) : ''; };
-  const dayOf = assigned;
-  const all = D.all('cmt').filter(c => D.live(D.val(c, 'parent')));
-  const list = all.filter(c => (!cFrom && !cTo) || (dayOf(c) && (!cFrom || dayOf(c) >= cFrom) && (!cTo || dayOf(c) <= cTo))).sort((a, b) => D.val(b, 'created', 0) - D.val(a, 'created', 0));
+  const dbr = DB.kpiDb();
+  const rows = dbr ? DB.rows(dbr.id) : [];
+  const ap = dbr && DB.propByName(dbr, 'Date Assigned'), ep = dbr && DB.propByName(dbr, 'ECX & WBS NO');
+  const assigned = r => ap ? toISODate(DB.value(r, ap)) : '';
+  const all = [];
+  for (const r of rows) for (const e of E.history(r)) if (!String(e.id).startsWith('new')) all.push({ ...e, row: r });
+  const inRange = x => (!cFrom && !cTo) || (assigned(x.row) && (!cFrom || assigned(x.row) >= cFrom) && (!cTo || assigned(x.row) <= cTo));
+  const list = all.filter(inRange).sort((a, b) => b.t - a.t);
   const field = (label, val, set) => h('label', { class: 'dfield' }, h('span', {}, label), h('input', { type: 'date', class: 'field', value: val, onchange: e => { set(e.target.value); render(); } }));
   const filtered = cFrom || cTo;
-  const sub = filtered ? `${list.length} of ${all.length} comments` + (cFrom || cTo ? ` · ${cFrom ? formatDate(cFrom, 'DD/MM/YYYY') : 'start'} – ${cTo ? formatDate(cTo, 'DD/MM/YYYY') : 'today'}` : '') : list.length + (list.length === 1 ? ' comment' : ' comments');
-  return h('div', { class: 'wrap' }, head('Comments', sub, 'comment'),
+  const sub = filtered ? `${list.length} of ${all.length} entries · ${cFrom ? formatDate(cFrom, 'DD/MM/YYYY') : 'start'} – ${cTo ? formatDate(cTo, 'DD/MM/YYYY') : 'today'}` : list.length + (list.length === 1 ? ' entry' : ' entries') + ' across all projects';
+  const shown = list.slice(0, 300);
+  return h('div', { class: 'wrap home' }, head('Activity Log', sub, 'history'),
     h('div', { class: 'dfilter' }, h('span', { class: 'dftitle' }, icon('filter', 16), 'Date Assigned'),
       field('From', cFrom, v => { cFrom = v; if (cTo && v && v > cTo) cTo = v; }),
       field('To', cTo, v => { cTo = v; if (cFrom && v && v < cFrom) cFrom = v; }),
       filtered ? h('button', { class: 'btn', onclick: () => { cFrom = cTo = ''; render(); } }, 'Clear') : null),
-    list.length ? h('div', { class: 'hublist' }, list.map(c => {
-      const task = D.live(D.val(c, 'parent')); const title = task.k === 'row' ? DB.title(task) : (D.val(task, 'title') || 'Untitled');
-      const dbr = task.k === 'row' ? DB.db(D.val(task, 'db')) : null, ep = dbr && DB.propByName(dbr, 'ECX & WBS NO'), ecx = ep ? DB.raw(task, ep) : '';
-      return h('div', { class: 'hubitem', role: 'button', tabindex: '0', onclick: () => openTask(task.id) },
-        h('span', { class: 'hi-ic' }, icon('comment', 20)),
-        h('span', { class: 'hi-body' }, h('span', { class: 'hi-top' }, h('b', {}, title), h('small', {}, when(D.val(c, 'created', 0)))),
-          assigned(c) ? h('span', { class: 'asgd' }, icon('date', 13), 'Assigned ' + formatDate(assigned(c), 'DD/MM/YYYY')) : null,
-          ecx ? h('a', { class: 'ecxlink', href: '#/r/' + task.id, onclick: e => { e.stopPropagation(); e.preventDefault(); openTask(task.id); } }, icon('filelink', 15), ecx) : null,
-          h('span', { class: 'hi-text' }, strip(D.val(c, 'text', '')).slice(0, 240))));
-    })) : h('p', { class: 'empty' }, filtered ? 'No comments on tasks assigned between these dates.' : 'No comments yet. Comments you add on a task show up here.'));
+    shown.length ? h('div', { class: 'hublist' }, shown.map(x => {
+      const ecx = ep ? DB.raw(x.row, ep) : '';
+      const open = () => { location.hash = '#/project/' + x.row.id + '/log'; };
+      const kind = x.type === 'Comment' ? 'comment' : x.ecx ? 'ecxs' : x.ecpar ? 'ecpar' : 'history';
+      return h('div', { class: 'hubitem', role: 'button', tabindex: '0', 'aria-label': 'Open the Activity Log of ' + DB.title(x.row), onclick: open, onkeydown: e => { if (e.key === 'Enter') open(); } },
+        h('span', { class: 'hi-ic' }, icon(kind, 20)),
+        h('span', { class: 'hi-body' }, h('span', { class: 'hi-top' }, h('b', {}, DB.title(x.row)), h('small', {}, when(x.t))),
+          h('span', { class: 'asgd' }, h('span', { class: 'hi-type' }, x.type || 'Note'), assigned(x.row) ? ' · Assigned ' + formatDate(assigned(x.row), 'DD/MM/YYYY') : ''),
+          ecx ? h('a', { class: 'ecxlink', href: '#/project/' + x.row.id, onclick: e => { e.stopPropagation(); } }, icon('filelink', 15), ecx) : null,
+          h('span', { class: 'hi-text' }, strip(String(x.text || x.reason || '')).slice(0, 240))));
+    }), list.length > shown.length ? h('p', { class: 'muted small' }, `Showing the latest ${shown.length} of ${list.length}. Narrow the dates to see older entries.`) : null)
+    : h('p', { class: 'empty' }, filtered ? 'No log entries for projects assigned between these dates.' : 'No log entries yet. Notes, comments and ECPAR / ECX events from every project show up here.'));
 }
 
 // ---------- Calendar: due dates and ECPAR amendments by month ----------
 let monthOff = 0, picked = null;
 export function calendarScreen() {
-  state.ctx = {};
   const n = now(), base = new Date(n), first = new Date(base.getFullYear(), base.getMonth() + monthOff, 1);
   const start = new Date(first); start.setDate(1 - ((first.getDay() + 6) % 7));
   const tasks = DB.kpiTasks(n).filter(t => t.due), today = toISODate(new Date(n));
@@ -51,11 +58,13 @@ export function calendarScreen() {
   const days = [...Array(42)].map((_, i) => { const d = new Date(start); d.setDate(start.getDate() + i); return d; });
   const sel = picked || today;
   const dayList = (byDay.get(sel) || []).sort((a, b) => a.title.localeCompare(b.title));
-  return h('div', { class: 'wrap' }, head('Calendar', formatDate(first, 'MMMM YYYY'), 'date'),
-    h('div', { class: 'calnav' },
-      h('button', { class: 'iconbtn', 'aria-label': 'Previous month', onclick: () => { monthOff--; render(); } }, icon('back', 20)),
-      h('button', { class: 'btn', onclick: () => { monthOff = 0; picked = null; render(); } }, 'Today'),
-      h('button', { class: 'iconbtn', 'aria-label': 'Next month', onclick: () => { monthOff++; render(); } }, icon('chevr', 20))),
+  state.ctx = { more: a => moreMenu(a) };
+  // same cover header as the other pages (cover photo, menu ← →, bell, ⋯); month buttons in the row under it
+  return h('div', { class: 'wrap home calpage' }, coverHead({ crumb: 'Calendar', title: elabel('title.calendar', 'Calendar', 'span'), desc: formatDate(first, 'MMMM YYYY'), ic: 'date', more: a => moreMenu(a),
+      tools: [h('div', { class: 'calnav' },
+        h('button', { class: 'hbtn glass', 'aria-label': 'Previous month', onclick: () => { monthOff--; render(); } }, icon('back', 18)),
+        h('button', { class: 'btn', onclick: () => { monthOff = 0; picked = null; render(); } }, 'Today'),
+        h('button', { class: 'hbtn glass', 'aria-label': 'Next month', onclick: () => { monthOff++; render(); } }, icon('chevr', 18)))] }),
     h('div', { class: 'icloud' }, icon('sync', 18), h('span', {}, 'iCloud Calendar: the Folio widget keeps a “Folio” calendar up to date, or add all due dates now.'),
       h('button', { class: 'btn', onclick: () => download('Folio due dates.ics', icsFor(DB.kpiTasks(n).filter(t => t.due)), 'text/calendar') }, 'Add to iCloud Calendar')),
     h('div', { class: 'mcal', role: 'grid' }, ['M', 'T', 'W', 'T', 'F', 'S', 'S'].map(d => h('div', { class: 'mh' }, d)),
@@ -77,7 +86,7 @@ export function inboxScreen() {
   const groups = [['Overdue', t => t.days < 0, 'red'], ['Today', t => t.days === 0, 'orange'], ['Tomorrow', t => t.days === 1, 'yellow']];
   const sw = h('input', { type: 'checkbox', class: 'switch', role: 'switch', 'aria-label': 'Reminder at 08:00', onchange: async e => { const ok = await setReminder(e.target.checked); e.target.checked = !!ok; } });
   reminderOn().then(v => { sw.checked = v; });
-  return h('div', { class: 'wrap' }, head('Inbox', 'Overdue, due today and due tomorrow', 'inbox'),
+  return h('div', { class: 'wrap home' }, head('Inbox', 'Overdue, due today and due tomorrow', 'inbox'),
     h('label', { class: 'remind' }, icon('today', 20), h('span', {}, h('b', {}, 'Reminder at 08:00'), h('small', {}, 'Every morning: overdue, due today and due tomorrow tasks')), sw),
     groups.map(([label, test, c]) => { const list = tasks.filter(test); return list.length ? [h('div', { class: 'inboxh ' + c }, label),
       h('div', { class: 'hublist' }, list.map(t => h('button', { class: 'hubitem', onclick: () => openTask(t.id) },

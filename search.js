@@ -3,6 +3,7 @@ import * as D from './data.js';
 import * as DB from './db.js';
 import { h, icon, logo, strip, textbox } from './ui.js';
 import { state, openTask, now, elabel } from './app.js';
+import { pageHead } from './views.js';
 
 let last = '';
 export function presetSearch(q) { last = String(q || ''); }
@@ -31,5 +32,5 @@ export function renderSearch() {
   }
   const clip = (t, q) => { const i = t.toLowerCase().indexOf(q); return (i > 30 ? '…' : '') + t.slice(Math.max(0, i - 30), i + q.length + 50) + '…'; };
   setTimeout(() => { inp.focus(); if (last) run(); }, 30);
-  return h('div', { class: 'wrap' }, h('div', { class: 'head' }, logo(40), h('div', {}, elabel('title.search', 'Search', 'h1'))), inp, res);
+  return h('div', { class: 'wrap home' }, pageHead(elabel('title.search', 'Search', 'span'), 'Projects, customers, references and pages', 'search', { crumb: 'Search' }), inp, res);
 }
