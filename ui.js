@@ -114,7 +114,8 @@ export function later(items, build, { first = 40, step = 60, into } = {}) {
   }
   return now;
 }
-export const logo = (size = 30) => h('div', { class: 'logo', style: { width: size + 'px', height: size + 'px', fontSize: Math.round(size * 0.62) + 'px', borderRadius: Math.round(size * 0.27) + 'px' }, 'aria-hidden': 'true' }, 'F');
+/** the Folio app icon (fanned cards + binding pin) as the in-app logo */
+export const logo = (size = 30) => h('img', { class: 'logo logo-img', src: 'logo-256.png', alt: '', width: size, height: size, style: { width: size + 'px', height: size + 'px' }, 'aria-hidden': 'true', draggable: 'false' });
 
 // ---- sanitiser: only a small set of inline tags survives; never runs scripts ----
 /** text colours / highlights and sizes the editor keeps (span[data-c], mark[data-c], span[data-s]) */
