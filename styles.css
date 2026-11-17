@@ -2123,3 +2123,68 @@ body[data-layout="rail"] .wrap .cover.pgcover { margin-top: 52px !important; }
 /* opening splash: the Folio app icon (fanned cards + pin), same pop-in */
 #splash .sp-logo.sp-icon { width: 132px; height: 132px; border-radius: 30px; overflow: hidden; filter: drop-shadow(0 14px 28px rgba(94, 82, 70, .22)); }
 #splash .sp-logo.sp-icon img { display: block; width: 100%; height: 100%; border-radius: 30px; }
+
+/* sheet titles never spill over the form: at most two lines, the Done/Close button always visible */
+.sheet > header { display: grid !important; grid-template-columns: minmax(48px, auto) minmax(0, 1fr) minmax(48px, auto); align-items: center; gap: 8px; }
+.sheet > header h2 { min-width: 0; margin: 0; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; text-align: center; line-height: 1.25; }
+.sheet > header .link { white-space: nowrap; justify-self: end; }
+.sheet > header { height: auto !important; min-height: 40px; padding: 4px 0; }
+
+/* different applied load per applicant (Connection Charge → Load / Capacity) */
+.ccapl { display: flex; flex-direction: column; gap: 6px; margin: 2px 0 10px; padding: 8px 10px; border-radius: 12px; background: var(--bg2); }
+.ccapl-r { display: grid; grid-template-columns: 28px minmax(0, 1fr) minmax(120px, 180px); align-items: center; gap: 8px; }
+.ccapl-n { color: var(--ink2); font-variant-numeric: tabular-nums; text-align: right; }
+.ccapl-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+@media (max-width: 420px) { .ccapl-r { grid-template-columns: 24px minmax(0, 1fr) 118px; } }
+.sheet > header { flex-shrink: 0; }
+/* one ECX application, several applicants: name beside its Application ID */
+.kvs .kv.aplwrap { gap: 4px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+.aplhead { display: grid; grid-template-columns: minmax(0, 1fr) minmax(120px, 38%) 32px; align-items: center; gap: 8px; padding-left: 28px; }
+.aplhead .kl { padding-left: 0 !important; margin-left: -28px; }
+.aplhead .kl.aplid { margin-left: 0; }
+.apl { display: flex; flex-direction: column; }
+.aplr { display: grid; grid-template-columns: 24px minmax(0, 1fr) minmax(120px, 38%) 32px; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid var(--line); }
+.aplr:first-child { border-top: 0; }
+.apln { color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; }
+.aplwho { min-width: 0; display: flex; flex-direction: column; }
+.aplwho b { font-weight: 500; overflow-wrap: anywhere; }
+.aplwho small { color: var(--muted); font-size: .85em; }
+.aplr > .val { min-width: 0; text-align: left; overflow-wrap: anywhere; }
+.ccapl-h { margin: 0 0 6px; display: flex; flex-direction: column; gap: 2px; }
+.ccapl-h small { color: var(--muted); }
+.ccapl-r { grid-template-columns: 28px minmax(0, 1fr) minmax(120px, 180px) 32px !important; }
+@media (max-width: 420px) { .ccapl-r { grid-template-columns: 22px minmax(0, 1fr) 108px 30px !important; } }
+.ccapl-add { margin-top: 8px; align-self: flex-start; display: inline-flex; gap: 6px; align-items: center; }
+.ccapl-solo { margin: -4px 0 6px; }
+.aplhead .kl.aplid { white-space: nowrap; }
+.aplr > .aplname { text-align: left; font-weight: 500; overflow-wrap: anywhere; min-width: 0; }
+.aplr { grid-template-columns: 24px minmax(0, 1fr) minmax(120px, 38%) 32px; }
+.apladd { flex: none; }
+.aplform label { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+.aplform label > span { font-size: .85em; color: var(--muted); }
+.aplhead, .aplr { grid-template-columns: 24px minmax(0, 1fr) minmax(128px, 36%) 32px !important; padding-left: 0 !important; }
+.aplhead > .kl:first-child { grid-column: 1 / 3; margin-left: 0 !important; }
+.aplhead .kl.aplid { margin-left: 0; padding-left: 10px; }
+.aplr > .aplname { overflow-wrap: break-word; word-break: normal; hyphens: none; }
+.aplr > .val.mono { white-space: nowrap; font-size: .92em; }
+@media (max-width: 520px) { .aplhead, .aplr { grid-template-columns: 20px minmax(0, 1fr) 126px 28px !important; gap: 6px; } .aplr > .val.mono { font-size: .82em; padding-left: 4px; padding-right: 4px; } .aplhead .kl.aplid { padding-left: 4px; } }
+.pdt h1.pdref { font-variant-numeric: tabular-nums; }
+.pdcust { margin: 4px 0 0; font-size: 15px; font-weight: 500; color: var(--text2, var(--muted)); overflow-wrap: anywhere; }
+/* Reference No (ECX No) on top, Project Reference (ECPAR No) below: two cards in one table cell, and in the Project Details header */
+.refcards { display: flex; flex-direction: column; gap: 4px; min-width: 0; width: 100%; }
+.refcard { display: flex; flex-direction: column; gap: 1px; padding: 4px 8px; border-radius: 8px; background: var(--bg2); border: 1px solid var(--line); min-width: 0; }
+.refcard > small { font-size: 10.5px; color: var(--muted); line-height: 1.2; }
+.refv { all: unset; cursor: pointer; display: block; min-width: 0; overflow-wrap: anywhere; font-size: 13px; line-height: 1.3; }
+.refv.empty, .refv.muted { color: var(--muted); }
+.refv:focus-visible { outline: 2px solid var(--accent, #8FA58E); border-radius: 4px; }
+.crefs { align-items: flex-start; }
+.refcards.big { gap: 6px; max-width: 520px; }
+.refcards.big .refcard { padding: 8px 12px; border-radius: 12px; }
+.refcards.big .refcard > small { font-size: 12px; }
+.refcards.big .refcard:first-child .refv h1 { font-size: 24px; font-weight: 700; letter-spacing: -0.3px; margin: 0; line-height: 1.2; overflow-wrap: anywhere; }
+.refcards.big .refcard:last-child .refv { font-size: 16px; font-weight: 600; }
+@media (max-width: 600px) { .refcards.big .refcard:first-child .refv h1 { font-size: 20px; } }
+.pdt { align-items: flex-start; }
+/* the selection checkbox is its own column (a line after it), not part of the customer name */
+.plist.ctbl > .prow > .c-chk, .flist.ctbl > .frow > .fc-chk { border-right: 1px solid var(--nline) !important; }
+.cc.crefs { flex-direction: row; gap: 6px; } .cc.crefs > .refcards { flex: 1; } .cc.crefs > .copen { align-self: flex-start; flex: none; }

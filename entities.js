@@ -26,6 +26,7 @@ const OLD_STATUS = { ecpar: { Rejected: 'Pending Revision' }, ecx: { Rejected: '
 export const ACT_TYPES = ['Note', 'Site survey', 'Document check', 'ECPAR', 'ECX', 'Customer follow-up', 'Report'];
 
 export const g = (r, k, d = null) => D.val(r, 'p:' + k, d);
+const tv = v => String(v ?? '').trim();
 const P = n => { const d = DB.kpiDb(); return d && DB.propByName(d, n); };
 const rowVal = (row, n) => { const p = P(n); return p ? DB.value(row, p) : null; };
 const setRow = (row, n, v) => { const p = P(n); if (p) D.update(row.id, { ['p:' + p.id]: v }); };
@@ -137,7 +138,7 @@ export function completeSurvey(row, date, now = Date.now()) {
 export const ecparOf = row => D.live('ep' + row.id) || null;
 /** ECPAR version as shown: Z00 first, then Z01, Z02… after each resubmission (stored as 1, 2, 3…) */
 export const ecparVersion = e => 'Z' + String(Math.max(0, (+g(e, 'version', 1) || 1) - 1)).padStart(2, '0');
-export const ecpar = row => ensure('ecpar', 'ep' + row.id, { project: row.id, 'p:status': 'Draft', 'p:version': 1 });
+export const ecpar = row => ensure('ecpar', 'ep' + row.id, { project: row.id, 'p:status': 'Draft', 'p:version': 1, ...(v => v ? { 'p:ref': v } : {})(tv(rowVal(row, DB.REF_ECPAR))) });
 /** what to show for ECPAR on a project (also understands rows rejected before ECPAR records existed) */
 export function ecparStatus(row, info) {
   const e = ecparOf(row); if (e && g(e, 'status')) return g(e, 'status');
@@ -259,8 +260,8 @@ export function ensureModel() {
   for (const k of ['ecpar', 'ecx']) for (const r of D.all(k)) { const s = g(r, 'status'), to = OLD_STATUS[k][s]; if (to) D.update(r.id, { 'p:status': to }); }
   for (const row of DB.rows(dbr.id)) {
     linkCustomer(row);
-    // one ECX application from the old "ECX & WBS NO" text, once per project
-    const no = rowVal(row, 'ECX & WBS NO');
+    // one ECX application from the Reference No (ECX No), once per project
+    const no = rowVal(row, DB.REF_ECX);
     if (no && !D.getRec('xm' + row.id) && !ecxOf(row.id).length) {
       const old = rowVal(row, 'ECX Rejected');
       D.create('ecx', row.sh, { id: 'xm' + row.id, project: row.id, created: D.val(row, 'created', Date.now()), 'p:number': String(no).split(/\n/)[0].trim(), 'p:status': old ? 'Pending Action' : 'Submitted', 'p:rejected': old ? toISODate(old) : null });
@@ -273,5 +274,42 @@ export function ensureModel() {
 
 DB.setEcxSource(rejectedEcx);
 /** everything the app needs in the data before showing it: new fields, categories, links */
+/** Reference No (ECX No) ↔ the ECX application's number (when the project has one application);
+ *  Project Reference (ECPAR No) ↔ the ECPAR record's reference. Whichever is changed, the other follows straight away. */
+export const REF_ECX = DB.REF_ECX, REF_ECPAR = DB.REF_ECPAR;
+const refProp = n => { const d = DB.kpiDb(); return d && DB.propByName(d, n); };
+let syncing = false;
+function linkRefs(info) {
+  if (syncing || info.type !== 'update' || !info.fields) return;
+  const rec = D.getRec(info.id); if (!rec) return;
+  syncing = true;
+  try {
+    const k = rec.k, pe = refProp(REF_ECX), pp = refProp(REF_ECPAR);
+    if (k === 'ecpar' && info.fields.includes('p:ref') && pp) { const row = D.getRec(D.val(rec, 'project')); if (row && tv(D.val(row, 'p:' + pp.id)) !== tv(g(rec, 'ref'))) D.update(row.id, { ['p:' + pp.id]: tv(g(rec, 'ref')) || null }); }
+    else if (k === 'ecx' && info.fields.includes('p:number') && pe) { const row = D.getRec(D.val(rec, 'project')); if (row && ecxOf(row.id).length === 1 && tv(D.val(row, 'p:' + pe.id)) !== tv(g(rec, 'number'))) D.update(row.id, { ['p:' + pe.id]: tv(g(rec, 'number')) || null }); }
+    else if (k === 'row') {
+      if (pp && info.fields.includes('p:' + pp.id)) { const v = tv(D.val(rec, 'p:' + pp.id)), ep = ecparOf(rec); if (ep && tv(g(ep, 'ref')) !== v) D.update(ep.id, { 'p:ref': v || null }); }
+      if (pe && info.fields.includes('p:' + pe.id)) { const v = tv(D.val(rec, 'p:' + pe.id)), xs = ecxOf(rec.id);
+        if (xs.length === 1 && tv(g(xs[0], 'number')) !== v) D.update(xs[0].id, { 'p:number': v || null });
+        else if (!xs.length && v && !D.getRec('xm' + rec.id)) D.create('ecx', rec.sh, { id: 'xm' + rec.id, project: rec.id, created: Date.now(), 'p:number': v.split(/\n/)[0].trim(), 'p:status': 'Submitted' }); } // quietly, like the start-up migration
+    }
+  } catch (e) { console.error(e); } finally { syncing = false; }
+}
+D.onChange(linkRefs);
+/** at start-up and after a sync: fill whichever side is empty; when both differ, the ECPAR record and the project's ECX No win */
+export function syncRefs() {
+  const d = DB.kpiDb(); if (!d) return;
+  const pe = DB.propByName(d, REF_ECX), pp = DB.propByName(d, REF_ECPAR);
+  syncing = true;
+  try {
+    for (const r of DB.rows(d.id)) {
+      if (pp) { const ep = ecparOf(r), c = tv(ep && g(ep, 'ref')), m = tv(D.val(r, 'p:' + pp.id));
+        if (c && c !== m) D.update(r.id, { ['p:' + pp.id]: c }); else if (ep && !c && m) D.update(ep.id, { 'p:ref': m }); }
+      if (pe) { const xs = ecxOf(r.id), m = tv(D.val(r, 'p:' + pe.id));
+        if (xs.length === 1) { const c = tv(g(xs[0], 'number')); if (m && c !== m) D.update(xs[0].id, { 'p:number': m }); else if (!m && c) D.update(r.id, { ['p:' + pe.id]: c }); } }
+    }
+  } finally { syncing = false; }
+}
 export function ensureAll() {
-  DB.upgradeAlert(); DB.mergeProjectRef(); try { DB.ensureHomeFields(); ensureModel(); } catch (e) { console.error(e); } }
+  DB.upgradeAlert(); DB.mergeProjectRef(); try { DB.ensureHomeFields(); ensureModel(); } catch (e) { console.error(e); }
+  try { syncRefs(); } catch (e) { console.error(e); } }

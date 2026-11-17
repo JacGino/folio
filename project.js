@@ -9,6 +9,7 @@ import { state, now as NOW, render, go, moreMenu, elabel, longPress, rowActions,
 import { popEdit } from './popedit.js';
 import { propEditor } from './page.js';
 import { ccTab, ccEligible } from './cc.js';
+import { applicantsOf } from './longtext.js';
 import * as C from './cols.js';
 import { viewTabs, head as coverHead } from './views.js';
 import { heroNav } from './home.js';
@@ -215,7 +216,8 @@ export function projectsScreen() {
     const cellOf = c => {
       if (!c.p) return h('span', { class: 'cc cx', 'data-col': c.id, title: c.label }, computed[c.id]());
       const el = C.cell(dbr, c, row);
-      if (c.p.type === 'title') el.append(h('button', { class: 'copen', type: 'button', 'aria-label': 'Open ' + t.title, title: 'Open', onclick: e => { e.stopPropagation(); go('#/project/' + t.id); } }, 'Open'));
+      // OPEN sits in the Reference No column (the customer name when that column is not shown)
+      if (C.isRefCol(c.p) || (c.p.type === 'title' && !cols.some(k => C.isRefCol(k.p)))) el.append(h('button', { class: 'copen', type: 'button', 'aria-label': 'Open ' + t.title, title: 'Open', onclick: e => { e.stopPropagation(); go('#/project/' + t.id); } }, 'Open'));
       return el;
     };
     const r = h('div', { class: 'hrow prow' + (sel.has(t.id) ? ' sel' : '') + (t.archived ? ' arch' : ''), role: 'row', 'data-rid': t.id, onclick: () => go('#/project/' + t.id) },
@@ -274,22 +276,23 @@ export function newProjectSheet({ cat: preCat = '' } = {}) {
   const cat = h('select', { class: 'field', 'aria-label': 'Category' }, h('option', { value: '' }, 'Category'), (P('Project Category')?.options || []).map(o => h('option', { value: o.name, selected: o.name === preCat ? true : null }, o.name)));
   const da = h('input', { type: 'date', class: 'field', value: today(), 'aria-label': 'Date assigned' });
   const dd = h('input', { type: 'date', class: 'field', value: toISODate(dateAdd(new Date(NOW()), 7, 'days')), 'aria-label': 'Due date' });
-  const ref = h('input', { class: 'field', placeholder: 'ECX & WBS No (optional)', 'aria-label': 'ECX & WBS No' });
+  const ref = h('input', { class: 'field mono', placeholder: 'e.g. ECX_202607_2457 (optional)', 'aria-label': DB.REF_ECX });
+  const pref = h('input', { class: 'field mono', placeholder: 'e.g. BTU-260476 (optional)', 'aria-label': DB.REF_ECPAR });
   const lab = (t, el) => h('label', { class: 'flabel' }, h('span', {}, t), el);
   const s = sheet('New project', h('form', { class: 'npform', onsubmit: e => {
     e.preventDefault(); const name = cust.value.trim(); if (!name) { cust.focus(); return; }
-    const vals = { [DB.titleProp(dbr).name]: name, 'Date Assigned': da.value || null, 'Due Date': dd.value || null, Status: 'Site Survey', 'ECX & WBS NO': ref.value.trim() || null }; // the project reference is the ECX & WBS NO
+    const vals = { [DB.titleProp(dbr).name]: name, 'Date Assigned': da.value || null, 'Due Date': dd.value || null, Status: 'Site Survey', [DB.REF_ECX]: ref.value.trim() || null, [DB.REF_ECPAR]: pref.value.trim() || null };
     if (cat.value) vals['Project Category'] = [cat.value];
     const r = DB.newRow(dbr, vals); E.ensureAll(); s.close(); go('#/project/' + r.id);
   } }, dl, lab('Customer', cust), h('p', { class: 'muted small' }, names.length ? 'Pick an existing customer to link this project to them, or type a new name.' : 'Type the customer name.'),
-    lab('Category', cat), h('div', { class: 'f2' }, lab('Date assigned', da), lab('Due date', dd)), lab('ECX & WBS No (project reference)', ref),
+    lab('Category', cat), h('div', { class: 'f2' }, lab('Date assigned', da), lab('Due date', dd)), lab(DB.REF_ECX, ref), lab(DB.REF_ECPAR, pref),
     h('button', { class: 'btn primary block', type: 'submit' }, 'Create project')), { done: 'Cancel' });
   setTimeout(() => cust.focus(), 80);
 }
 /** Edit Project: every project field in one sheet; changes save straight away */
 export function editProjectSheet(row) {
   const dbr = DB.kpiDb();
-  const names = [DB.titleProp(dbr)?.name, 'Project Category', 'ECX & WBS NO', 'Station', 'Date Assigned', 'Due Date', 'Date Completed', 'Status', DB.WAYLEAVE, 'Archive'];
+  const names = [DB.titleProp(dbr)?.name, 'Project Category', DB.REF_ECX, DB.REF_ECPAR, 'Station', 'Date Assigned', 'Due Date', 'Date Completed', 'Status', DB.WAYLEAVE, 'Archive'];
   const rows = names.map(n => n && DB.propByName(dbr, n)).filter(Boolean).map(p => {
     let ed;
     if (['text', 'title', 'number', 'url'].includes(p.type)) ed = h('input', { class: 'field', value: DB.raw(D.getRec(row.id), p) ?? '', 'aria-label': p.name, onchange: e => { D.update(row.id, { ['p:' + p.id]: e.target.value }); if (p.type === 'title') E.ensureAll(); } });
@@ -325,7 +328,8 @@ export function projectScreen(id, tab = 'overview') {
     h('nav', { class: 'crumbs', 'aria-label': 'Breadcrumb' }, h('a', { href: '#/projects' }, icon('folder', 16), 'Projects'), icon('chevr', 14), h('span', {}, 'Project Details')),
     h('header', { class: 'pdhead' },
       h('span', { class: 'pdic' }, icon('building', 26)),
-      h('div', { class: 'pdname' }, h('div', { class: 'pdt' }, h('h1', {}, info.title), info.archived ? badge('Archived', 'gray') : null),
+      // the header: two cards — Reference No (ECX No) on top, Project Reference (ECPAR No) below — then the customer (shortened when there are several applicants)
+      h('div', { class: 'pdname' }, h('div', { class: 'pdt' }, C.refCards(row, { big: true }), info.archived ? badge('Archived', 'gray') : null),
         created ? h('p', { class: 'hsub' }, 'Created ' + formatDate(new Date(created), 'DD/MM/YYYY')) : null),
       h('div', { class: 'hactions' },
         h('button', { class: 'hnew', onclick: () => editProjectSheet(row) }, icon('pencil', 16), h('span', {}, 'Edit Project')))),
@@ -358,19 +362,47 @@ function keepTabScroll(id, strip) {
   });
   return strip;
 }
-/** Project Reference = the ECPAR No (kept on the ECPAR record); report-only categories have no ECPAR */
-function ecparRefField(row, info) {
-  if (E.reportOnly(info.category)) return h('span', { class: 'muted' }, 'Not applicable');
-  const ep = E.ecparOf(row);
-  if (ep) return field(ep, { key: 'ref', label: 'Project Reference (ECPAR No)', mono: true });
-  return h('button', { class: 'val fv empty', type: 'button', 'aria-label': 'Project Reference (ECPAR No): Empty', onclick: async e => { e.stopPropagation();
-    const v = await promptBox('Project Reference (ECPAR No)', '', 'e.g. BTU-260476'); if (v == null) return; const rec = E.ecpar(row); if (v.trim()) D.update(rec.id, { 'p:ref': v.trim() }); render(); } }, h('span', {}, 'Empty'));
-}
 /** Application ID of each ECX application (moved here from the ECX tab) */
 function appIds(row) {
   const xs = E.ecxOf(row.id);
   if (!xs.length) return [kv('text', 'Application ID', h('span', { class: 'muted' }, 'Add an ECX application first'))];
   return xs.map(x => kv('text', xs.length > 1 ? 'Application ID (' + (g(x, 'number') || 'ECX') + ')' : 'Application ID', field(x, { key: 'appid', label: 'Application ID', mono: true })));
+}
+/** one ECX application, several applicants (e.g. a longhouse): each name with its Applicant ID (IC No) beside it, + to add another.
+ *  Saved back into the customer name as '1) NAME (IC)\n2) …', so the table and the Long Text stay in sync. */
+const joinApplicants = list => list.length === 1 ? list[0].name + (list[0].ic ? ' (' + list[0].ic + ')' : '') : list.map((a, i) => `${i + 1}) ${a.name}${a.ic ? ' (' + a.ic + ')' : ''}`).join('\n');
+function applicantSheet(title, a = { name: '', ic: '' }) {
+  return new Promise(res => {
+    let form, done = false;
+    const enter = next => e => { if (e.key === 'Enter') { e.preventDefault(); next ? next.focus() : form.requestSubmit(); } };
+    const ic = textbox({ value: a.ic, cls: 'field mono', label: 'Applicant ID (IC No)', placeholder: 'e.g. 720308-13-5434', attrs: { enterkeyhint: 'done' }, onkeydown: enter(null) });
+    const nm = textbox({ value: a.name, cls: 'field', label: 'Customer name', placeholder: 'Customer name', attrs: { enterkeyhint: 'next' }, onkeydown: enter(ic) });
+    const s = sheet(title, form = h('form', { class: 'aplform', onsubmit: e => { e.preventDefault(); if (!nm.value.trim()) return toast('Enter the customer name'); done = true; res({ name: nm.value.trim().toUpperCase(), ic: ic.value.trim() }); s.close(); } },
+      h('label', {}, h('span', {}, 'Customer name'), nm), h('label', {}, h('span', {}, 'Applicant ID (IC No)'), ic), h('button', { class: 'btn primary block', type: 'submit' }, 'Save')),
+      { done: 'Cancel', onDone: () => { if (!done) res(null); } });
+  });
+}
+function saveApplicants(c, list) { E.setCustomer(c, 'name', joinApplicants(list)); E.ensureAll(); render(); }
+function applicantList(c, info) {
+  const t = c ? g(c, 'name') : info.title, ap = applicantsOf(t);
+  if (ap.length) return ap;
+  const m = String(t || '').trim().match(/^(.*?)\s*\(([^)]*)\)\s*$/);
+  return [m ? { name: m[1].trim(), ic: m[2].trim() } : { name: String(t || '').trim(), ic: '' }];
+}
+const addApplicantBtn = (c, info) => c ? h('button', { class: 'iconbtn sm apladd', type: 'button', 'aria-label': 'Add applicant', onclick: async e => { e.stopPropagation();
+  const list = applicantList(c, info), a = await applicantSheet('Add applicant ' + (list.length + 1)); if (!a) return; saveApplicants(c, [...list, a]); toast('Applicant added'); } }, icon('plus', 16)) : null;
+function applicantsBlock(row, info, c) {
+  if (!c) return null;
+  const ap = applicantsOf(g(c, 'name'));
+  if (ap.length < 2) return null;
+  const edit = i => async e => { e.stopPropagation(); const a = await applicantSheet('Applicant ' + (i + 1), ap[i]); if (!a) return; const list = ap.slice(); list[i] = a; saveApplicants(c, list); };
+  return h('div', { class: 'kv kvwide aplwrap' },
+    h('div', { class: 'aplhead' }, h('span', { class: 'kl' }, icon('building', 16), 'Customer'), h('span', { class: 'kl aplid' }, 'Applicant ID'), addApplicantBtn(c, info)),
+    h('div', { class: 'apl' }, ap.map((a, i) => h('div', { class: 'aplr' }, h('span', { class: 'apln' }, (i + 1) + ')'),
+      h('button', { class: 'val fv aplname', type: 'button', 'aria-label': `Customer ${i + 1}: ${a.name}`, onclick: edit(i) }, h('span', {}, a.name)),
+      h('button', { class: 'val fv mono' + (a.ic ? '' : ' empty'), type: 'button', 'aria-label': `Applicant ID ${i + 1}: ${a.ic || 'Empty'}`, onclick: edit(i) }, h('span', {}, a.ic || 'Empty')),
+      h('button', { class: 'iconbtn sm', type: 'button', 'aria-label': `Remove applicant ${i + 1}`, onclick: async e => { e.stopPropagation();
+        if (!await confirmBox('Remove ' + a.name + ' from the customer list?', 'Remove')) return; saveApplicants(c, ap.filter((_, k) => k !== i)); } }, icon('close', 15))))));
 }
 function overview(row, info, n) {
   const c = E.customerOf(row);
@@ -382,7 +414,7 @@ function overview(row, info, n) {
   return h('div', { class: 'pdgrid' },
     h('section', { class: 'hcard pcard' },
       h('h3', { class: 'ph' }, icon('users', 17), 'Customer Information'),
-      h('div', { class: 'kvs' }, kv('building', 'Customer', custName), cf('person', 'Contractor / Consultant', 'pic'), ...appIds(row), cf('phone', 'Contact Number', 'phone', { tel: 'tel' }), cf('mail', 'Email', 'email', { tel: 'mail' }),
+      h('div', { class: 'kvs' }, applicantsBlock(row, info, c) || kv('building', 'Customer', c ? h('span', { class: 'fvwrap' }, custName, addApplicantBtn(c, info)) : custName), cf('person', 'Contractor / Consultant', 'pic'), ...appIds(row), cf('phone', 'Contact Number', 'phone', { tel: 'tel' }), cf('mail', 'Email', 'email', { tel: 'mail' }),
         kv('pin', 'Address', c ? field(c, { key: 'address', label: 'Address', onSet: v => E.setCustomer(c, 'address', v), ph: E.custAddress(row, c) || 'Empty' }) : '—'),
         kv('globe', 'Pin Location', c ? field(c, { key: 'map', label: 'Pin Location', type: 'url', onSet: v => E.setCustomer(c, 'map', v) }) : '—'),
         // supply details of the customer
@@ -393,7 +425,7 @@ function overview(row, info, n) {
         cf('today', 'Meter Type', 'meter', { type: 'select', options: E.METER_TYPES }),
         cf('building', 'Premise Type', 'premise', { type: 'select', options: E.PREMISE_TYPES })),
       h('h3', { class: 'ph' }, icon('info', 17), 'Project Information'),
-      h('div', { class: 'kvs' }, kv('layers', 'Category', propVal(row, 'Project Category')), kv('text', 'Reference No (ECX No)', propVal(row, 'ECX & WBS NO')), kv('text', 'Project Reference (ECPAR No)', ecparRefField(row, info)), kv('pin', 'Station', propVal(row, 'Station')),
+      h('div', { class: 'kvs' }, kv('layers', 'Category', propVal(row, 'Project Category')), kv('text', 'Reference No (ECX No)', propVal(row, DB.REF_ECX)), kv('text', 'Project Reference (ECPAR No)', E.reportOnly(info.category) ? h('span', { class: 'muted' }, 'Not applicable') : propVal(row, DB.REF_ECPAR)), kv('pin', 'Station', propVal(row, 'Station')),
         kv('date', 'Date Assigned', propVal(row, 'Date Assigned')), kv('date', 'Due Date', propVal(row, 'Due Date')))),
     h('div', { class: 'pside' },
       h('section', { class: 'hcard pcard' },

@@ -48,7 +48,7 @@ function subsidyText(f, res) {
   const b = num(f.costNoOH), oh = num(f.costOH) ?? 0, sst = num(f.sst) ?? 0;
   if (b == null) W.push('Enter (b) Total cost of project (without OH) for the CDP line.');
   P(String(f.shortTitle || '').toUpperCase(), '', `REF. NO : ${f.ref || ''}`, `PROJECT REF: ${f.projectRef || ''}`, `PROJECT TITLE : ${String(f.title || '').toUpperCase()}`, '',
-    `CONSULTANT/CONTRACTOR : ${String(f.consultant || '').toUpperCase()}`, `DEVELOPER/CLIENT : ${String(f.client || '').toUpperCase()}${f.ic ? ` (${f.ic})` : ''}`, `CONTACT NUM : ${f.contact || ''}`, '',
+    `CONSULTANT/CONTRACTOR : ${String(f.consultant || '').toUpperCase()}`, ...clientLines(f), `CONTACT NUM : ${f.contact || ''}`, '',
     `1 ) TYPE OF APPLICATION : ${String(f.appType || '').toUpperCase()}`, `2 ) ESTIMATED CONNECTED LOAD : ${f.load ?? ''} KVA`, `3 ) TARGET DATE OF SUPPLY : ${f.target || ''}`, `4 ) CATEGORY : ${f.cat || ''}`,
     `5 ) TYPE OF USE : ${String(f.use || '').toUpperCase()}`, '6 ) SCHEME OF SUPPLY (with drawing attached):', '', ...(String(f.scheme || '').split(/\r?\n/)), '',
     '7 ) CONNECTION CHARGE CALCULATIONS :', `(a) TOTAL COST OF PROJECT (WITH OH) : ${RM(oh)}`, `(b) TOTAL COST OF PROJECT (WITHOUT OH) : ${RM(b ?? 0)}`, '(c) CONNECTION COST:', '');
@@ -64,7 +64,9 @@ function subsidyText(f, res) {
   // (d) capacity charge
   if (cap.length) {
     const names = cap.map(l => l.comp === 'scc' ? 'SUBSTATION CAPACITY CHARGE' : 'LINE CAPACITY CHARGE').join(' + ');
-    P(`(d) CAPACITY CHARGE : ${names}`, `= [${cap.map(l => `(${kv(l.qty)} kVA x ${RM(l.rate)})`).join(' + ')}] = ${RM(sum(cap))}`);
+    P(`(d) CAPACITY CHARGE : ${names}`);
+    if (res.load && res.load.perApplicant && res.load.items && res.load.gross == null) P(`= LOAD PER APPLICANT: ${res.load.items.map(kv).join(' + ')} kVA = ${kv(res.load.total)} kVA`);
+    P(`= [${cap.map(l => `(${kv(l.qty)} kVA x ${RM(l.rate)})`).join(' + ')}] = ${RM(sum(cap))}`);
     for (const a of adjCap) P(`LESS ${a.label} = ${RM(a.amount)}`, `CAPACITY CHARGE PAYABLE = ${RM(d)}`);
   } else P('(d) CAPACITY CHARGE : NOT APPLICABLE = RM 0.00');
   P('');
@@ -117,6 +119,19 @@ export function layoutFor(cats = [], tariff = '', subsidy = '') {
   return 'standard';
 }
 const up = v => String(v ?? '').toUpperCase();
+/** '1) SELIMAH AK JARAK (720308-…) 2) GLORIA …' → [{name, ic}, …]; one name → [] (one ECX application, many applicants — e.g. a longhouse) */
+export function applicantsOf(t) {
+  const ps = String(t || '').split(/(?:^|\s)\d{1,2}\s*[).]\s+/).map(x => x.trim()).filter(Boolean);
+  if (ps.length < 2) return [];
+  return ps.map(x => { const m = x.match(/^(.*?)\s*\(([^)]*)\)\s*$/); return m ? { name: m[1].trim(), ic: m[2].trim() } : { name: x, ic: '' }; });
+}
+/** DEVELOPER/CLIENT: several applicants are listed one per line, each with the Applicant ID (IC No) beside it */
+function clientLines(f, label = 'DEVELOPER/CLIENT') {
+  const a = applicantsOf(f.client);
+  if (!a.length) return [`${label} : ${up(f.client)}${f.ic ? ` (${f.ic})` : ''}`];
+  const left = a.map((x, i) => `${i + 1}) ${up(x.name)}`), wd = Math.max(...left.map(x => x.length));
+  return [`${label} :`, ...left.map((x, i) => a[i].ic ? `${x.padEnd(wd)}   IC NO : ${a[i].ic}` : x)];
+}
 const kvRM = n => 'RM ' + kv(n); // "RM 445" as written in the UOS example
 const meterShort = l => /single|1-phase/i.test(l.desc) ? '1PH METER' : /Three Phase whole current/i.test(l.desc) ? '3PH METER' : l.desc;
 const unitWord = u => u === 'each' ? ' each' : '';
@@ -168,7 +183,7 @@ const remarkOf = (f, sst) => f.remarks || ('FUND TO BE SOUGHT FROM CUSTOMER' + (
 function standardText(f, res, tos = false) {
   const W = [], out = [], P = (...x) => out.push(...x), p = parts(f, res), { b, oh, sst } = common(f, res, P, W);
   P(up(f.shortTitle), '', `REF. NO : ${f.ref || ''}`, `PROJECT REF: ${f.projectRef || ''}`, `PROJECT TITLE : ${up(f.title)}`, '',
-    `CONSULTANT/CONTRACTOR : ${up(f.consultant)}`, `DEVELOPER/CLIENT : ${up(f.client)}${f.ic ? ` (${f.ic})` : ''}`, `CONTACT NO : ${f.contact || ''}`, '',
+    `CONSULTANT/CONTRACTOR : ${up(f.consultant)}`, ...clientLines(f), `CONTACT NO : ${f.contact || ''}`, '',
     `1 ) TYPE OF APPLICATION : ${up(f.appType)}`, `2 ) ESTIMATED CONNECTED LOAD : ${f.load ?? ''} KVA`, `3 ) TARGET DATE OF SUPPLY : ${f.target || ''}`, `4 ) CATEGORY : ${f.cat || ''}`,
     `5 ) TYPE OF USE : ${up(f.use)}`, '6 ) SCHEME OF SUPPLY (with drawing attached):', '', ...String(f.scheme || '').split(/\r?\n/), '',
     '7 ) CONNECTION CHARGE CALCULATIONS:', `(a) TOTAL COST OF PROJECT (WITH OH) : ${RM(oh)}`, `(b) TOTAL COST OF PROJECT (WITHOUT OH) : ${RM(b ?? 0)}`, '(c) CONNECTION COST:', '');
@@ -181,7 +196,9 @@ function standardText(f, res, tos = false) {
   }
   const { names, ordered } = capText(p);
   if (ordered.length) {
-    P(`(d) CAPACITY CHARGE : ${names.join(' + ')}`, `= ${ordered.map(l => `(${kv(l.qty)} kVA X ${RM(l.rate)})`).join(' + ')} = ${RM(p.sum(p.cap))}`);
+    P(`(d) CAPACITY CHARGE : ${names.join(' + ')}`);
+    if (res.load && res.load.perApplicant && res.load.items && res.load.gross == null) P(`= LOAD PER APPLICANT: ${res.load.items.map(kv).join(' + ')} kVA = ${kv(res.load.total)} kVA`);
+    P(`= ${ordered.map(l => `(${kv(l.qty)} kVA X ${RM(l.rate)})`).join(' + ')} = ${RM(p.sum(p.cap))}`);
     for (const a of p.adjCap) P(`LESS ${a.label} = ${RM(a.amount)}`, `CAPACITY CHARGE PAYABLE = ${RM(p.d)}`);
   } else P(tos ? '(d) CAPACITY CHARGE : LINE CAPACITY CHARGE + SUBSTATION CAPACITY CHARGE' : '(d) CAPACITY CHARGE : NOT APPLICABLE', tos ? '= WAIVE FOR TEMPORARY SUPPLY' : '= RM 0.00');
   P('', p.met.length ? `(e) METER FEE : ${p.met.map(l => l.qty === 1 ? `${RM(l.rate)} (${meterShort(l)})` : `${RM(l.rate)} x ${kv(l.qty)} (${meterShort(l)}) = ${RM(l.amount)}`).join(' + ')}` : '(e) METER FEE : RM 0.00', '');
@@ -204,7 +221,7 @@ function check(W, res, total, p) {
 function uosText(f, res) {
   const W = [], out = [], P = (...x) => out.push(...x), p = parts(f, res), { b, oh, sst } = common(f, res, P, W);
   P(up(f.shortTitle), '', `1) REF. NO : ${f.ref || ''}`, `2) PROJECT REF : ${f.projectRef || ''}`, `3) PROJECT TITLE : ${up(f.title)}`, '',
-    `4) CONSULTANT/CONTRACTOR : ${up(f.consultant)}`, `5) DEVELOPER/CLIENT : ${up(f.client)}${f.ic ? ` (${f.ic})` : ''}`, `6) CONTACT NO : ${f.contact || ''}`, '',
+    `4) CONSULTANT/CONTRACTOR : ${up(f.consultant)}`, ...clientLines(f, '5) DEVELOPER/CLIENT'), `6) CONTACT NO : ${f.contact || ''}`, '',
     `7) TYPE OF APPLICATION: ${up(f.appType)}`, `8) ESTIMATED CONNECTED LOAD: ${f.load ?? ''} kVA`, `9) TARGET DATE OF SUPPLY: ${f.target || ''}`, `10) CATEGORY: ${f.cat || ''}`,
     `11) TYPE OF USE: ${up(f.use)}`, '12) SCHEME OF SUPPLY (With drawing attached)', '', ...String(f.scheme || '').split(/\r?\n/), '',
     '13) CONNECTION CHARGE CALCULATIONS:', `(a) TOTAL COST OF PROJECT (WITH OH): ${RM(oh)}`, `(b) TOTAL COST OF PROJECT (WITHOUT OH): ${RM(b ?? 0)}`, '(c) CONNECTION COST:', '', 'LT Cost:', '',
@@ -216,6 +233,7 @@ function uosText(f, res) {
   if (p.cap.length) {
     const L = res.load || {}, ex = num(f.existing), q = p.cap[0].qty;
     P(`(d) CAPACITY CHARGE: ${[scc && 'SUBSTATION CAPACITY CHARGE', lcc && 'LINE CAPACITY CHARGE'].filter(Boolean).join(' + ')}`);
+    if (L.perApplicant && L.items && L.items.length && L.gross == null) P(`= LOAD PER APPLICANT: ${L.items.map(kv).join(' + ')} kVA = ${kv(q)} kVA`);
     if (L.gross != null && L.minus != null) P(`= ACTUAL DECLARE LOAD - ${up(f.existingLabel || 'MINIMUM ASSIGNED LOAD')}`, `= ${kv(L.gross)} kVA - ${kv(L.minus)} kVA = ${kv(q)} kVA`);
     else if (ex != null && L.perUnit != null) P(`= ACTUAL DECLARE LOAD - ${up(f.existingLabel || 'MINIMUM ASSIGNED LOAD')}`, `= ${kv(L.perUnit * (L.units || 1))} kVA - ${kv(ex)} kVA = ${kv(q)} kVA`);
     P(`=[${[scc, lcc].filter(Boolean).map(l => `(${kvRM(l.rate)} x ${kv(l.qty)} kVA)`).join(' + ')}]`, `= ${RM(p.sum(p.cap))}`);
@@ -237,7 +255,7 @@ function uosText(f, res) {
 function tk2Text(f, res) {
   const W = [], out = [], P = (...x) => out.push(...x), p = parts(f, res), { b, sst } = common(f, res, P, W);
   P(up(f.shortTitle), '', `REF. NO.: ${f.ref || ''}`, `PROJECT REF: ${f.projectRef || ''}`, `PROJECT TITLE: ${up(f.title)}`, '',
-    `CONSULTANT / CONTRACTOR : ${up(f.consultant)}`, `DEVELOPER/CLIENT : ${up(f.client)}${f.ic ? ` (${f.ic})` : ''}`,
+    `CONSULTANT / CONTRACTOR : ${up(f.consultant)}`, ...clientLines(f),
     `1 ) TYPE OF APPLICATION : ${up(f.appType)}`, `2 ) ESTIMATED CONNECTED LOAD : ${f.load ?? ''} kVA`, `3 ) TARGET DATE OF SUPPLY : ${f.target || ''}`, `4 ) CATEGORY : ${f.cat || ''}`,
     `5) TYPE OF USE: ${up(f.use)}`, '6) SCHEME OF SUPPLY (with drawing attached):', '', ...String(f.scheme || '').split(/\r?\n/), '');
   // meters charged under the connection charge

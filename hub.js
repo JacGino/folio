@@ -18,7 +18,7 @@ export function commentsScreen() {
   state.ctx = {};
   const dbr = DB.kpiDb();
   const rows = dbr ? DB.rows(dbr.id) : [];
-  const ap = dbr && DB.propByName(dbr, 'Date Assigned'), ep = dbr && DB.propByName(dbr, 'ECX & WBS NO');
+  const ap = dbr && DB.propByName(dbr, 'Date Assigned'), ep = dbr && DB.propByName(dbr, DB.REF_ECX);
   const assigned = r => ap ? toISODate(DB.value(r, ap)) : '';
   const all = [];
   for (const r of rows) for (const e of E.history(r)) if (!String(e.id).startsWith('new')) all.push({ ...e, row: r });
@@ -102,7 +102,7 @@ function icsFor(tasks) {
   const day = d => toISODate(d).replace(/-/g, ''); const next = d => { const x = new Date(d); x.setDate(x.getDate() + 1); return day(x); };
   const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '');
   const ev = t => ['BEGIN:VEVENT', `UID:folio-${t.id}-${t.amend ? 'amend' : 'due'}@folio`, `DTSTAMP:${stamp}`, `DTSTART;VALUE=DATE:${day(t.due)}`, `DTEND;VALUE=DATE:${next(t.due)}`,
-    `SUMMARY:${esc((t.amend ? 'ECPAR amendment: ' : 'Due: ') + t.title)}`, `DESCRIPTION:${esc([t.ecx && 'ECX & WBS NO: ' + t.ecx, t.address, t.status && 'Status: ' + t.status].filter(Boolean).join('\n'))}`,
+    `SUMMARY:${esc((t.amend ? 'ECPAR amendment: ' : 'Due: ') + t.title)}`, `DESCRIPTION:${esc([t.ecx && 'Reference No (ECX No): ' + t.ecx, t.address, t.status && 'Status: ' + t.status].filter(Boolean).join('\n'))}`,
     t.address ? `LOCATION:${esc(t.address)}` : null, 'END:VEVENT'].filter(Boolean).join('\r\n');
   return ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Folio//EN', 'X-WR-CALNAME:Folio', ...tasks.map(ev), 'END:VCALENDAR'].join('\r\n');
 }

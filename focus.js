@@ -275,7 +275,7 @@ function recordRow(kind, r, S, n, lay) {
   const more = h('button', { class: 'c-act ebtn fc-act', 'aria-label': 'Actions for ' + r.cust, onclick: e => { e.stopPropagation(); rowMenu(kind, r, e.currentTarget, n); } }, icon('more', 18));
   const dbr = DB.kpiDb();
   const pageCell = c => h('span', { class: 'cc fc fpc-' + c.k, 'data-col': c.id }, c.cell(r));
-  const shared = c => { const el = C.cell(dbr, c, r.row); if (c.p.type === 'title') el.append(h('button', { class: 'copen', type: 'button', 'aria-label': 'Open ' + r.cust, title: 'Open', onclick: e => { e.stopPropagation(); open(); } }, 'Open')); return el; };
+  const shared = c => { const el = C.cell(dbr, c, r.row); if (C.isRefCol(c.p) || (c.p.type === 'title' && !lay.shared.some(k => C.isRefCol(k.p)))) el.append(h('button', { class: 'copen', type: 'button', 'aria-label': 'Open ' + r.cust, title: 'Open', onclick: e => { e.stopPropagation(); open(); } }, 'Open')); return el; };
   const el = h('div', { class: 'frow' + (S.sel.has(r.id) ? ' sel' : ''), role: 'row', 'data-rid': r.row.id, tabindex: '0', onclick: open, onkeydown: e => { if (e.key === 'Enter' && e.target === el) open(); } },
     h('span', { class: 'fc-chk' }, chk), ...lay.lead.map(pageCell), ...lay.shared.map(shared), ...lay.tail.map(pageCell), more);
   longPress(el, () => rowMenu(kind, r, el, n));

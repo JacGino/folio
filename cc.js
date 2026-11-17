@@ -7,7 +7,7 @@ import * as E from './entities.js';
 import { h, icon, menu, sheet, toast, confirmBox, promptBox, textbox } from './ui.js';
 import { formatDate } from './dates.js';
 import { render, now as NOW, download, L as LBL } from './app.js';
-import { longText, schemeDraft, layoutFor, LAYOUTS, RM as RMS } from './longtext.js';
+import { longText, schemeDraft, layoutFor, LAYOUTS, RM as RMS, applicantsOf } from './longtext.js';
 import { badge, optPill } from './project.js';
 import { GUIDELINE, RATE, PREMISES, PREMISE, COMPONENTS, TABLE51_NOTES } from './ccrates.js';
 import { CATS, SCOPES, METHODS, ELIGIBLE_PROJECT_CATS, methodology, calculate, contributionEligible, itemsFor, upgradeMin, serviceCableSplit, perCircuit, snapshot, rm } from './ccengine.js';
@@ -44,7 +44,7 @@ const touch = w => { w.dirty = true; };
 // The tab
 // =====================================================================================
 export function ccTab(row, info) {
-  const w = work(row), res = calculate(w);
+  const w = work(row); autoUnits(w, info); const res = calculate(w);
   const wrap = h('div', { class: 'ccgrid' }, left(row, info, w, res), right(row, info, w, res));
   wrap.dataset.row = row.id;
   return wrap;
@@ -75,6 +75,29 @@ const numBox = (val, label, onval, unit) => {
   const t = textbox({ value: val ?? '', cls: 'ccnum', label, attrs: { inputmode: 'decimal' }, oninput: () => onval(t.value.replace(/[^0-9.]/g, '')), onkeydown: e => { if (e.key === 'Enter') t.blur(); } });
   return h('label', { class: 'ccinp' }, t, unit ? h('span', { class: 'ccu' }, unit) : null);
 };
+/** several applicants on the customer list: the number of units starts at that count (once, it can still be changed) */
+function autoUnits(w, info) {
+  const I = w.inputs, n = applicantsOf(info.title).length;
+  if (n >= 2 && !I.unitsAuto && (+I.units || 1) === 1 && I.premise !== 'publight') { I.units = n; I.unitsAuto = true; }
+}
+/** one ECX application, several applicants (e.g. a longhouse): an applied load for each one; + adds an applicant (units follow) */
+function applicantLoads(I, p, w, row, info) {
+  const units = Math.max(1, Math.floor(+I.units || 1));
+  if (I.premise === 'publight') { I.perApplicant = false; return []; }
+  const ap = applicantsOf(info.title);
+  if (!Array.isArray(I.loads)) I.loads = [];
+  const add = h('button', { class: 'btn ccapl-add', type: 'button', 'aria-label': 'Add applicant load', onclick: () => { I.units = units + 1; I.perApplicant = true; touch(w); render(); } }, icon('plus', 15), units < 2 ? 'Different load per applicant' : 'Add applicant');
+  if (units < 2) { I.perApplicant = false; return [h('div', { class: 'ccapl-solo' }, add)]; }
+  I.perApplicant = true;
+  const name = i => ap[i] ? ap[i].name : 'Applicant ' + (i + 1);
+  return [h('div', { class: 'ccapl' }, h('p', { class: 'ccapl-h' }, h('b', {}, `Applied load of each applicant (${units})`),
+      h('small', {}, 'Each applicant is charged at the Table 5.1 minimum, or their own load if higher. The total is used for the capacity charge. Empty boxes use the Applied Load above.')),
+    ...Array.from({ length: units }, (_, i) =>
+      h('div', { class: 'ccapl-r' }, h('span', { class: 'ccapl-n' }, (i + 1) + ')'), h('span', { class: 'ccapl-name' }, name(i)),
+        numBox(I.loads[i] ?? '', `Applied Load, applicant ${i + 1}`, v => { I.loads[i] = v; touch(w); refreshResults(row, info); }, 'kVA'),
+        h('button', { class: 'iconbtn sm', type: 'button', 'aria-label': `Remove applicant load ${i + 1}`, onclick: () => { I.loads.splice(i, 1); I.units = units - 1; touch(w); render(); } }, icon('close', 15)))),
+    add)];
+}
 const tog = (on, set, label) => h('button', { class: 'cctog' + (on ? ' on' : ''), role: 'switch', 'aria-checked': on ? 'true' : 'false', 'aria-label': label, onclick: () => set(!on) }, h('i'));
 const frow = (label, control, hint) => h('div', { class: 'ccrow' }, h('span', { class: 'ccl' }, label, hint ? h('small', {}, hint) : null), h('div', { class: 'ccc' }, control));
 
@@ -119,6 +142,7 @@ function loadSection(row, info, w, res) {
     I.premise === 'publight' ? null : frow('Applied Load', numBox(I.applied, 'Applied Load', v => { I.applied = v; touch(w); refreshResults(row, info); }, 'kVA'), p && p.listed ? 'Per unit. Charged at the Table 5.1 minimum, or the applied load if higher' : 'Maximum demand declared by the customer (per unit)'),
     frow('Load basis', segs([['practice', 'Your rule'], ['guideline', 'Guideline 5.2']], I.basis === 'guideline' ? 'guideline' : 'practice', v => { I.basis = v; touch(w); render(); }, 'Load basis'),
       I.basis === 'guideline' ? 'Table 5.1 / Section 5.2 as written' : '1-phase min 5 kVA · 3-phase min 10 kVA · Table 5.1 for Longhouse & upgrading'),
+    ...applicantLoads(I, p, w, row, info),
     frow('Supply upgrading (existing customer)', tog(!!I.upgrade, v => { I.upgrade = v; touch(w); render(); }, 'Supply upgrading'), 'Section 5.2.3'),
     I.upgrade && upgradeMin(I, p) == null ? frow('Existing capacity', numBox(I.existing, 'Existing capacity', v => { I.existing = v; touch(w); refreshResults(row, info); }, 'kVA'), 'No Table 5.1 minimum for this premise: charged on the difference') : null,
     I.upgrade && upgradeMin(I, p) != null ? h('p', { class: 'muted small note' }, `Upgrading is charged on Applied Load − Minimum Assigned Load (${upgradeMin(I, p)} kVA per unit).`) : null,
@@ -342,7 +366,7 @@ function ltDefaults(row, info, w, res) {
   const c = E.customerOf(row), P = n => DB.propByName(DB.kpiDb(), n), pv = n => P(n) ? DB.value(row, P(n)) : '';
   const ecx = E.ecxOf(row.id)[0], tariff = c && g(c, 'tariff'), sub = c && g(c, 'subsidy');
   const d = new Date(NOW());
-  return { shortTitle: '', ref: (ecx && g(ecx, 'number')) || DB.refParts(row).ecx || DB.refParts(row).all, projectRef: (E.ecparOf(row) && g(E.ecparOf(row), 'ref')) || DB.refParts(row).wbs || DB.refParts(row).all, title: '', consultant: (c && g(c, 'pic')) || '', client: info.title, ic: '', contact: (c && g(c, 'phone')) || '',
+  return { shortTitle: '', ref: DB.refParts(row).ecx || (ecx && g(ecx, 'number')) || '', projectRef: DB.refParts(row).wbs || (E.ecparOf(row) && g(E.ecparOf(row), 'ref')) || '', title: '', consultant: (c && g(c, 'pic')) || '', client: info.title, ic: '', contact: (c && g(c, 'phone')) || '',
     appType: tariff || 'Domestic', load: w.inputs.applied || '', target: String(d.getFullYear()), cat: w.inputs.cat || '', use: '', scheme: schemeDraft(res.lines),
     costOH: '', costNoOH: '', sst: tariff === 'Commercial' ? '6' : '0', subsidy: tariff === 'Commercial' || sub === 'No' ? 'none' : sub === 'Yes' && g(c, 'subsidyPct') ? (g(c, 'subsidyPct') === '70%' ? '70' : '100') : 'auto',
     subsidyBV: ltRemember('subsidyBV') || 'PLS-260221', cdpBV: ltRemember('cdpBV') || 'PLS-260205', source: '', feeder: 'RYB', r: '', y: '', b: '',
@@ -357,6 +381,12 @@ function upgradeLT(I) {
   if (mal != null) return { existing: String(mal), existingLabel: 'Minimum assigned load (' + p.label + ')' };
   return { existing: I.existing != null && I.existing !== '' ? String(I.existing) : '', existingLabel: 'Minimum assigned load' };
 }
+/** '1) SELIMAH AK JARAK (720308-…) 2) GLORIA …' → 'SELIMAH AK JARAK + 7 more' (one ECX application, many applicants — common for longhouses) */
+export function shortApplicants(t = '') {
+  const parts = String(t).split(/(?:^|\s)\d{1,2}\s*[).]\s+/).map(x => x.replace(/\s*\([^)]*\)\s*$/, '').trim()).filter(Boolean);
+  if (parts.length > 1) return parts[0] + ' + ' + (parts.length - 1) + ' more';
+  return String(t).length > 60 ? String(t).slice(0, 57).trimEnd() + '…' : String(t);
+}
 function longTextSheet(row, info, w) {
   let res = calculate(w);
   w.inputs.lt = { ...ltDefaults(row, info, w, res), ...(w.inputs.lt || {}) };
@@ -365,6 +395,8 @@ function longTextSheet(row, info, w) {
   if (w.inputs.applied && !f.load) f.load = w.inputs.applied;
   { const u = upgradeLT(w.inputs); if (u.existing !== '') { f.existing = u.existing; f.existingLabel = u.existingLabel; } }
   if (!f.layout) f.layout = layoutFor(info.category || []);
+  { const rp = DB.refParts(row), src = rp.ecx + '|' + rp.wbs; if (f.refSrc !== src) { f.ref = rp.ecx || f.ref; f.projectRef = rp.wbs || f.projectRef; f.refSrc = src; } } // Reference No / Project Reference follow the project
+  if (f.clientSrc !== info.title) { f.client = info.title; f.clientSrc = info.title; } // the customer list changed: Long Text follows it
   const pre = h('textarea', { class: 'field ltpre', rows: 18, spellcheck: 'false', 'aria-label': 'Long text preview' });
   const warn = h('div', { class: 'ltwarn' }), sums = h('div', { class: 'ltsum' });
   let edited = false;
@@ -427,5 +459,5 @@ function longTextSheet(row, info, w) {
         navigator.share ? h('button', { class: 'ccbtn', onclick: () => { const file = new File([txt()], name(), { type: 'text/plain' }); (navigator.canShare && navigator.canShare({ files: [file] }) ? navigator.share({ files: [file], title: name() }) : navigator.share({ title: name(), text: txt() })).catch(() => {}); } }, icon('export', 17), h('span', {}, 'Share')) : null,
         h('button', { class: 'ccbtn primary', onclick: () => { download(name(), txt(), 'text/plain;charset=utf-8'); E.log(row, 'Connection charge', 'Long text saved as .txt: ' + name()); toast('Saved ' + name()); } }, icon('export', 17), h('span', {}, 'Save .txt')))));
   draw(); vis();
-  sheet('Long Text — ' + info.title, body, { done: 'Close', wide: true, onDone: () => render() });
+  sheet('Long Text — ' + shortApplicants(info.title), body, { done: 'Close', wide: true, onDone: () => render() });
 }

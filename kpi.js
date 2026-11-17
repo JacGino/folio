@@ -89,7 +89,7 @@ export function facts(row, now = Date.now()) {
   const endDate = { completed: ev.completed, survey: ev.survey, report: ev.report, ecpar: ev.ecparSubmitted }[endKey] || null;
   const kpiDone = endKey === 'completed' ? done && !!ev.completed : !!endDate;
   const turnaround = kpiDone && start && endDate ? dayCount(start, endDate) : null;
-  const ref = DB.projectRef(row); // Project Ref = ECX & WBS NO
+  const ref = DB.projectRef(row); // Reference No (ECX No) / Project Reference (ECPAR No)
   return { id: row.id, row, info, cats, cat, code: CODE[cat], rep, ref, title: info.title, status: info.status, stage, state, done, archived: info.archived, priority: info.priority, pri: PRI[info.priority] ?? 3,
     due: ev.due ? startOfDay(ev.due) : null, dueDays, assigned: start, completed: ev.completed ? startOfDay(ev.completed) : null, ev,
     kpiEnd: kpiDone ? endDate : null, kpiEndKey: endKey, turnaround, within: turnaround == null ? null : turnaround <= 7,

@@ -77,7 +77,25 @@ function atLeastMin(out, applied, min, minText) {
   else { out.perUnit = min; out.basis = minText; }
 }
 /** inp: { phase: 1|3, premise, applied, units, upgrade, existing } → { perUnit, units, total, basis, ref, errors, warnings } */
+/** chargeable load. With a different applied load per applicant (inp.perApplicant + inp.loads), each applicant is worked out
+ *  on its own with the same rules (minimum / actual / upgrading) and the results are added up; an empty box uses inp.applied. */
 export function chargeableLoad(inp) {
+  const units = Math.max(1, Math.floor(num(inp.units) || 1));
+  const loads = inp.premise !== 'publight' && Array.isArray(inp.loads) ? inp.loads.slice(0, units) : null;
+  if (!loads || units < 2 || !loads.some(v => num(v) != null)) return chargeableOne(inp);
+  const parts = [];
+  for (let i = 0; i < units; i++) { const a = num(loads[i]) != null ? loads[i] : inp.applied; parts.push({ applied: num(a), r: chargeableOne({ ...inp, applied: a, units: 1, perApplicant: false, loads: null }) }); }
+  const first = parts[0].r, out = { perUnit: null, units, total: null, basis: '', ref: first.ref, mode: first.mode, errors: [], warnings: [], perApplicant: true, items: [] };
+  for (const [i, x] of parts.entries()) { for (const e of x.r.errors) if (!out.errors.includes(e)) out.errors.push(x.applied == null ? `Applied Load for applicant ${i + 1}` : e); for (const w of x.r.warnings) if (!out.warnings.includes(w)) out.warnings.push(w); }
+  if (out.errors.length) return out;
+  out.items = parts.map(x => x.r.total);
+  out.total = r2(out.items.reduce((s2, v) => s2 + v, 0));
+  if (parts.every(x => x.r.gross != null && x.r.minus != null)) { out.gross = r2(parts.reduce((s2, x) => s2 + x.r.gross, 0)); out.minus = r2(parts.reduce((s2, x) => s2 + x.r.minus, 0)); }
+  const fmt = v => String(+(+v).toFixed(3));
+  out.basis = `Different load per applicant: ${parts.map((x, i) => `${i + 1}) ${x.applied == null ? '—' : fmt(x.applied)} → ${fmt(x.r.total)}`).join(', ')} kVA; total ${fmt(out.total)} kVA (each charged at the minimum, or the applied load if higher${inp.upgrade ? '; upgrading = applied − minimum' : ''})`;
+  return out;
+}
+function chargeableOne(inp) {
   const p = PREMISE[inp.premise], applied = num(inp.applied), units = Math.max(1, Math.floor(num(inp.units) || 1));
   const out = { perUnit: null, units, total: null, basis: '', ref: '', errors: [], warnings: [] };
   if (!p) { out.errors.push('Premise Type'); return out; }
@@ -140,8 +158,8 @@ export function chargeableLoad(inp) {
 /** Section 3.1.17(a)/(c): SESCO contribution for small residential loads (≤ 2kVA per unit) */
 export function contributionEligible(inp) {
   const p = PREMISE[inp.premise]; if (!p || !p.contrib) return false;
-  const applied = num(inp.applied), per = applied != null ? applied : p.mal;
-  return per != null && per <= 2;
+  const each = inp.perApplicant && Array.isArray(inp.loads) ? inp.loads.slice(0, Math.max(1, Math.floor(num(inp.units) || 1))).map(v => num(v) != null ? num(v) : num(inp.applied)) : [num(inp.applied)];
+  return each.every(a => { const per = a != null ? a : p.mal; return per != null && per <= 2; });
 }
 
 /** items you may add for a component (only applicable items from the catalogue) */

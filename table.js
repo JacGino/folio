@@ -101,6 +101,7 @@ function cell(r, p, dbr, first, bg, ncom = 0) {
   const fill = () => {
     td.replaceChildren();
     if (first) { td.append(icon('page', 18, 'pgi'), h('span', { class: 'nmtxt' }, DB.raw(r, p) || h('span', { class: 'muted' }, 'Untitled'), ncom ? h('span', { class: 'ccount', 'aria-label': ncom + (ncom === 1 ? ' comment' : ' comments') }, icon('comment', 15), ncom) : null), h('button', { class: 'open', onclick: e => { e.stopPropagation(); openTask(r.id); } }, 'Open')); return; }
+    if (C.isRefCol(p) && dbr === DB.kpiDb()) { td.classList.add('crefs'); td.append(C.refCards(r)); return; } // ECX No + ECPAR No as two cards
     if (p.type === 'checkbox') { td.append(h('input', { type: 'checkbox', checked: v ? true : null, 'aria-label': p.name, style: { width: '16px', height: '16px', accentColor: 'var(--blue)' }, onclick: e => e.stopPropagation(), onchange: e => D.update(r.id, { ['p:' + p.id]: e.target.checked }) })); return; }
     if (p.type === 'select' || p.type === 'status') { if (v) td.append(chip(p, v)); return; }
     if (p.type === 'multi') { for (const x of v) td.append(chip(p, x)); return; }
@@ -112,6 +113,7 @@ function cell(r, p, dbr, first, bg, ncom = 0) {
   };
   fill();
   const edit = () => {
+    if (!first && C.isRefCol(p)) return; // the two cards have their own taps
     if (first || ['text', 'number', 'url'].includes(p.type)) return popEdit(td, r, p, fill);
     if (['checkbox', 'formula', 'created'].includes(p.type) || D.val(dbr, 'locked') && false) return;
     const ed = propEditor(r, p, dbr, { compact: true }); td.replaceChildren(ed);

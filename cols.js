@@ -9,6 +9,7 @@ import { parseDate, startOfDay, toISODate, formatDate } from './dates.js';
 import { render, now as NOW } from './app.js';
 import { editProp, drag } from './table.js';
 import { zoomNow } from './ui.js';
+import * as E from './entities.js';
 
 /** columns worked out from linked records (not tracker properties): shown in Projects and Focus tables, never in the raw tracker table */
 export const COMPUTED = [
@@ -33,9 +34,11 @@ export function cfg(dbr) {
     const shown = [tid, ...FIRST_SHOWN.map(byName)].filter(Boolean);
     c = { order: [...shown, ...ids.filter(i => !shown.includes(i))], hidden: ids.filter(i => !shown.includes(i)) };
   }
-  const order = (c.order || []).filter(i => ids.includes(i) && i !== tid);
-  for (const i of ids) if (!order.includes(i) && i !== tid) order.push(i); // a property added later is shown at the end
-  return { order: tid ? [tid, ...order] : order, hidden: (c.hidden || []).filter(i => ids.includes(i) && i !== tid), names: { ...(c.names || {}) }, page: { ...(c.page || {}) },
+  // the customer name can be moved anywhere (it is always shown); it starts first
+  const order = [...new Set((c.order || []).filter(i => ids.includes(i)))];
+  if (tid && !order.includes(tid)) order.unshift(tid);
+  for (const i of ids) if (!order.includes(i)) order.push(i); // a property added later is shown at the end
+  return { order, hidden: (c.hidden || []).filter(i => ids.includes(i) && i !== tid), names: { ...(c.names || {}) }, page: { ...(c.page || {}) },
     widths: { ...(c.widths || {}) }, heights: { ...(c.heights || {}) } };
 }
 export function save(dbr, c) { D.update(dbr.id, { colcfg: { order: c.order, hidden: c.hidden, names: c.names, page: c.page, widths: c.widths || {}, heights: c.heights || {} } }); }
@@ -45,6 +48,7 @@ export const label = (dbr, id, def) => cfg(dbr).names[id] || def || defLabel(dbr
 
 /** shown columns, in order: { id, p (tracker property, if any), label, w } */
 export function columns(dbr, { computed = true, skip = [] } = {}) {
+  mergeRefColumns(dbr);
   const c = cfg(dbr), hid = new Set(c.hidden), ps = DB.props(dbr);
   return c.order.filter(id => !hid.has(id) && (computed || id.startsWith('p:'))).map(id => {
     const p = id.startsWith('p:') ? ps.find(q => 'p:' + q.id === id) : null, x = COMPUTED.find(k => k.id === id);
@@ -98,7 +102,33 @@ function rowDrag(e, dbr, row, id) {
 }
 
 /** one editable cell for a tracker property: tapping it edits the value and does not open the project */
+/** 'Reference No (ECX No)' column: two cards in one cell — ECX No on top, Project Reference (ECPAR No) below; the ECPAR column is hidden (once) */
+export const isRefCol = p => !!p && p.name.toLowerCase() === E.REF_ECX.toLowerCase();
+export function refCards(row, { big = false } = {}) {
+  const dbr = DB.kpiDb(), rec = D.getRec(row.id) || row, pe = dbr && DB.propByName(dbr, E.REF_ECX), pp = dbr && DB.propByName(dbr, E.REF_ECPAR);
+  const cats = [].concat((dbr && DB.propByName(dbr, 'Project Category') && DB.value(rec, DB.propByName(dbr, 'Project Category'))) || []), rep = E.reportOnly(cats);
+  const val = p => p ? String(D.val(rec, 'p:' + p.id) || '').trim() : '';
+  const card = (p, label, ph, top) => {
+    const v = val(p);
+    const b = rep && !top ? h('span', { class: 'refv muted' }, 'Not applicable') : h('button', { class: 'refv mono' + (v ? '' : ' empty'), type: 'button', 'aria-label': label + ': ' + (v || 'Empty'), onclick: async e => { e.stopPropagation();
+      const nv = await promptBox(label, v, ph); if (nv == null || !p) return; D.update(rec.id, { ['p:' + p.id]: nv.trim() || null }); render(); } },
+      top && big ? h('h1', {}, v || 'No ECX No') : h('span', {}, v || 'Empty'));
+    return h('span', { class: 'refcard' }, h('small', {}, label), b);
+  };
+  return h('span', { class: 'refcards' + (big ? ' big' : '') }, card(pe, E.REF_ECX, 'e.g. ECX_202607_2457', true), card(pp, E.REF_ECPAR, 'e.g. BTU-260476', false));
+}
+export function mergeRefColumns(dbr) {
+  if (!dbr || D.val(D.getRec(dbr.id) || dbr, 'refmerge2', null)) return;
+  const m1 = DB.propByName(dbr, E.REF_ECX), m2 = DB.propByName(dbr, E.REF_ECPAR); if (!m1) return;
+  const c = cfg(dbr);
+  c.hidden = [...new Set([...c.hidden.filter(i => i !== 'p:' + m1.id), ...(m2 ? ['p:' + m2.id] : [])])];
+  if (!c.names['p:' + m1.id]) c.names['p:' + m1.id] = 'Reference No';
+  // the Reference No column sits right after the customer name
+  const t = titleOf(dbr), ti = t ? c.order.indexOf('p:' + t.id) : -1, i = c.order.indexOf('p:' + m1.id); if (i > ti + 1) { c.order.splice(i, 1); c.order.splice(ti + 1, 0, 'p:' + m1.id); }
+  save(dbr, c); D.update(dbr.id, { refmerge2: 1 });
+}
 export function cell(dbr, col, row) {
+  if (isRefCol(col.p)) return h('span', { class: 'cc ce crefs', 'data-col': col.id, onclick: e => e.stopPropagation(), onkeydown: e => e.stopPropagation() }, refCards(row));
   const ed = propEditor(D.getRec(row.id) || row, col.p, dbr, { compact: true, dfmt: 'DD/MM/YYYY' });
   return h('span', { class: 'cc ce' + (col.p.type === 'title' ? ' ctitle' : '') + (col.p.type === 'date' || col.p.type === 'created' ? ' cdate' : ''), 'data-col': col.id, onclick: e => e.stopPropagation(), onkeydown: e => e.stopPropagation() }, ed);
 }
@@ -215,7 +245,7 @@ export function addFilterSheet(dbr, onAdd, preset = null) {
 
 // ---------- add and delete properties ----------
 /** properties Folio itself works with (KPI, Focus pages, Alert, maps): they can be hidden or renamed, but not deleted */
-export const CORE_PROPS = ['Status', 'Project Category', 'Due Date', 'Date Assigned', 'Date Completed', 'ECPAR Rejected', 'ECX Rejected', 'Priority', 'Address', 'Pin Location', 'ECX & WBS NO', 'Station', 'Archive', 'Alert', 'Next Task', 'ECX Link'];
+export const CORE_PROPS = ['Status', 'Project Category', 'Due Date', 'Date Assigned', 'Date Completed', 'ECPAR Rejected', 'ECX Rejected', 'Priority', 'Address', 'Pin Location', 'Reference No (ECX No)', 'Project Reference (ECPAR No)', 'Station', 'Archive', 'Alert', 'Next Task', 'ECX Link'];
 export const isCore = p => p.type === 'title' || CORE_PROPS.includes(p.name);
 const TYPE_ORDER = ['text', 'number', 'select', 'multi', 'status', 'date', 'checkbox', 'url', 'files', 'formula'];
 async function newProperty(dbr, anchor) {
@@ -256,12 +286,12 @@ export function visibilitySheet(dbr, { page = null, pageTitle = '', pageCols = [
   const body = h('div', { class: 'pvis' });
   const search = h('input', { type: 'search', class: 'pvsearch', placeholder: 'Search for a property…', 'aria-label': 'Search for a property', oninput: e => { q = e.target.value.trim().toLowerCase(); paint(); } });
   const eye = (on, l, run, dis) => h('button', { class: 'pveye' + (on ? ' on' : ''), type: 'button', disabled: dis ? true : null, 'aria-pressed': on ? 'true' : 'false', 'aria-label': (on ? 'Hide ' : 'Show ') + l, onclick: run }, icon(on ? 'eye' : 'eyeoff', 19));
-  const item = (id, shown, { fixed = false, drag = false } = {}) => {
+  const item = (id, shown, { fixed = false, drag = false, noHide = fixed } = {}) => {
     const l = nameOf(id), el = h('div', { class: 'pvrow' + (fixed ? ' fixed' : ''), 'data-id': id },
       drag ? h('button', { class: 'pvh', type: 'button', 'aria-label': 'Move ' + l + ' (drag, or use the arrow keys)' }, icon('grip', 16)) : h('span', { class: 'pvh off' }),
       h('span', { class: 'pvi' }, icOf(id)),
       h('button', { class: 'pvn', type: 'button', title: 'Rename', onclick: async () => { await rename(dbr, id); c = cfg(dbr); paint(); } }, l, c.names[id] ? h('small', {}, defLabel(dbr, id)) : null),
-      eye(shown, l, () => { const hid = new Set(c.hidden); shown ? hid.add(id) : hid.delete(id); c.hidden = [...hid]; commit(); paint(); }, fixed),
+      eye(shown, l, () => { const hid = new Set(c.hidden); shown ? hid.add(id) : hid.delete(id); c.hidden = [...hid]; commit(); paint(); }, noHide),
       h('button', { class: 'pvmore', type: 'button', 'aria-label': 'More for ' + l, onclick: e => rowMenu(e.currentTarget, id) }, icon('more', 18)));
     if (drag) dragHandle(el.querySelector('.pvh'), el);
     return el;
@@ -324,7 +354,7 @@ export function visibilitySheet(dbr, { page = null, pageTitle = '', pageCols = [
   const paint = () => {
     const hid = new Set(c.hidden), ok = id => !q || nameOf(id).toLowerCase().includes(q) || defLabel(dbr, id).toLowerCase().includes(q);
     const shown = c.order.filter(id => !hid.has(id)), hidden = c.order.filter(id => hid.has(id));
-    const rows1 = shown.filter(ok).map(id => item(id, true, { fixed: id === tid, drag: id !== tid && !q })), rows2 = hidden.filter(ok).map(id => item(id, false));
+    const rows1 = shown.filter(ok).map(id => item(id, true, { drag: !q, noHide: id === tid })), rows2 = hidden.filter(ok).map(id => item(id, false));
     const pg = page ? (c.page[page] || []) : [];
     body.replaceChildren(search,
       ...group('Shown in table', shown.length > 1 ? h('button', { class: 'link sm', onclick: () => { c.hidden = c.order.filter(i => i !== tid); commit(); paint(); } }, 'Hide all') : null, rows1.length ? rows1 : h('p', { class: 'pvnone' }, 'No property matches.')),

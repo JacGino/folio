@@ -127,7 +127,7 @@ export function createKpiTracker(parentPage = null) {
   const P = (name, type, extra = {}) => ({ id: uid('p'), name, type, ...extra });
   const opts = (...l) => l.map(([name, color]) => ({ name, color }));
   const props = [
-    P('Customer Name', 'title'), P('ECX & WBS NO', 'text'), P('Project Category', 'multi', { options: opts(['New Application', 'blue'], ['SAL100KW', 'brown'], ['Resubmission', 'pink'], ['NEM', 'gray']) }),
+    P('Customer Name', 'title'), P(REF_ECX, 'text'), P(REF_ECPAR, 'text'), P('Project Category', 'multi', { options: opts(['New Application', 'blue'], ['SAL100KW', 'brown'], ['Resubmission', 'pink'], ['NEM', 'gray']) }),
     P('Address', 'text'), P('Pin Location', 'url'), P('Station', 'select', { options: opts(['Bintulu', 'brown']) }),
     P('Date Assigned', 'date'), P('Due Date', 'date'), P('Date Completed', 'date'), P('ECPAR Rejected', 'date'),
     P('Status', 'status', { options: opts(['Site Survey', 'blue'], ['Estimation', 'yellow'], ['To Amend', 'orange'], ['Done', 'green'], ['Rejected', 'red']) }),
@@ -142,27 +142,48 @@ export function createKpiTracker(parentPage = null) {
   return { page, db: d };
 }
 
-// ---------- project reference = ECX & WBS NO ----------
-/** the project's reference: its ECX & WBS NO (one line); an older separate Project Ref only if ECX & WBS NO is empty */
+// ---------- project reference: Reference No (ECX No) + Project Reference (ECPAR No) ----------
+// (they replace the old 'ECX & WBS NO' text, which held both numbers in one field)
+export const REF_ECX = 'Reference No (ECX No)', REF_ECPAR = 'Project Reference (ECPAR No)';
+const refVal = (row, n) => { const d = kpiDb(), p = d && propByName(d, n); return String((p && value(row, p)) || '').trim(); };
+/** the project's reference in one line: 'ECX_202608_3006 / BTU-260476' */
 export function projectRef(row) {
-  const d = kpiDb(); if (!d || !row) return '';
-  const e = propByName(d, 'ECX & WBS NO'), o = propByName(d, 'Project Ref');
-  const v = String((e && value(row, e)) || (o && value(row, o)) || '').trim();
-  return v.split(/\r?\n/).map(x => x.trim()).filter(Boolean).join(' / ');
+  if (!kpiDb() || !row) return '';
+  return [refVal(row, REF_ECX), refVal(row, REF_ECPAR)].map(v => v.split(/\r?\n/).map(x => x.trim()).filter(Boolean).join(' ')).filter(Boolean).join(' / ');
 }
-/** split ECX & WBS NO into the ECX number and the WBS / project number (e.g. "ECX_202608_3006" and "BTU-260476") */
 export function refParts(row) {
-  const all = projectRef(row).split(/\s*(?:\/|,|;|\s{2,})\s*/).filter(Boolean);
-  const ecx = all.find(x => /^ECX/i.test(x)) || '', wbs = all.find(x => x !== ecx) || '';
+  const ecx = refVal(row, REF_ECX), wbs = refVal(row, REF_ECPAR);
   return { ecx, wbs, all: projectRef(row) };
 }
-/** once: a value typed in the old Project Ref field moves into ECX & WBS NO where that is empty */
+/** split an old 'ECX & WBS NO' text into the ECX No and the ECPAR / WBS No ("ECX_202608_3006 / BTU-260476") */
+export function splitOldRef(t) {
+  const all = String(t || '').split(/\s*(?:\/|,|;|\r?\n|\s{2,})\s*/).map(x => x.trim()).filter(Boolean);
+  const ecx = all.filter(x => /^ECX/i.test(x)), rest = all.filter(x => !/^ECX/i.test(x));
+  return { ecx: ecx.join(' / '), ecpar: rest.join(' / ') };
+}
+/** once per device and data: the two reference properties exist; numbers in the old 'ECX & WBS NO' (and older 'Project Ref')
+ *  move into them where they are empty; then the old properties are removed (their values stay in the records) */
 export const WAYLEAVE = 'Wayleave (Private/Utilities)';
 export function mergeProjectRef() {
   const d = kpiDb(); if (!d) return 0;
-  const e = propByName(d, 'ECX & WBS NO'), o = propByName(d, 'Project Ref'); if (!e || !o) return 0;
+  let list = props(d).slice(), changed = false;
+  const old = ['ECX & WBS NO', 'Project Ref'].map(n => list.find(x => x.name.toLowerCase() === n.toLowerCase())).filter(Boolean);
+  const want = [[REF_ECX, 'p_refecx'], [REF_ECPAR, 'p_refecpar']];
+  for (const [name, id] of want) if (!list.some(x => x.name.toLowerCase() === name.toLowerCase())) {
+    const at = old.length ? list.indexOf(old[0]) : list.findIndex(x => x.type === 'title') + 1;
+    list.splice(Math.max(0, at + (name === REF_ECPAR ? 1 : 0)), 0, { id, name, type: 'text' }); changed = true; }
+  if (changed) saveProps(d, list);
+  if (!old.length) return 0;
+  const pe = propByName(d, REF_ECX), pp = propByName(d, REF_ECPAR);
   let n = 0;
-  for (const r of rows(d.id)) { const ov = String(value(r, o) || '').trim(); if (ov && !String(value(r, e) || '').trim()) { D.update(r.id, { ['p:' + e.id]: ov }); n++; } }
+  for (const r of rows(d.id)) {
+    const t = old.map(o => String(D.val(r, 'p:' + o.id) || '').trim()).filter(Boolean).join(' / '); if (!t) continue;
+    const sp = splitOldRef(t), up = {};
+    if (sp.ecx && !String(D.val(r, 'p:' + pe.id) || '').trim()) up['p:' + pe.id] = sp.ecx;
+    if (sp.ecpar && !String(D.val(r, 'p:' + pp.id) || '').trim()) up['p:' + pp.id] = sp.ecpar;
+    if (Object.keys(up).length) { D.update(r.id, up); n++; }
+  }
+  saveProps(d, props(d).filter(x => !old.some(o => o.id === x.id)));
   return n;
 }
 
@@ -178,7 +199,7 @@ export function kpiInfo(row, dbr, now = Date.now()) {
   if (due) days = dateBetween(due, today, 'days');
   const g = n => { const p = P(n); return p ? value(row, p) : null; };
   return { id: row.id, row, status, closed, amend, due, days, title: title(row), address: g('Address') || '', map: g('Pin Location') || '',
-    station: g('Station') || '', ecx: g('ECX & WBS NO') || '', rejected: g('ECPAR Rejected'), alert: P('Alert') ? formulaToText(value(row, P('Alert'), now)) : '',
+    station: g('Station') || '', ecx: g(REF_ECX) || '', rejected: g('ECPAR Rejected'), alert: P('Alert') ? formulaToText(value(row, P('Alert'), now)) : '',
     category: [].concat(g('Project Category') || []), priority: g('Priority') || '', next: g('Next Task') || '', ecxRejected: g('ECX Rejected'),
     assigned: g('Date Assigned'), completed: g('Date Completed'), archived,
     // finished: Done, or Rejected once its Date Completed is filled in (then it stops counting days, like a Done project)
@@ -220,7 +241,7 @@ export function ensureHomeFields() {
   const want = [{ id: 'p_nexttask', name: 'Next Task', type: 'text' },
     { id: 'p_priority', name: 'Priority', type: 'select', options: [{ name: 'High', color: 'red' }, { name: 'Medium', color: 'orange' }, { name: 'Low', color: 'blue' }] },
     { id: 'p_ecxrejected', name: 'ECX Rejected', type: 'date' },
-    { id: 'p_remarks', name: WAYLEAVE, type: 'text' }, { id: 'p_ecxlink', name: 'ECX Link', type: 'url' }]; // Project Ref is the ECX & WBS NO (no separate field)
+    { id: 'p_remarks', name: WAYLEAVE, type: 'text' }, { id: 'p_ecxlink', name: 'ECX Link', type: 'url' }]; // the project reference is Reference No (ECX No) + Project Reference (ECPAR No)
   for (const w of want) if (!list.some(x => x.id === w.id || x.name.toLowerCase() === w.name.toLowerCase())) { list.push(w); changed = true; }
   if (changed) saveProps(d, list);
   return changed;
