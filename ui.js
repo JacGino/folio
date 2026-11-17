@@ -147,7 +147,18 @@ export function toast(msg, ms = 2600) {
 }
 
 // ---- bottom sheet (glass) ----
+// sheets live inside the part of the screen the keyboard leaves visible (iOS keeps the page full height and only shrinks the visual viewport)
+const vvSync = () => {
+  const v = window.visualViewport; if (!v) return;
+  const st = document.documentElement.style, kb = Math.max(0, innerHeight - v.height - v.offsetTop);
+  st.setProperty('--vvt', v.offsetTop + 'px'); st.setProperty('--vvh', v.height + 'px');
+  document.documentElement.classList.toggle('kbup', kb > 120);
+  const a = document.activeElement;
+  if (kb > 120 && a && a.closest && a.closest('.sheet, .gmodal')) requestAnimationFrame(() => a.scrollIntoView({ block: 'nearest' }));
+};
+if (typeof window !== 'undefined' && window.visualViewport) { visualViewport.addEventListener('resize', vvSync); visualViewport.addEventListener('scroll', vvSync); }
 export function sheet(title, body, { done = 'Done', onDone, wide = false } = {}) {
+  vvSync();
   const back = h('div', { class: 'sheet-back', onclick: e => { if (e.target === back) close(); } });
   const close = () => { back.classList.remove('open'); setTimeout(() => back.remove(), 200); document.removeEventListener('keydown', key); onDone && onDone(); };
   const key = e => { if (e.key === 'Escape') close(); };

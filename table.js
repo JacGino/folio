@@ -174,6 +174,7 @@ function colHandles(dbr, v, ps) {
 }
 export { popEdit, drag };
 function resize(e, dbr, v, p) {
+  window.__colResizeAt = Date.now(); // the click that follows a double-tap reset can land on whatever moved under the finger
   const grid = e.currentTarget.closest('.grid');
   if (doubleTap('c' + p.id)) { lastTap = { key: '', t: 0 }; const w = { ...(v.widths || {}) }; delete w[p.id]; v.widths = w; applyCols(grid, dbr, v); saveView(dbr, v); return; }
   const w0 = colW(p, v);

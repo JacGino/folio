@@ -18,6 +18,8 @@ export function popEdit(anchor, rec, p, after) {
   if (/^ecx/i.test(p.name)) inp.style.fontFamily = 'var(--mono)';
   inp.value = DB.raw(rec, p) ?? '';
   const box = h('div', { class: 'cellpop' }, inp);
+  // room below the page while editing, so a field near the bottom (Wayleave, Technical findings…) can still scroll up above the keyboard
+  const spacer = h('div', { class: 'popspace', 'aria-hidden': 'true', style: `height:${Math.round(innerHeight * 0.7)}px` });
   const place = () => {
     const a = anchor.getBoundingClientRect(), hr = host.getBoundingClientRect();
     const w = Math.min(Math.max(a.width + 2, 260), anchor.closest('.kvwide') ? 1200 : 460, host.clientWidth - 16); // full-width rows edit at full width
@@ -43,9 +45,13 @@ export function popEdit(anchor, rec, p, after) {
   };
   // long text (a full-width row such as Technical findings) opens as a taller box
   const tall = !single && !!anchor.closest('.kvwide');
-  const grow = () => { inp.style.height = 'auto'; inp.style.height = Math.max(tall ? 120 : 0, Math.min(inp.scrollHeight, innerHeight * (tall ? 0.42 : 0.35))) + 'px'; };
+  // never taller than the space between the top bar and the keyboard / shortcut bar (in CSS px: the card is zoomed with ⋯ → Zoom)
+  const room = () => { const vv = window.visualViewport, kb = document.querySelector('.kbar:not([hidden])'), kr = kb && kb.getBoundingClientRect();
+    const bottom = kr && kr.height ? kr.top : (vv ? vv.height : innerHeight); const z = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--zoom')) || 1;
+    return Math.max(60, (bottom - TOPBAR - 24) / z); };
+  const grow = () => { inp.style.height = 'auto'; inp.style.height = Math.min(room(), Math.max(tall ? 120 : 0, Math.min(inp.scrollHeight, innerHeight * (tall ? 0.42 : 0.35)))) + 'px'; };
   let done = false;
-  const vvOn = () => setTimeout(reveal, 30);
+  const vvOn = () => setTimeout(() => { grow(); reveal(); }, 30);
   const close = save => {
     if (done) return; done = true;
     if (save) {
@@ -56,6 +62,7 @@ export function popEdit(anchor, rec, p, after) {
     }
     if (save && anchor.isConnected && anchor.childElementCount === 0 && inp.value.trim()) anchor.textContent = inp.value.replace(/\n+$/, ''); // show the new text right away
     box.remove(); anchor.classList.remove('editing');
+    { const st = host.scrollTop; spacer.remove(); host.scrollTop = Math.min(st, host.scrollHeight - host.clientHeight); }
     if (window.visualViewport) { visualViewport.removeEventListener('resize', vvOn); visualViewport.removeEventListener('scroll', vvOn); }
     after && after();
   };
@@ -64,7 +71,7 @@ export function popEdit(anchor, rec, p, after) {
   inp.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && single) { e.preventDefault(); close(true); } if (e.key === 'Escape') { e.preventDefault(); close(false); } });
   inp.addEventListener('blur', () => setTimeout(() => close(true), 0));
   box.addEventListener('commit', () => close(true));
-  host.append(box); anchor.classList.add('editing'); place(); grow();
+  host.append(spacer, box); anchor.classList.add('editing'); place(); grow();
   inp.focus({ preventScroll: true }); const n = inp.value.length; try { inp.setSelectionRange(n, n); } catch {}
   if (window.visualViewport) { visualViewport.addEventListener('resize', vvOn); visualViewport.addEventListener('scroll', vvOn); }
   setTimeout(reveal, 60); setTimeout(reveal, 400); setTimeout(reveal, 800); // the keyboard takes a moment to slide up

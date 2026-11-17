@@ -2205,3 +2205,57 @@ body[data-layout="rail"] .wrap .cover.pgcover { margin-top: 52px !important; }
 .refcards.big .refcard { width: fit-content; max-width: 100%; min-width: 120px; }
 /* a long label never overlaps its value */
 .kv > .kl { min-width: 0; overflow-wrap: anywhere; }
+.popspace { pointer-events: none; flex: none; width: 1px; }
+/* formula rows: the item name on its own line, then the formula and the amount, so a long formula never squeezes the name */
+.ccformula li { grid-template-columns: minmax(0, 1fr) auto !important; }
+.ccformula li > .fl { grid-column: 1 / -1; font-weight: 600; }
+.ccformula li > .ff { grid-column: 1; min-width: 0; overflow-wrap: anywhere; }
+.ccformula li > b { grid-column: 2; text-align: right; white-space: nowrap; }
+/* keyboard up: sheets and the glass modal sit in the visible area above it */
+html.kbup .sheet-back { top: var(--vvt, 0px); bottom: auto; height: var(--vvh, 100%); }
+html.kbup .sheet { max-height: calc(var(--vvh, 100vh) * .94 / var(--zoom, 1)); }
+html.kbup .gmodal-back { top: var(--vvt, 0px); bottom: auto; height: var(--vvh, 100%); overflow-y: auto; }
+/* Reports, narrow: category, status and turnaround side by side in their own columns (never on top of each other) */
+@container vpage (max-width: 700px) {
+  .rrow { grid-template-columns: auto auto minmax(0, 1fr) auto !important; grid-template-areas: "c c c w" "i i i i" "x s t t" !important; column-gap: 6px; }
+  .rrow > :nth-child(3) { grid-area: x !important; } .rrow > :nth-child(4) { grid-area: s !important; margin-left: 0 !important; }
+  .rrow > :nth-child(8) { grid-area: t !important; justify-self: end; text-align: right; min-width: 0; overflow-wrap: anywhere; }
+}
+.rjr > * { min-width: 0; overflow-wrap: anywhere; }
+/* charge table: quantity, unit and rate are grouped; on a wide screen the group disappears (its parts are columns) */
+.ccr > .ccqur { display: contents; }
+@container cctable (max-width: 560px) {
+  .ccr:not(.cmp) { grid-template-columns: 24px minmax(0, 1fr) auto 28px !important; grid-template-areas: "s i a m" "s d d d" "s q q q" !important; }
+  .ccr:not(.cmp) > .ccqur { grid-area: q !important; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin: 0 !important; justify-self: stretch; }
+  .ccr:not(.cmp) > .ccqur > * { justify-self: auto; text-align: left; }
+  .ccr:not(.cmp) > .ccqur > .ccrate { margin-left: auto; } .ccr:not(.cmp) > .ccqur > .ccrate::before { content: '× '; color: var(--ink3); }
+  .ccr:not(.cmp) > .amt { grid-area: a !important; margin: 0 !important; } .ccr:not(.cmp) > :nth-child(6) { grid-area: m !important; margin: 0 !important; justify-self: end; }
+  .ccr:not(.cmp) > :nth-child(6)::before { content: none !important; }
+  .ccr:not(.cmp) > :nth-child(2) { min-width: 0; overflow-wrap: break-word; }
+}
+/* applied load of each applicant, narrow (phone, zoom): the name on its own line, the box under it */
+.ccapl { container-type: inline-size; container-name: ccapl; }
+@container ccapl (max-width: 380px) {
+  .ccapl-r { grid-template-columns: 22px minmax(0, 1fr) 30px !important; grid-template-areas: "n m x" "n b x"; row-gap: 4px; }
+  .ccapl-r > .ccapl-n { grid-area: n; align-self: start; padding-top: 2px; } .ccapl-r > .ccapl-name { grid-area: m; white-space: normal; overflow: visible; overflow-wrap: anywhere; }
+  .ccapl-r > :nth-child(3) { grid-area: b; } .ccapl-r > :nth-child(4) { grid-area: x; }
+}
+/* Overview customers + Applicant ID, narrow: the IC goes under the name */
+.aplwrap { container-type: inline-size; container-name: apl; }
+@container apl (max-width: 300px) {
+  .aplhead, .aplr { grid-template-columns: 22px minmax(0, 1fr) 30px !important; }
+  .aplhead .kl.aplid { display: none; }
+  .aplhead > .kl:first-child { grid-column: 1 / 3; }
+  .aplr { grid-template-areas: "n m x" "n i x"; row-gap: 0; }
+  .aplr > .apln { grid-area: n; align-self: start; padding-top: 6px; } .aplr > .aplname { grid-area: m; } .aplr > .val.mono { grid-area: i; padding-top: 0; font-size: .85em !important; color: var(--ink2); white-space: normal; overflow-wrap: anywhere; }
+  .aplr > .iconbtn { grid-area: x; }
+}
+/* charge table, narrow: the amount moves to the quantity line, so the item name has the full width */
+@container cctable (max-width: 560px) {
+  .ccr:not(.cmp) { grid-template-columns: 24px minmax(0, 1fr) auto !important; grid-template-areas: "s i m" "s d d" "s q a" !important; }
+  .ccr:not(.cmp) > .amt { align-self: baseline; }
+  .ccr:not(.cmp) > .ccqur > .ccrate { margin-left: 0; }
+}
+@container ccapl (max-width: 380px) { .ccapl-r > :nth-child(3) { justify-self: stretch; width: auto; max-width: 220px; min-width: 120px; } }
+.ccapl-r > :nth-child(3) .tbox, .ccapl-r > :nth-child(3) input { min-width: 56px; white-space: nowrap; }
+@container ccapl (max-width: 380px) { .ccapl-r > .ccapl-name { overflow-wrap: break-word; } }

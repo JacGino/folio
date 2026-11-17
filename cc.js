@@ -180,8 +180,9 @@ function right(row, info, w, res) {
       h('span', {}, l.auto ? h('span', { class: 'ccauto', title: 'Added by the methodology' }, icon('check', 13)) : h('input', { type: 'checkbox', class: 'hchk', 'aria-label': 'Select ' + l.desc, checked: sel.has(l.id) ? true : null, onchange: e => { e.target.checked ? sel.add(l.id) : sel.delete(l.id); render(); } })),
       h('b', { class: 'cci' }, COMPONENTS[l.comp] || l.comp),
       h('span', { class: 'ccd' }, l.spec || l.desc, h('small', {}, l.code + ' · ' + l.source + (l.override ? ' · rate overridden: ' + l.override.reason : ''))),
-      h('span', { class: 'r' }, qtyCell(l)), h('span', { class: 'ccunit' }, l.unit),
-      h('span', { class: 'r num' + (l.override ? ' ovr' : '') }, money(l.rate)), h('span', { class: 'r num amt' }, money(l.amount)),
+      // quantity, unit and rate: separate columns on a wide screen, one line under the item on a narrow one
+      h('span', { class: 'ccqur' }, h('span', { class: 'r' }, qtyCell(l)), h('span', { class: 'ccunit' }, l.unit),
+        h('span', { class: 'r num ccrate' + (l.override ? ' ovr' : '') }, money(l.rate))), h('span', { class: 'r num amt' }, money(l.amount)),
       l.auto ? h('span') : h('button', { class: 'c-act ebtn', 'aria-label': 'More for ' + l.desc, onclick: e => lineMenu(e.currentTarget, row, info, w, l) }, icon('more', 16)))),
     lines.length ? null : h('p', { class: 'hempty' }, 'No charge items yet. Use Add Item.'));
   const pending = m.comps.filter(c => c.mode === 'items' && !res.lines.some(l => l.comp === c.key));

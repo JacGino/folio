@@ -110,7 +110,7 @@ export function refCards(row, { big = false } = {}) {
   const val = p => p ? String(D.val(rec, 'p:' + p.id) || '').trim() : '';
   const card = (p, label, ph, top) => {
     const v = val(p);
-    const b = rep && !top ? h('span', { class: 'refv muted' }, 'Not applicable') : h('button', { class: 'refv mono' + (v ? '' : ' empty'), type: 'button', 'aria-label': label + ': ' + (v || 'Empty'), onclick: async e => { e.stopPropagation();
+    const b = rep && !top ? h('span', { class: 'refv muted' }, 'Not applicable') : h('button', { class: 'refv mono' + (v ? '' : ' empty'), type: 'button', 'aria-label': label + ': ' + (v || 'Empty'), onclick: async e => { e.stopPropagation(); if (Date.now() - (window.__colResizeAt || 0) < 700) return;
       const nv = await promptBox(label, v, ph); if (nv == null || !p) return; D.update(rec.id, { ['p:' + p.id]: nv.trim() || null }); render(); } },
       top && big ? h('h1', {}, v || 'ECX No') : h('span', {}, v || (top ? 'ECX No' : 'ECPAR No')));
     // minimalist: only the number (the label is kept for screen readers); an empty card shows a faint 'ECX No' / 'ECPAR No'
