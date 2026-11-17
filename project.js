@@ -168,7 +168,7 @@ function searchText(t) {
 }
 function projectList(n) {
   const dbr = DB.kpiDb(); if (!dbr) return [];
-  return DB.rows(dbr.id).map(r => { const t = DB.kpiInfo(r, dbr, n); t.dueDate = DB.value(r, P('Due Date')); t.dueDays = t.dueDate ? Math.round((startOfDay(t.dueDate) - startOfDay(new Date(n))) / 864e5) : null; return t; });
+  return DB.rows(dbr.id).map(r => { const t = DB.kpiInfo(r, dbr, n); t.dueDate = t.kpiDue || DB.value(r, P('Due Date')); t.dueDays = t.dueDate ? Math.round((startOfDay(t.dueDate) - startOfDay(new Date(n))) / 864e5) : null; return t; });
 }
 export function projectsScreen() {
   E.ensureAll();
@@ -178,11 +178,13 @@ export function projectsScreen() {
   if (!dbr) { wrap.append(h('section', { class: 'hcard soon' }, h('p', {}, 'There is no Planning KPI Tracker yet. Import it from Notion in Settings, or make a new one.'), h('button', { class: 'hnew', onclick: () => { DB.createKpiTracker(); render(); } }, icon('plus', 16), h('span', {}, 'Make the tracker')))); return wrap; }
   const all = projectList(n);
   const counts = { all: all.filter(t => !t.archived).length, progress: 0, completed: 0, overdue: 0, archived: 0 };
-  for (const t of all) { counts[bucket(t)]++; if (bucket(t) === 'progress' && t.dueDays != null && t.dueDays < 0) counts.overdue++; }
+  // overdue: still open, past the due date, and the ECX has no Completed / Rejection Date yet
+  const isOver = t => bucket(t) === 'progress' && !t.ecxEnd && t.dueDays != null && t.dueDays < 0;
+  for (const t of all) { counts[bucket(t)]++; if (isOver(t)) counts.overdue++; }
 
   const list = h('div', { class: 'hlist plist', role: 'table' }), foot = h('div', { class: 'pfoot' }), bulk = h('div');
   const draw = () => {
-    let rows = all.filter(t => ptab === 'all' ? !t.archived : ptab === 'overdue' ? bucket(t) === 'progress' && t.dueDays != null && t.dueDays < 0 : bucket(t) === ptab);
+    let rows = all.filter(t => ptab === 'all' ? !t.archived : ptab === 'overdue' ? isOver(t) : bucket(t) === ptab);
     if (pq) { const q = pq.toLowerCase(); rows = rows.filter(t => searchText(t).includes(q)); }
     if (pcat) rows = rows.filter(t => t.category.includes(pcat));
     if (pstat) rows = rows.filter(t => t.status === pstat);

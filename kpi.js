@@ -70,8 +70,9 @@ const PRI = { High: 0, Medium: 1, Low: 2 };
 export function facts(row, now = Date.now()) {
   const dbr = DB.kpiDb(), info = DB.kpiInfo(row, dbr, now), ev = eventDates(row), t0 = startOfDay(new Date(now));
   const cats = info.category, cat = mainCat(cats), rep = isReportOnly(cats);
-  const done = info.finished || info.archived && !!ev.completed;
-  const dueDays = ev.due ? Math.round((startOfDay(ev.due) - t0) / 864e5) : null;
+  // done for the KPI: Done / Rejected-with-a-date, or the ECX has a Completed Date or Rejection Date (overdue only counts open work)
+  const done = info.finished || !!info.ecxEnd || info.archived && !!ev.completed;
+  const dueAt = info.kpiDue || ev.due, dueDays = dueAt ? Math.round((startOfDay(dueAt) - t0) / 864e5) : null; // reassigned: 7 days from the Reassigned Date
   const state = done ? 'Completed' : info.archived ? 'Archived' : dueDays != null && dueDays < 0 ? 'Overdue' : dueDays != null && dueDays <= 2 ? 'Due ≤ 2 Days' : 'On Track';
   // workflow stage (shown inside Board cards)
   const ep = E.ecparOf(row), epS = ep ? E.g(ep, 'status') : '', xs = E.ecxOf(row.id), sv = E.surveyState(row, info), w = E.workOf(row);

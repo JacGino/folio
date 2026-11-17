@@ -188,6 +188,19 @@ export function mergeProjectRef() {
 }
 
 /** Classify a KPI task for the Today / Survey / ECPAR screens. */
+/** KPI clock of a project, from its latest ECX application:
+ *  starts at the ECX Reassigned Date (when reassigned) or else the Date Assigned;
+ *  stops at the first ECX Completed Date or Rejection Date on or after that start (null while still open). */
+export function ecxKpi(rowId, assigned) {
+  const xs = D.all('ecx', x => D.val(x, 'project') === rowId).sort((a, b) => D.val(a, 'created', 0) - D.val(b, 'created', 0));
+  const x = xs[xs.length - 1]; if (!x) return { start: null, end: null };
+  const day = k => { const d = parseDate(D.val(x, k)); return d ? startOfDay(d) : null; };
+  const re = day('p:resubmitted'), as = assigned ? startOfDay(assigned) : null;
+  const start = re && (!as || re >= as) ? re : null; // a reassignment restarts the clock
+  const from = start || as;
+  const ends = ['p:submitted', 'p:rejected'].map(day).filter(d => d && (!from || d >= from)).sort((a, b) => a - b);
+  return { start, end: ends[0] || null };
+}
 export function kpiInfo(row, dbr, now = Date.now()) {
   const P = n => propByName(dbr, n), today = startOfDay(new Date(now));
   const status = value(row, P('Status')) || '';
@@ -198,17 +211,21 @@ export function kpiInfo(row, dbr, now = Date.now()) {
   else due = value(row, P('Due Date'));
   if (due) days = dateBetween(due, today, 'days');
   const g = n => { const p = P(n); return p ? value(row, p) : null; };
+  const ck = ecxKpi(row.id, g('Date Assigned')), ecxEnd = ck.end;
+  if (ck.start && !amend) { due = dateAdd(ck.start, 7, 'days'); days = dateBetween(due, today, 'days'); } // reassigned: 7 days from the Reassigned Date
   return { id: row.id, row, status, closed, amend, due, days, title: title(row), address: g('Address') || '', map: g('Pin Location') || '',
     station: g('Station') || '', ecx: g(REF_ECX) || '', rejected: g('ECPAR Rejected'), alert: P('Alert') ? formulaToText(value(row, P('Alert'), now)) : '',
     category: [].concat(g('Project Category') || []), priority: g('Priority') || '', next: g('Next Task') || '', ecxRejected: g('ECX Rejected'),
-    assigned: g('Date Assigned'), completed: g('Date Completed'), archived,
-    // finished: Done, or Rejected once its Date Completed is filled in (then it stops counting days, like a Done project)
-    finished: status === 'Done' || (status === 'Rejected' && !!g('Date Completed')) };
+    assigned: g('Date Assigned'), kpiStart: ck.start || g('Date Assigned'), reassigned: ck.start, kpiDue: ck.start ? due : null, archived, ecxEnd,
+    // the KPI runs from Date Assigned (or the ECX Reassigned Date) to the ECX Completed / Rejection Date, or Date Completed
+    completed: ecxEnd || (ck.start ? null : g('Date Completed')),
+    // finished: Done, or Rejected once it has a Date Completed or an ECX completed / rejection date (then it stops counting days, like a Done project)
+    finished: status === 'Done' || (status === 'Rejected' && !!(g('Date Completed') || ecxEnd)) };
 }
 export function kpiTasks(now = Date.now()) { const d = kpiDb(); if (!d) return []; return rows(d.id).map(r => kpiInfo(r, d, now)).filter(t => !t.closed); }
 const byDays = (a, b) => (a.days ?? 9999) - (b.days ?? 9999);
 export function todayGroups(now) {
-  const t = kpiTasks(now);
+  const t = kpiTasks(now).filter(x => !x.ecxEnd); // an ECX Completed / Rejection Date stops the KPI clock
   return { overdue: t.filter(x => x.days != null && x.days < 0).sort(byDays), today: t.filter(x => (x.days != null && x.days >= 0 && x.days <= 2) || (x.amend && x.days == null)).sort(byDays) };
 }
 export function surveyGroups(now) {

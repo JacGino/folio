@@ -247,11 +247,11 @@ export function milestones(row, info = DB.kpiInfo(row, DB.kpiDb())) {
   return list;
 }
 export const progress = (row, info) => { const m = milestones(row, info); return Math.round(m.filter(x => x.done).length / m.length * 100); };
-/** KPI: days from Date Assigned to Date Completed (or today); within KPI when 7 or fewer */
+/** KPI: days from Date Assigned (or the ECX Reassigned Date) to the ECX Completed / Rejection Date (or Date Completed, or today); within KPI when 7 or fewer */
 export function kpiDays(info, now = Date.now()) {
-  if (!info.assigned) return null;
+  const start = info.kpiStart || info.assigned; if (!start) return null;
   const end = info.completed || startOfDay(new Date(now));
-  return dateBetween(end, info.assigned, 'days');
+  return dateBetween(end, start, 'days');
 }
 
 // ---------------- migration: runs at start-up and after every sync; only writes what is missing ----------------
