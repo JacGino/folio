@@ -2203,3 +2203,5 @@ body[data-layout="rail"] .wrap .cover.pgcover { margin-top: 52px !important; }
 @media (max-width: 600px) { .refcards.big .refcard:first-child .refv h1 { font-size: 16px !important; } }
 .refcards.big { width: auto; align-items: flex-start; }
 .refcards.big .refcard { width: fit-content; max-width: 100%; min-width: 120px; }
+/* a long label never overlaps its value */
+.kv > .kl { min-width: 0; overflow-wrap: anywhere; }

@@ -66,7 +66,8 @@ function dateSheet(title, v, set) {
   const s = sheet(title, h('div', {}, inp, h('button', { class: 'btn block', onclick: () => { inp.value = today(); } }, 'Today'),
     h('button', { class: 'btn block danger', onclick: () => { cleared = true; inp.value = ''; s.close(); } }, 'Clear')), { onDone: () => set(cleared ? null : inp.value || (v ?? null)) });
 }
-const kv = (ic, label, value) => h('div', { class: 'kv' }, h('span', { class: 'kl' }, icon(ic, 16), label), h('div', { class: 'kvv' }, value));
+// a label can wrap after '/' (e.g. 'Wayleave (Private/Utilities)') so it never runs into the value on narrow screens
+const kv = (ic, label, value) => h('div', { class: 'kv' }, h('span', { class: 'kl' }, icon(ic, 16), typeof label === 'string' ? label.replace(/\//g, '/\u200b') : label), h('div', { class: 'kvv' }, value));
 const propVal = (row, name) => { const p = P(name); return h('div', { class: 'props pv' }, p ? propEditor(row, p, DB.kpiDb(), { dfmt: 'DD/MM/YYYY' }) : h('span', { class: 'muted' }, '—')); };
 
 /** Liquid Glass modal (only shown after a button is pressed): date + remarks, then Cancel / confirm */
@@ -362,12 +363,6 @@ function keepTabScroll(id, strip) {
   });
   return strip;
 }
-/** Application ID of each ECX application (moved here from the ECX tab) */
-function appIds(row) {
-  const xs = E.ecxOf(row.id);
-  if (!xs.length) return [kv('text', 'Application ID', h('span', { class: 'muted' }, 'Add an ECX application first'))];
-  return xs.map(x => kv('text', xs.length > 1 ? 'Application ID (' + (g(x, 'number') || 'ECX') + ')' : 'Application ID', field(x, { key: 'appid', label: 'Application ID', mono: true })));
-}
 /** one ECX application, several applicants (e.g. a longhouse): each name with its Applicant ID (IC No) beside it, + to add another.
  *  Saved back into the customer name as '1) NAME (IC)\n2) …', so the table and the Long Text stay in sync. */
 const joinApplicants = list => list.length === 1 ? list[0].name + (list[0].ic ? ' (' + list[0].ic + ')' : '') : list.map((a, i) => `${i + 1}) ${a.name}${a.ic ? ' (' + a.ic + ')' : ''}`).join('\n');
@@ -414,7 +409,7 @@ function overview(row, info, n) {
   return h('div', { class: 'pdgrid' },
     h('section', { class: 'hcard pcard' },
       h('h3', { class: 'ph' }, icon('users', 17), 'Customer Information'),
-      h('div', { class: 'kvs' }, applicantsBlock(row, info, c) || kv('building', 'Customer', c ? h('span', { class: 'fvwrap' }, custName, addApplicantBtn(c, info)) : custName), cf('person', 'Contractor / Consultant', 'pic'), ...appIds(row), cf('phone', 'Contact Number', 'phone', { tel: 'tel' }), cf('mail', 'Email', 'email', { tel: 'mail' }),
+      h('div', { class: 'kvs' }, applicantsBlock(row, info, c) || kv('building', 'Customer', c ? h('span', { class: 'fvwrap' }, custName, addApplicantBtn(c, info)) : custName), cf('person', 'Contractor / Consultant', 'pic'), cf('phone', 'Contact Number', 'phone', { tel: 'tel' }), cf('mail', 'Email', 'email', { tel: 'mail' }),
         kv('pin', 'Address', c ? field(c, { key: 'address', label: 'Address', onSet: v => E.setCustomer(c, 'address', v), ph: E.custAddress(row, c) || 'Empty' }) : '—'),
         kv('globe', 'Pin Location', c ? field(c, { key: 'map', label: 'Pin Location', type: 'url', onSet: v => E.setCustomer(c, 'map', v) }) : '—'),
         // supply details of the customer
