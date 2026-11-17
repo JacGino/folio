@@ -2192,3 +2192,14 @@ body[data-layout="rail"] .wrap .cover.pgcover { margin-top: 52px !important; }
 #splash .sp-logo.sp-icon { width: clamp(180px, 44vmin, 380px); height: clamp(180px, 44vmin, 380px); border-radius: 0; overflow: visible; filter: drop-shadow(0 18px 36px rgba(94, 82, 70, .20)); }
 #splash .sp-logo.sp-icon img { border-radius: 0; }
 #splash .sp-logo.sp-icon .sp-sheen { display: none; }
+/* minimalist reference cards: number only, quieter boxes; smaller text in the Project Details header */
+.refcards { gap: 3px; }
+.refcard { padding: 3px 8px; border-radius: 7px; border-color: transparent; background: var(--bg2); }
+.refv { font-size: 13px; }
+.refcards.big { gap: 4px; max-width: 360px; }
+.refcards.big .refcard { padding: 5px 10px; border-radius: 9px; }
+.refcards.big .refcard:first-child .refv h1 { font-size: 18px !important; font-weight: 650; letter-spacing: -0.2px; }
+.refcards.big .refcard:last-child .refv { font-size: 14px; font-weight: 500; }
+@media (max-width: 600px) { .refcards.big .refcard:first-child .refv h1 { font-size: 16px !important; } }
+.refcards.big { width: auto; align-items: flex-start; }
+.refcards.big .refcard { width: fit-content; max-width: 100%; min-width: 120px; }
