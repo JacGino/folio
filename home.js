@@ -183,9 +183,10 @@ const feedItem = e => h('li', {}, h('button', { onclick: () => go('#/project/' +
   h('span', { class: 'ticon ' + e.tone }, icon(e.icon, 14)),
   h('span', { class: 'ttext' }, h('b', {}, e.title), h('small', {}, [e.cust, e.cat].filter(Boolean).join(' · '))),
   h('small', { class: 'twhen' }, e.when)));
+let tf = null; const timeFmt = () => tf || (tf = new Intl.DateTimeFormat('en-US', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hour12: true })); // one formatter (making one is slow)
 function when(t, n) {
   const d = new Date(t), days = Math.round((startOfDay(new Date(n)) - startOfDay(d)) / 864e5);
-  return days <= 0 ? new Intl.DateTimeFormat('en-US', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hour12: true }).format(d) : days === 1 ? 'Yesterday' : formatDate(d, 'DD/MM/YYYY');
+  return days <= 0 ? timeFmt().format(d) : days === 1 ? 'Yesterday' : formatDate(d, 'DD/MM/YYYY');
 }
 /** latest entries of every project's Activity Log (and comments), newest first */
 export function activity(limit = 6, n = NOW()) {

@@ -172,7 +172,7 @@ export function setEcparStatus(row, s) {
 }
 
 // ---------------- ECX: many per project ----------------
-export const ecxOf = rowId => D.all('ecx', x => D.val(x, 'project') === rowId).sort((a, b) => D.val(a, 'created', 0) - D.val(b, 'created', 0));
+export const ecxOf = rowId => (D.memo('ecxByProject', () => { const m = new Map(); for (const x of D.all('ecx')) { const k = D.val(x, 'project'); if (!m.has(k)) m.set(k, []); m.get(k).push(x); } for (const a of m.values()) a.sort((a, b) => D.val(a, 'created', 0) - D.val(b, 'created', 0)); return m; }).get(rowId) || []).slice();
 export function addEcx(row, number = '') {
   const x = D.create('ecx', row.sh, { project: row.id, created: Date.now(), 'p:number': number, 'p:status': 'Draft' });
   log(row, 'ECX', 'ECX application added' + (number ? ': ' + number : '') + '.', { ecx: x.id }); return x;

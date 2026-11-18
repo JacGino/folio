@@ -2259,3 +2259,5 @@ html.kbup .gmodal-back { top: var(--vvt, 0px); bottom: auto; height: var(--vvh, 
 @container ccapl (max-width: 380px) { .ccapl-r > :nth-child(3) { justify-self: stretch; width: auto; max-width: 220px; min-width: 120px; } }
 .ccapl-r > :nth-child(3) .tbox, .ccapl-r > :nth-child(3) input { min-width: 56px; white-space: nowrap; }
 @container ccapl (max-width: 380px) { .ccapl-r > .ccapl-name { overflow-wrap: break-word; } }
+/* long lists: rows outside the screen are laid out only when scrolled to (faster screens and scrolling on phones) */
+.gantt .gtr:not(.ghd) { content-visibility: auto; contain-intrinsic-size: auto 44px; }

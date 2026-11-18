@@ -86,7 +86,7 @@ export async function loadFont() {
   if (!f) { const p = D.all().find(r => r.k === 'page' && ['serif', 'mono'].includes(D.val(r, 'font'))); f = p ? D.val(p, 'font') : 'default'; } // keep a font chosen earlier on a page
   setFontClass(f);
   setGlass(ws.glass ?? 50);
-  setKpiRules(ws.kpiRules); labels = ws.labels || {}; if (ws.privSort) privSort = ws.privSort; if (ws.privShow != null) privShow = ws.privShow;
+  setKpiRules(ws.kpiRules); labels = ws.labels || {}; if (ws.privSort) privSort = ws.privSort; if (ws.privShow != null) privShow = ws.privShow; if (Array.isArray(ws.privHide)) privHide = ws.privHide; if (ws.privHideAll != null) privHideAll = !!ws.privHideAll;
 }
 /** Liquid Glass opacity, 0 = Clear … 100 = Tinted (like the iPhone's Appearance → Liquid Glass slider). */
 export function setGlass(pct) { const v = String(Math.max(0, Math.min(100, +pct || 0)) / 100); if (document.documentElement.style.getPropertyValue('--lg-a') !== v) document.documentElement.style.setProperty('--lg-a', v); }
@@ -224,7 +224,7 @@ function layout() {
 export const layoutMode = () => document.body.dataset.layout;
 /** iOS sometimes leaves the web view scrolled down, or keeps the old screen's top margin, after a rotation or when coming back
  *  from another app — that shows as an empty band at the top. Put the page back at the top and make Safari re-measure. */
-function settleViewport() {
+function settleViewport(kind) {
   if (document.visibilityState === 'hidden') return;
   const typing = () => { const a = document.activeElement; return !!(a && a.matches && a.matches('input, textarea, select, [contenteditable="true"]')); };
   if (typing()) return; // never move the page while you type: iOS is keeping the field in view
@@ -236,7 +236,17 @@ function settleViewport() {
     const r = document.documentElement; r.classList.add('vv-nudge'); void r.offsetHeight; r.classList.remove('vv-nudge'); // fresh safe-area values
     layout();
   };
-  fix(); [80, 300, 700, 1500].forEach(t => setTimeout(fix, t)); // rotation finishes in steps on iOS
+  // what closing and reopening the app does, without closing it: ask iOS for fresh screen values (viewport meta),
+  // then redraw the page once the size has settled, keeping where you were scrolled
+  const fresh = () => {
+    if (typing() || document.querySelector('.cellpop, .sheet, .gmodal, .menu, .adjbar, .adjh, .lockscreen, #lock:not([hidden])')) return; // never while you edit, adjust or a sheet is open
+    const m = document.querySelector('meta[name="viewport"]');
+    if (m) { const c = m.getAttribute('content'); m.setAttribute('content', c.replace('initial-scale=1', 'initial-scale=1.0001')); requestAnimationFrame(() => m.setAttribute('content', c)); }
+    const main = document.getElementById('main'), y = main ? main.scrollTop : 0;
+    fix(); render(); const back = () => { const mm = document.getElementById('main'); if (mm && y) mm.scrollTop = y; }; requestAnimationFrame(back); setTimeout(back, 60); setTimeout(back, 200);
+    const app = document.getElementById('app'); if (app) { app.style.transform = ''; const t = Math.round(app.getBoundingClientRect().top); if (Math.abs(t) > 1) app.style.transform = `translateY(${-t}px)`; } // last resort: the app box drawn below the top
+  };
+  fix(); [80, 300, 700].forEach(t => setTimeout(fix, t)); if (kind === 'resume' || kind === 'rotate') setTimeout(fresh, 1100); // only when coming back to the app or rotating; they finish in steps on iOS
 }
 
 // ---------- routing ----------
@@ -394,8 +404,18 @@ function helpSheet() {
     tip('Backups', 'Settings → Download a full backup, and the widget keeps a daily copy in iCloud Drive for one year.')));
 }
 // ⋯ next to Private (like Notion): Sort by (Manual / Last edited) and Show (5, 10, 15, 20 items or All); synced
-let privSort = 'manual', privShow = 0;
-async function savePriv() { renderSide(); await Sync.saveSettings({ privSort, privShow }); Sync.soon(500); renderSide(); }
+let privSort = 'manual', privShow = 0, privHide = [], privHideAll = false; // pages hidden from the menu (they stay in All pages)
+async function savePriv() { renderSide(); await Sync.saveSettings({ privSort, privShow, privHide, privHideAll }); Sync.soon(500); renderSide(); }
+/** tick the pages to show in the menu; the list stays open so several can be changed */
+function choosePages(anchor) {
+  const kp = DB.kpiDb() && D.val(DB.kpiDb(), 'page');
+  const all = D.all('page', p => !D.val(p, 'parent') && p.id !== kp).sort((a, b) => recTitle(a).localeCompare(recTitle(b)));
+  menu(anchor, [
+    { el: h('div', { class: 'mhead' }, 'Show in the menu') },
+    ...all.map(p => ({ label: recTitle(p), checked: !privHide.includes(p.id), keep: true, run: () => {
+      privHide = privHide.includes(p.id) ? privHide.filter(x => x !== p.id) : [...privHide, p.id]; savePriv(); setTimeout(() => choosePages(anchor), 0); } })),
+    ...(all.length ? [] : [{ el: h('div', { class: 'mhead' }, 'No pages yet') }])]);
+}
 function privateMenu(anchor) {
   menu(anchor, [
     { el: h('div', { class: 'mhead' }, 'Private') },
@@ -406,7 +426,9 @@ function privateMenu(anchor) {
     { label: 'Show: ' + (privShow ? privShow + ' items' : 'All'), icon: 'number', run: () => menu(anchor, [
       { el: h('div', { class: 'mhead' }, 'Show') },
       ...[5, 10, 15, 20].map(n => ({ label: n + ' items', checked: privShow === n, run: () => { privShow = n; savePriv(); } })),
-      { label: 'All', checked: !privShow, run: () => { privShow = 0; savePriv(); } }]) }, '-',
+      { label: 'All', checked: !privShow, run: () => { privShow = 0; savePriv(); } }]) },
+    { label: privHideAll ? 'Show pages in the menu' : 'Hide pages from the menu', icon: privHideAll ? 'eye' : 'eyeoff', run: () => { privHideAll = !privHideAll; savePriv(); } },
+    { label: 'Choose pages to show…' + (privHide.length ? ' (' + privHide.length + ' hidden)' : ''), icon: 'check', run: () => choosePages(anchor) }, '-',
     { label: 'All pages', icon: 'pages', run: () => go('#/pages') }]);
 }
 function renderSide() {
@@ -421,7 +443,7 @@ function renderSide() {
     return h('a', { class: 'nitem sm' + (on ? ' on' : ''), href: hsh }, recIcon(rec, 18), h('span', { class: 'nl' }, recTitle(rec))); };
   const edited = r => { let t = 0; for (const f of Object.values(r.f || {})) { const w = parseInt(String(f.ts).split(':')[0], 36); if (w > t) t = w; } return t; };
   const favs = [...D.all('page', p => D.val(p, 'fav')), ...D.all('row', r => D.val(r, 'fav'))];
-  const pages = D.all('page', p => !D.val(p, 'parent') && p.id !== kp).sort(privSort === 'edited' ? (a, b) => edited(b) - edited(a)
+  const pages = privHideAll ? [] : D.all('page', p => !D.val(p, 'parent') && p.id !== kp && !privHide.includes(p.id)).sort(privSort === 'edited' ? (a, b) => edited(b) - edited(a)
     : (a, b) => (D.val(a, 'order', 0) - D.val(b, 'order', 0)) || recTitle(a).localeCompare(recTitle(b))).slice(0, privShow || Infinity);
   const st = Sync.getStatus();
   const syncText = Sync.connected() ? (st.state === 'error' ? 'Sync problem' : st.state === 'syncing' ? 'Syncing…' : st.at ? 'Synced ' + ago(st.at) : 'Not synced yet') : 'Sync is off';
@@ -656,10 +678,10 @@ export async function boot() {
   Sync.onStatus(() => { renderSide(); loadFont(); });
   addEventListener('hashchange', () => { state.pane = null; render(); });
   addEventListener('resize', layout); layout();
-  addEventListener('orientationchange', settleViewport); addEventListener('resize', () => setTimeout(settleViewport, 50));
-  addEventListener('pageshow', settleViewport); addEventListener('focus', settleViewport);
+  addEventListener('orientationchange', () => settleViewport('rotate')); let lastOrient = innerWidth > innerHeight; addEventListener('resize', () => setTimeout(() => { const o = innerWidth > innerHeight; settleViewport(o !== lastOrient ? 'rotate' : undefined); lastOrient = o; }, 50));
+  addEventListener('pageshow', () => settleViewport('resume')); addEventListener('focus', () => settleViewport());
   document.addEventListener('focusout', () => setTimeout(() => { const a = document.activeElement; if (!a || !a.matches('input, textarea, select, [contenteditable="true"]')) settleViewport(); }, 350)); // keyboard closed
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') settleViewport(); });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') settleViewport('resume'); });
   if (window.visualViewport) visualViewport.addEventListener('resize', () => { if (!document.activeElement || !document.activeElement.matches('input, textarea, [contenteditable="true"]')) settleViewport(); });
   initKeyboardBar();
   window.__folioStep = 'lock'; await initLock();

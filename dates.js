@@ -18,10 +18,15 @@ function monthIndex(word) {
 }
 
 /** Parse a date. Day-first for numeric forms. Returns a local Date or null. */
+const parsed = new Map(); // the same text is parsed many times while drawing a screen: remember the answer
 export function parseDate(v) {
   if (v == null || v === '') return null;
   if (isDate(v)) return new Date(v.getTime());
   if (typeof v === 'number') return new Date(v);
+  if (typeof v === 'string') { const c = parsed.get(v); if (c !== undefined) return c === null ? null : new Date(c); const d = parseDateText(v); if (parsed.size > 5000) parsed.clear(); parsed.set(v, d ? d.getTime() : null); return d; }
+  return parseDateText(v);
+}
+function parseDateText(v) {
   let s = String(v).trim();
   if (!s) return null;
   // Notion ranges "A → B": use the start

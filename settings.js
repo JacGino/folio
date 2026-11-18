@@ -46,6 +46,9 @@ export function renderSettings(sub) {
       group(
         row({ icon: 'cal', label: 'Widgets, notifications & calendar', onclick: widgetSheet }),
         row({ icon: 'today', label: 'Notifications on this device', value: 'Notification' in window ? (Notification.permission === 'granted' ? 'On' : 'Off') : 'Not supported', onclick: async () => { await enableNotifications(); render(); } })),
+      h('p', { class: 'ghead' }, 'App'),
+      group(row({ icon: 'sync', label: 'Clear app cache', value: 'Keeps your data', chev: false, onclick: clearCache })),
+      h('p', { class: 'small muted', style: 'margin:6px 4px 0' }, 'Use this if Folio looks old or odd after an update: it removes the saved app files and reloads the newest ones. Your projects, pages, settings and sync stay.'),
       h('p', { class: 'ghead' }, 'Danger zone'),
       group(row({ icon: 'trash', label: 'Remove all Folio data from this device', danger: true, chev: false, onclick: async () => {
         if (await confirmBox('This removes Folio from this device only. Your GitHub copy stays. Continue?', 'Remove')) { await D.wipe(); location.reload(); } } }))].filter(Boolean));
@@ -53,6 +56,15 @@ export function renderSettings(sub) {
   return wrap;
 }
 
+/** remove the saved app files (service worker + its caches) and reload the newest ones; the data (IndexedDB) and settings are not touched */
+async function clearCache() {
+  if (!await confirmBox('Clear the app cache and reload Folio? Your projects, pages and settings stay on this device.', 'Clear and reload')) return;
+  try { await D.flush(); } catch (e) {}
+  try { if (window.caches) for (const k of await caches.keys()) await caches.delete(k); } catch (e) {}
+  try { if (navigator.serviceWorker) for (const r of await navigator.serviceWorker.getRegistrations()) await r.unregister(); } catch (e) {}
+  toast('Cache cleared. Reloading…');
+  setTimeout(() => location.reload(), 400);
+}
 function githubSheet() {
   const f = (id, label, ph, type = 'text') => h('label', { style: { display: 'block', marginTop: '12px' } }, h('span', { class: 'muted', style: { fontSize: '14px' } }, label), h('input', { id, class: 'field', placeholder: ph, type, autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false' }));
   const msg = h('p', { class: 'muted', role: 'status' });

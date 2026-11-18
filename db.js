@@ -30,9 +30,9 @@ export const dbs = () => D.all('db');
 export const db = id => D.live(id);
 export const props = dbr => D.val(dbr, 'props', []);
 export const views = dbr => D.val(dbr, 'views', []);
-export const propByName = (dbr, name) => props(dbr).find(p => p.name.toLowerCase() === name.toLowerCase()) || null;
+export const propByName = (dbr, name) => { if (!dbr) return null; const m = D.memo('pbn:' + dbr.id, () => { const o = new Map(); for (const p of props(dbr)) if (!o.has(p.name.toLowerCase())) o.set(p.name.toLowerCase(), p); return o; }); return m.get(String(name).toLowerCase()) || null; };
 export const titleProp = dbr => props(dbr).find(p => p.type === 'title');
-export const rows = dbId => D.all('row', r => D.val(r, 'db') === dbId);
+export const rows = dbId => D.memo('rows:' + dbId, () => D.all('row', r => D.val(r, 'db') === dbId)).slice(); // a copy: callers may sort it
 export const raw = (row, p) => D.val(row, 'p:' + p.id, null);
 export function title(row) { const dbr = db(D.val(row, 'db')); const t = dbr && titleProp(dbr); return (t && raw(row, t)) || 'Untitled'; }
 
@@ -192,7 +192,8 @@ export function mergeProjectRef() {
  *  starts at the ECX Reassigned Date (when reassigned) or else the Date Assigned;
  *  stops at the first ECX Completed Date or Rejection Date on or after that start (null while still open). */
 export function ecxKpi(rowId, assigned) {
-  const xs = D.all('ecx', x => D.val(x, 'project') === rowId).sort((a, b) => D.val(a, 'created', 0) - D.val(b, 'created', 0));
+  const by = D.memo('ecxByProject', () => { const m = new Map(); for (const x of D.all('ecx')) { const k = D.val(x, 'project'); if (!m.has(k)) m.set(k, []); m.get(k).push(x); } for (const a of m.values()) a.sort((a, b) => D.val(a, 'created', 0) - D.val(b, 'created', 0)); return m; });
+  const xs = by.get(rowId) || [];
   const x = xs[xs.length - 1]; if (!x) return { start: null, end: null };
   const day = k => { const d = parseDate(D.val(x, k)); return d ? startOfDay(d) : null; };
   const re = day('p:resubmitted'), as = assigned ? startOfDay(assigned) : null;

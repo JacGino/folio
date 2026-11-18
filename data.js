@@ -14,11 +14,20 @@ export async function load() {
   let dev = await S.meta.get('device'); if (!dev) { dev = M.uid(''); await S.meta.set('device', dev); }
   M.setDevice(dev);
   for (const r of await S.all('records')) { recs.set(r.id, r); for (const v of Object.values(r.f)) M.observe(v.ts); }
+  shape++; ver++;
   for (const sh of (await S.meta.get('dirty')) || []) dirty.add(sh);
   return recs.size;
 }
 export function onChange(fn) { listeners.add(fn); return () => listeners.delete(fn); }
-function emit(info) { for (const fn of listeners) try { fn(info); } catch (e) { console.error(e); } }
+// every change bumps the version; caches (memo) and the by-type index are rebuilt only when it moves
+let ver = 0, shape = 0;
+function emit(info) { ver++; if (info && (info.type === 'create' || info.type === 'sync' || info.type === 'wipe')) shape++; for (const fn of listeners) try { fn(info); } catch (e) { console.error(e); } }
+export const version = () => ver;
+const memos = new Map();
+/** compute once per data version (cleared by any change) */
+export function memo(key, fn) { const m = memos.get(key); if (m && m.v === ver) return m.r; const r = fn(); memos.set(key, { v: ver, r }); return r; }
+let kinds = null, kindsShape = -1;
+const ofKind = k => { if (kindsShape !== shape || !kinds) { kinds = new Map(); for (const r of recs.values()) { let a = kinds.get(r.k); if (!a) kinds.set(r.k, a = []); a.push(r); } kindsShape = shape; } return kinds.get(k) || []; };
 
 function schedule(r) {
   pendingSave.set(r.id, r); dirty.add(r.sh);
@@ -32,7 +41,7 @@ export async function flush() {
 
 export const getRec = id => recs.get(id) || null;
 export const live = id => { const r = recs.get(id); return r && M.alive(r) ? r : null; };
-export const all = (k, pred = () => true) => [...recs.values()].filter(r => r.k === k && M.alive(r) && pred(r));
+export const all = (k, pred) => ofKind(k).filter(pred ? r => M.alive(r) && pred(r) : r => M.alive(r));
 export const val = M.get;
 export const deleted = k => [...recs.values()].filter(r => r.k === k && !M.alive(r));
 

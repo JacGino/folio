@@ -159,6 +159,9 @@ export async function editRejectionFlow(rec, reasons) {
 // =====================================================================================
 export function setProjectFilter({ cat = '' } = {}) { pcat = cat; ptab = 'all'; pq = ''; pstat = ''; pdue = ''; pfil = []; }
 let pq = '', ptab = 'all', pcat = '', pstat = '', pdue = '', psort = 'due', pshow = 50, pcol = null, pfil = [];
+// the chosen sort (menu or column header) is kept on this device, so it stays after closing and reopening the app
+try { const v = JSON.parse(localStorage.getItem('folio-psort') || 'null'); if (v) { if (['due', 'name', 'assigned'].includes(v.psort)) psort = v.psort; if (v.pcol && v.pcol.id) pcol = v.pcol; } } catch (e) {}
+const keepSort = () => { try { localStorage.setItem('folio-psort', JSON.stringify({ psort, pcol })); } catch (e) {} };
 const sel = new Set();
 const PTABS = [['all', 'All Projects'], ['progress', 'In Progress'], ['completed', 'Completed'], ['overdue', 'Overdue'], ['archived', 'Archived']];
 // Rejected projects sit with Completed (they still show in the Rejected Queue / ECPAR & ECX rejected pages until resubmitted)
@@ -207,7 +210,7 @@ export function projectsScreen() {
   let cols = [];
   const addFilter = pid => C.addFilterSheet(dbr, f => { pfil = [...pfil, f]; pshow = 50; render(); }, pid);
   const head = () => h('div', { class: 'hrow hhd prow', role: 'row' }, h('span', { class: 'c-chk' }),
-    cols.map(c => h('span', { class: 'cc', role: 'columnheader' }, C.headCell(dbr, c, { sort: pcol, onSort: c.p || c.id === 'x:days' ? v => { pcol = v; render(); } : null, onFilter: addFilter }))), h('span', { class: 'c-act' }));
+    cols.map(c => h('span', { class: 'cc', role: 'columnheader' }, C.headCell(dbr, c, { sort: pcol, onSort: c.p || c.id === 'x:days' ? v => { pcol = v; keepSort(); render(); } : null, onFilter: addFilter }))), h('span', { class: 'c-act' }));
   function projectRow(t, n) {
     const row = t.row, rep = E.reportOnly(t.category), ss = E.surveyState(row, t), ep = rep ? '' : E.ecparStatus(row, t), xs = rep ? [] : E.ecxOf(t.id);
     const chk = h('input', { type: 'checkbox', class: 'hchk', 'aria-label': 'Select ' + t.title, checked: sel.has(t.id) ? true : null, onclick: e => e.stopPropagation(), onchange: e => { e.target.checked ? sel.add(t.id) : sel.delete(t.id); draw(); } });
@@ -238,7 +241,7 @@ export function projectsScreen() {
     { el: h('div', { class: 'mhead' }, 'Due date') }, ...[['', 'Any time'], ['overdue', 'Overdue'], ['week', 'Due in 7 days'], ['month', 'Due in 31 days'], ['none', 'No due date']].map(([k, l]) => ({ label: l, checked: pdue === k, run: () => { pdue = k; render(); } })), '-',
     { label: 'Filter by any property…', icon: 'plus', run: () => addFilter() }], { width: 260 });
   const chips = [pcat && ['Category: ' + pcat, () => pcat = ''], pstat && ['Status: ' + pstat, () => pstat = ''], pdue && ['Due: ' + { overdue: 'Overdue', week: 'In 7 days', month: 'In 31 days', none: 'No date' }[pdue], () => pdue = ''],
-    ...pfil.map(f => [C.filterText(dbr, f), () => pfil = pfil.filter(x => x !== f)]), pcol && ['Sorted by ' + C.label(dbr, pcol.id) + (pcol.dir === 'desc' ? ' ↓' : ' ↑'), () => pcol = null]].filter(Boolean)
+    ...pfil.map(f => [C.filterText(dbr, f), () => pfil = pfil.filter(x => x !== f)]), pcol && ['Sorted by ' + C.label(dbr, pcol.id) + (pcol.dir === 'desc' ? ' ↓' : ' ↑'), () => { pcol = null; keepSort(); }]].filter(Boolean)
     .map(([l, clear]) => h('button', { class: 'hchip', onclick: () => { clear(); render(); } }, l, icon('close', 13)));
   wrap.append(
     // same cover header as Board / Timeline / Reports (cover photo, menu ← →, bell, ⋯); tools in the row under it
@@ -247,7 +250,7 @@ export function projectsScreen() {
         h('label', { class: 'hsearch glass' }, icon('search', 17), search),
         h('button', { class: 'hbtn glass' + (pcat || pstat || pdue || pfil.length ? ' on' : ''), 'aria-label': 'Filter projects', onclick: e => filterMenu(e.currentTarget) }, icon('filter', 18)),
         h('button', { class: 'hbtn glass', 'aria-label': 'Properties', title: 'Properties: show, hide and arrange columns', onclick: () => C.visibilitySheet(dbr) }, icon('sliders', 18)),
-        h('button', { class: 'hbtn glass', 'aria-label': 'Sort projects', onclick: e => menu(e.currentTarget, [['due', 'Due date'], ['name', 'Customer name'], ['assigned', 'Date assigned (newest)']].map(([k, l]) => ({ label: 'Sort by ' + l, checked: psort === k, run: () => { psort = k; pcol = null; render(); } }))) }, icon('sort', 18)),
+        h('button', { class: 'hbtn glass', 'aria-label': 'Sort projects', onclick: e => menu(e.currentTarget, [['due', 'Due date'], ['name', 'Customer name'], ['assigned', 'Date assigned (newest)']].map(([k, l]) => ({ label: 'Sort by ' + l, checked: psort === k, run: () => { psort = k; pcol = null; keepSort(); render(); } }))) }, icon('sort', 18)),
         h('button', { class: 'hnew', onclick: () => newProjectSheet() }, icon('plus', 17), h('span', {}, 'New Project'))] }),
     h('section', { class: 'hcard htable ptable' },
       h('div', { class: 'hbar' }, h('div', { class: 'htabs', role: 'tablist' }, PTABS.map(([k, l]) => h('button', { class: 'htab' + (ptab === k ? ' on' : ''), role: 'tab', 'aria-selected': ptab === k ? 'true' : 'false',
