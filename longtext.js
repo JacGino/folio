@@ -98,7 +98,9 @@ function subsidyText(f, res) {
     ...(pct ? [`vi) GOVERNMENT SUBSIDY BV ${f.subsidyBV || ''} (${pct}%) = ${RM(gov)}`] : []), `${pct ? 'vii' : 'vi'}) CUSTOMER CONTRIBUTION (${100 - pct}%) = ${RM(cust)}`, '');
   const src = String(f.source || '').toUpperCase();
   P(`8) SOURCE OF SUPPLY IS FROM EXISTING : ${src}`);
-  if (f.feeder || f.r || f.y || f.b) P(`FEEDER = ${f.feeder || 'RYB'}`, `R - ${f.r ?? ''} A`, `Y - ${f.y ?? ''} A`, `B - ${f.b ?? ''} A`);
+  if (f.scada) P('', `SCADA LOADING ${up(f.scada)}`); // the user's commercial NTK example: SCADA LOADING <station> : <date>, then the feeders
+  if (f.noRyb) { if (feederName(f)) P(`FEEDER = ${feederName(f)}`); }
+  else if (f.feeder || f.r || f.y || f.b) P(`FEEDER = ${f.feeder || 'RYB'}`, `R - ${f.r ?? ''} A`, `Y - ${f.y ?? ''} A`, `B - ${f.b ?? ''} A`);
   const funds = [pct && gov ? `GOVERNMENT SUBSIDY BV ${f.subsidyBV || ''}` : null, cdpSeek ? `CDP BV ${f.cdpBV || ''}` : null, cust ? 'CUSTOMER' : null].filter(Boolean);
   const remark = f.remarks || (funds.length ? 'FUND TO BE SOUGHT FROM ' + funds.join(', ').replace(/, ([^,]*)$/, funds.length > 1 ? ' & $1' : ', $1') + '.' : '');
   P('', `9 ) SUBMITTED BY : ${String(f.submittedBy || '').toUpperCase()}`, '', `10 ) DATE OF SUBMISSION : ${String(f.date || '').toUpperCase()}`, '', `11) REMARKS : ${remark.toUpperCase()}`);
@@ -120,6 +122,8 @@ export function layoutFor(cats = [], tariff = '', subsidy = '') {
   return 'standard';
 }
 const up = v => String(v ?? '').toUpperCase();
+/** Low Tension with New Substation and/or Extension HT Line (f.noRyb): no R / Y / B readings and no 'RYB' placeholder — only a real feeder name */
+const feederName = f => { const n = String(f.feeder || '').trim(); return /^ryb$/i.test(n) ? '' : n; };
 /** '1) SELIMAH AK JARAK (720308-…) 2) GLORIA …' → [{name, ic}, …]; one name → [] (one ECX application, many applicants — e.g. a longhouse) */
 export function applicantsOf(t) {
   const ps = String(t || '').split(/(?:^|\s)\d{1,2}\s*[).]\s+/).map(x => x.trim()).filter(Boolean);
@@ -208,7 +212,9 @@ function standardText(f, res, tos = false) {
   P(`(f) TOTAL CUSTOMER CONNECTION CHARGE : (c) + (d) + (e) = ${RM(total)}`, `(g) CAPACITY DEVELOPMENT BV (CDP) : (b) - (c) - (d) = ${RM(cdp)}`, `To seek from ${RM(cdpSeek)} Capacity Development BV ${f.cdpBV || ''}.`, '', '(h) BUDGET ALLOCATION SUMMARY:');
   const bt = budget(P, total, p.e, sst, f.cdpBV, cdpSeek, { exempt: !!f.sstExempt });
   P('', `10 ) SUPPLY TAKEN FROM THE EXISTING : ${up(f.source)}`);
-  if (f.feeder || f.r || f.y || f.b) P(`FEEDER : ${f.feeder || ''}`, `R - ${f.r ?? ''} A`, `Y - ${f.y ?? ''} A`, `B - ${f.b ?? ''} A`);
+  if (f.scada) P('', `SCADA LOADING ${up(f.scada)}`); // the user's commercial NTK example: SCADA LOADING <station> : <date>, then the feeders
+  if (f.noRyb) { if (feederName(f)) P(`FEEDER : ${feederName(f)}`); }
+  else if (f.feeder || f.r || f.y || f.b) P(`FEEDER : ${f.feeder || ''}`, `R - ${f.r ?? ''} A`, `Y - ${f.y ?? ''} A`, `B - ${f.b ?? ''} A`);
   P('', `11 ) REMARKS : ${up(remarkOf(f, sst))}`, '', `12 ) SUBMITTED BY : ${up(f.submittedBy)}`, '', `13 ) DATE OF SUBMISSION : ${up(f.date)}`);
   check(W, res, total, p);
   return { text: out.join('\r\n'), totals: { c: p.c, d: p.d, e: p.e, total, cdp, cdpSeek, h: bt.grand, pct: 0, gov: 0, cust: bt.grand, band: null }, warnings: W };
@@ -302,7 +308,9 @@ function ntkText(f, res) {
     ...(!sst && !domestic && !f.sstExempt ? (W.push('SST is 0% but this is not Residential: tick "SST relief letter attached" if the client has one, otherwise SST is 6%.'), []) : []),
     `iv) TOTAL CCG INCLUSIVE OF SERVICE TAX ${kv(sst)}% (ii + iii) = ${RM(grand)}`, `v) CDP BV ${f.cdpBV || ''} = ${cdpSeek ? RM(cdpSeek) : 'N/A'}`, '');
   P(`8) SUPPLY IS TAKEN FROM EXISTING : ${up(f.source)}`);
-  if (f.feeder || f.r || f.y || f.b) P(`Feeder : ${f.feeder || ''}`, `R - ${f.r ?? ''} A`, `Y - ${f.y ?? ''} A`, `B - ${f.b ?? ''} A`);
+  if (f.scada) P('', `SCADA LOADING ${up(f.scada)}`); // the user's commercial NTK example: SCADA LOADING <station> : <date>, then the feeders
+  if (f.noRyb) { if (feederName(f)) P(`Feeder : ${feederName(f)}`); }
+  else if (f.feeder || f.r || f.y || f.b) P(`Feeder : ${f.feeder || ''}`, `R - ${f.r ?? ''} A`, `Y - ${f.y ?? ''} A`, `B - ${f.b ?? ''} A`);
   const payer = (NTK_TYPES[f.ntkType] || NTK_TYPES.commercial).payer, so = payer !== 'CUSTOMER';
   // as written in the examples: "BDA SERVICE ORDER + 6% SST, CDP BV …" · "JKR SERVICE ORDER" · "CUSTOMER & CDP BV …"
   const remark = f.remarks || ('FUND TO BE SOUGHT FROM ' + payer + (sst ? ` + ${kv(sst)}% SST` : '') + (cdpSeek ? `${so ? ',' : ' &'} CDP BV ${f.cdpBV || ''}` : '') + '.');
@@ -338,7 +346,9 @@ function uosText(f, res) {
   P(`(f) TOTAL CUSTOMER CONNECTION CHARGE: (c) + (d) + (e) = ${RM(total)}`, `(g) CAPACITY DEVELOPMENT BV (CDP): (b) - (c) - (d) = ${RM(cdp)}`, `     To seek ${RM(cdpSeek)} from Capacity Development BV.`, '', '(h) BUDGET ALLOCATION SUMMARY:');
   const bt = budget(P, total, p.e, sst, f.cdpBV, cdpSeek, { na: false, exempt: !!f.sstExempt });
   P('', `14) SUPPLY TAKEN FROM EXISTING: ${up(f.source)}`);
-  if (f.feeder || f.r || f.y || f.b) P(`FEEDER : ${f.feeder || ''}`, `R - ${f.r ?? ''} A   Y - ${f.y ?? ''} A   B - ${f.b ?? ''} A`);
+  if (f.scada) P('', `SCADA LOADING ${up(f.scada)}`); // the user's commercial NTK example: SCADA LOADING <station> : <date>, then the feeders
+  if (f.noRyb) { if (feederName(f)) P(`FEEDER : ${feederName(f)}`); }
+  else if (f.feeder || f.r || f.y || f.b) P(`FEEDER : ${f.feeder || ''}`, `R - ${f.r ?? ''} A   Y - ${f.y ?? ''} A   B - ${f.b ?? ''} A`);
   P('', `15) SUBMITTED BY : ${up(f.submittedBy)}`, '', `16) REMARKS : ${up(remarkOf(f, sst))}`, '', `17) DATE OF SUBMISSION : ${up(f.date)}`);
   if (p.cap.length && num(f.existing) == null) W.push('Upgrading of Supply: enter the existing / minimum assigned load in the calculator to show "actual declared load − existing load".');
   check(W, res, total, p);

@@ -25,7 +25,9 @@ const nextVersion = rowId => Math.max(0, ...D.all('ccalc', c => D.val(c, 'projec
 // ---------- the calculation being edited (per project, kept until you leave the app) ----------
 const WORK = new Map();
 const blank = () => ({ inputs: { basis: 'practice', cat: '', method: 'normal', scope: '', phase: 3, premise: '', applied: '', units: 1, contribution: false }, lines: [], notRequired: {}, loadedId: null, dirty: false });
-function fromSaved(c) { const s = D.val(c, 'snap'); return { inputs: { basis: 'guideline', ...s.inputs }, lines: s.lines.filter(l => !l.auto).map(l => ({ id: l.id || uid(), comp: l.comp, code: l.code, qty: l.qty, override: l.override || null, note: l.note || '' })), notRequired: { ...(s.notRequired || {}) }, loadedId: c.id, dirty: false }; }
+// Load basis: Your rule (1-phase min 5 kVA, 3-phase min 10 kVA) unless Guideline 5.2 was picked for this calculation;
+// calculations saved before Your rule existed carried the old default, so they open on Your rule too
+function fromSaved(c) { const s = D.val(c, 'snap'); return { inputs: { ...s.inputs, basis: s.inputs && s.inputs.basisChosen ? s.inputs.basis : 'practice' }, lines: s.lines.filter(l => !l.auto).map(l => ({ id: l.id || uid(), comp: l.comp, code: l.code, qty: l.qty, override: l.override || null, note: l.note || '' })), notRequired: { ...(s.notRequired || {}) }, loadedId: c.id, dirty: false }; }
 function work(row) {
   let w = WORK.get(row.id);
   if (!w) { const last = calcsOf(row.id)[0]; w = last ? fromSaved(last) : fromCustomer(row); WORK.set(row.id, w); }
@@ -146,7 +148,7 @@ function loadSection(row, info, w, res) {
   return h('section', { class: 'ccsec ccload' },
     h('h3', { class: 'ccsh' }, h('span', { class: 'ccn' }, icon('play', 13)), '2. Load / Capacity'),
     I.premise === 'publight' ? null : frow('Applied Load', numBox(I.applied, 'Applied Load', v => { I.applied = v; touch(w); refreshResults(row, info); }, 'kVA'), p && p.listed ? 'Per unit. Charged at the Table 5.1 minimum, or the applied load if higher' : 'Maximum demand declared by the customer (per unit)'),
-    frow('Load basis', segs([['practice', 'Your rule'], ['guideline', 'Guideline 5.2']], I.basis === 'guideline' ? 'guideline' : 'practice', v => { I.basis = v; touch(w); render(); }, 'Load basis'),
+    frow('Load basis', segs([['practice', 'Your rule'], ['guideline', 'Guideline 5.2']], I.basis === 'guideline' ? 'guideline' : 'practice', v => { I.basis = v; I.basisChosen = true; touch(w); render(); }, 'Load basis'),
       I.basis === 'guideline' ? 'Table 5.1 / Section 5.2 as written' : '1-phase min 5 kVA · 3-phase min 10 kVA · Table 5.1 for Longhouse & upgrading'),
     ...applicantLoads(I, p, w, row, info),
     frow('Supply upgrading (existing customer)', tog(!!I.upgrade, v => { I.upgrade = v; touch(w); render(); }, 'Supply upgrading'), 'Section 5.2.3'),
@@ -431,6 +433,7 @@ function longTextSheet(row, info, w) {
   if (f.clientSrc !== info.title) { f.client = info.title; f.clientSrc = info.title; } // the customer list changed: Long Text follows it
   // one customer: Developer / client is the name alone, IC / company no. is the Overview's Applicant ID (linked both ways)
   const ltCust = E.customerOf(row), single = !E.isMultiApplicant(info.title);
+  if (w.inputs.scope === 'ltnew' && /^ryb$/i.test(String(f.feeder || '').trim())) f.feeder = ''; // new substation: no 'RYB' placeholder
   // Type of use ⇄ the Overview's Type of Use: the Overview wins when it has one; otherwise what was typed here fills it
   if (ltCust) { const u = E.g(ltCust, 'use'); if (u) f.use = u; else if (f.use) E.setCustomer(ltCust, 'use', f.use); }
   // Scheme of supply ⇄ Site Survey's Technical findings (one text): the findings win when they have text; otherwise what was typed here fills them
@@ -441,6 +444,7 @@ function longTextSheet(row, info, w) {
   let edited = false;
   pre.addEventListener('input', () => { edited = true; });
   const draw = () => {
+    f.noRyb = w.inputs.scope === 'ltnew'; // new substation / HT extension: no R / Y / B readings
     res = calculate(w); const out = longText(f, res);
     if (!edited) pre.value = out.text;
     const t = out.totals;
@@ -485,7 +489,7 @@ function longTextSheet(row, info, w) {
       ...only('tk2', h('h4', {}, 'Turnkey (TK2)'), inp('hvLen', 'HV U/G cable total length (m)', { num: true }), inp('ltOhLen', 'LT O/H line total length (m)', { num: true }), inp('ltUgLen', 'LT U/G line total length (m)', { num: true }),
         inp('material', 'Material price (RM, blank = controlled items)', { num: true }), inp('trafoKva', 'Transformer kVA (performance bond)', { num: true }), inp('bondRate', 'Bond rate (RM/kVA)', { num: true }),
         inp('bondTrafoYears', 'Transformer bond valid for'), inp('bondOtherYears', 'Other installation bond valid for')),
-      h('h4', {}, 'Source of supply'), inp('source', 'Existing substation', { wide: true, ph: 'e.g. P/M KG PENAN MUSLIM 2 11KV S/S (DS71115)' }), inp('feeder', 'Feeder'), inp('r', 'R (A)', { num: true }), inp('y', 'Y (A)', { num: true }), inp('b', 'B (A)', { num: true }),
+      h('h4', {}, 'Source of supply'), inp('source', 'Existing substation', { ph: 'e.g. P/M KG PENAN MUSLIM 2 11KV S/S (DS71115)' }), inp('scada', 'SCADA loading', { ph: 'e.g. KIDJUN 33/11KV : 26/5/2026' }), inp('feeder', 'Feeder'), ...(w.inputs.scope === 'ltnew' ? [] : [inp('r', 'R (A)', { num: true }), inp('y', 'Y (A)', { num: true }), inp('b', 'B (A)', { num: true })]),
       h('h4', {}, 'Submission'), inp('submittedBy', 'Submitted by'), inp('date', 'Date of submission'), inp('remarks', 'Remarks (blank = automatic)', { wide: true })),
     h('div', { class: 'ltout' }, sums, warn, h('div', { class: 'lthead' }, h('b', {}, 'Preview'), h('small', {}, 'You can edit the text here before saving. Changing a field above rebuilds it.')), pre,
       h('div', { class: 'ccsave' },
