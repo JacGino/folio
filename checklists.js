@@ -90,9 +90,12 @@ export const CHECKLISTS = {
 /** the checklists that apply to a project, in category order; SAL100KW uses the Residential or Non-Residential side */
 export function checklistsFor(categories, side = 'residential') {
   const out = [];
+  // Non Turnkey (NTK) uses the SAL100KW checklist, Residential or Commercial side (one list when a project has both)
+  const cats = categories.includes('Non Turnkey') && !categories.includes('SAL100KW') ? [...categories, 'SAL100KW'] : categories;
+  const ntkOnly = cats !== categories;
   for (const [cat, def] of Object.entries(CHECKLISTS)) {
-    if (!categories.includes(cat)) continue;
-    if (def.sides) { const s = def.sides[side] || def.sides.residential; out.push({ cat, label: def.label + ' · ' + s.label, items: s.items, sides: def.sides, side }); }
+    if (!cats.includes(cat)) continue;
+    if (def.sides) { const s = def.sides[side] || def.sides.residential; out.push({ cat, label: (ntkOnly && cat === 'SAL100KW' ? 'NTK' : def.label) + ' · ' + s.label, items: s.items, sides: def.sides, side }); }
     else out.push({ cat, label: def.label, items: def.items });
   }
   return out;

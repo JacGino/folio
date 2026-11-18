@@ -108,14 +108,15 @@ function subsidyText(f, res) {
 // =====================================================================================
 // Layouts by project category (the user's TK2, SAL100KW, TOS and UOS examples)
 // =====================================================================================
-export const LAYOUTS = { subsidy: 'Domestic with government subsidy', standard: 'Standard (SAL100KW / NTK)', tos: 'Temporary Supply (TOS)', uos: 'Upgrading of Supply (UOS)', tk2: 'Turnkey Stage 2 (TK2)' };
-/** which layout fits a project: by its category, and for SAL100KW by tariff and subsidy */
+export const LAYOUTS = { subsidy: 'Domestic with government subsidy', standard: 'Standard (SAL100KW)', ntk: 'Non Turnkey (NTK)', tos: 'Temporary Supply (TOS)', uos: 'Upgrading of Supply (UOS)', tk2: 'Turnkey Stage 2 (TK2)' };
+/** which layout fits a project: by its category, and for SAL100KW / NTK by tariff and subsidy */
 export function layoutFor(cats = [], tariff = '', subsidy = '') {
   const has = c => cats.includes(c);
   if (has('Turnkey Stage 2')) return 'tk2';
   if (has('Temporary Supply')) return 'tos';
   if (has('Upgrading of Supply')) return 'uos';
-  if (has('SAL100KW') && tariff !== 'Commercial' && subsidy === 'Yes') return 'subsidy';
+  if ((has('SAL100KW') || has('Non Turnkey')) && tariff !== 'Commercial' && subsidy === 'Yes') return 'subsidy'; // NTK follows SAL100KW
+  if (has('Non Turnkey') && !has('SAL100KW')) return 'ntk';
   return 'standard';
 }
 const up = v => String(v ?? '').toUpperCase();
@@ -139,7 +140,7 @@ const qtyWord = u => u === 'each' ? 'ea' : /^meter/i.test(u) ? 'meter' : qtyUnit
 const ceilDiv = (len, per) => Math.ceil(len / per);
 /** extra items that are not in the Guidelines catalogue (e.g. road reinstatement): { desc, rate, markup (%), qty, unit } */
 function extras(f) {
-  return (f.extras || []).map(x => ({ desc: String(x.desc || '').trim(), rate: num(x.rate), markup: num(x.markup), qty: num(x.qty), unit: String(x.unit || 'meter').trim() }))
+  return (f.extras || []).map(x => ({ desc: String(x.desc || '').trim(), rate: num(x.rate), markup: num(x.markup), qty: num(x.qty), unit: String(x.unit || 'meter').trim(), group: x.group || 'lt' }))
     .filter(x => x.desc && x.rate != null && x.qty != null)
     .map(x => { const r = x.markup ? r2(x.rate * x.markup / 100) : x.rate; return { ...x, unitRate: r, amount: r2(r * x.qty) }; });
 }
@@ -169,11 +170,12 @@ function capText(p, style) { // (d) for the standard / TOS / UOS layouts
   const ordered = [scc, lcc].filter(Boolean);
   return { names, ordered };
 }
-function budget(P, total, e, sst, cdpBV, cdpSeek, { na = true } = {}) {
+function budget(P, total, e, sst, cdpBV, cdpSeek, { na = true, exempt = false } = {}) {
   const taxable = r2(total - e), sstAmt = r2(taxable * sst / 100), withTax = r2(taxable + sstAmt), grand = r2(withTax + e);
   P(`a) TOTAL CCG W/O SST = ${RM(total)}`, `b) TOTAL NON-TAXABLE ITEM-TAX CODE S0 = ${RM(e)} (METER FEE)`,
-    sst ? `c) TOTAL TAXABLE ITEM-TAX CODE S1 : (a - b) + ${kv(sst)}% = ${RM(taxable)} + ${kv(sst)}% (${RM(sstAmt)}) = ${RM(withTax)}`
+    sst || exempt ? `c) TOTAL TAXABLE ITEM-TAX CODE S1 : (a - b) + ${kv(sst)}% = ${RM(taxable)} + ${kv(sst)}% (${RM(sstAmt)}) = ${RM(withTax)}`
         : `c) TOTAL TAXABLE ITEM-TAX CODE S0 (DOMESTIC) : (a - b) + 0% = ${RM(taxable)} + 0% = ${RM(withTax)}`,
+    ...(exempt && !sst ? ['   *(Less : Tax exempted under Section 34 of Service Tax Act 2018)*'] : []),
     `d) TOTAL CCG INCLUSIVE OF SERVICE TAX ${kv(sst)}% (c + b) = ${RM(grand)}`, `e) BV CDP ${cdpBV || ''} = ${cdpSeek ? RM(cdpSeek) : na ? 'N/A' : RM(0)}`);
   return { taxable, sstAmt, grand };
 }
@@ -204,7 +206,7 @@ function standardText(f, res, tos = false) {
   P('', p.met.length ? `(e) METER FEE : ${p.met.map(l => l.qty === 1 ? `${RM(l.rate)} (${meterShort(l)})` : `${RM(l.rate)} x ${kv(l.qty)} (${meterShort(l)}) = ${RM(l.amount)}`).join(' + ')}` : '(e) METER FEE : RM 0.00', '');
   const total = r2(p.c + p.d + p.e), cdp = b == null ? 0 : r2(b - p.c - p.d), cdpSeek = Math.max(0, cdp);
   P(`(f) TOTAL CUSTOMER CONNECTION CHARGE : (c) + (d) + (e) = ${RM(total)}`, `(g) CAPACITY DEVELOPMENT BV (CDP) : (b) - (c) - (d) = ${RM(cdp)}`, `To seek from ${RM(cdpSeek)} Capacity Development BV ${f.cdpBV || ''}.`, '', '(h) BUDGET ALLOCATION SUMMARY:');
-  const bt = budget(P, total, p.e, sst, f.cdpBV, cdpSeek);
+  const bt = budget(P, total, p.e, sst, f.cdpBV, cdpSeek, { exempt: !!f.sstExempt });
   P('', `10 ) SUPPLY TAKEN FROM THE EXISTING : ${up(f.source)}`);
   if (f.feeder || f.r || f.y || f.b) P(`FEEDER : ${f.feeder || ''}`, `R - ${f.r ?? ''} A`, `Y - ${f.y ?? ''} A`, `B - ${f.b ?? ''} A`);
   P('', `11 ) REMARKS : ${up(remarkOf(f, sst))}`, '', `12 ) SUBMITTED BY : ${up(f.submittedBy)}`, '', `13 ) DATE OF SUBMISSION : ${up(f.date)}`);
@@ -215,6 +217,99 @@ function check(W, res, total, p) {
   const xs = p.sum(p.xs);
   if (Math.abs(total - xs - res.total) > 0.005) W.push('The long text total does not match the calculator total.');
   if (p.xs.length) W.push(`Extra items not in the Guidelines (${RM(xs)}) are added to the connection cost; they are not in the calculator total.`);
+}
+
+/** NTK types of application: who pays, and the defaults each one sets (Type of application, SST %).
+ *  Everyone pays 6% SST except Residential; a client with an SST relief letter attached is 0% (Section 34 note).
+ *  Service orders go straight to NTK; commercial / residential come through SSE first, then TK1 & TK2 or NTK. */
+export const NTK_TYPES = {
+  bda: { label: 'BDA Service Order (State Government)', payer: 'BDA SERVICE ORDER', appType: 'Commercial', sst: '6' },
+  jkrs: { label: 'JKR Sarawak Service Order (State Government)', payer: 'JKR SARAWAK SERVICE ORDER', appType: 'Commercial', sst: '6' },
+  jkrf: { label: 'JKR Federal Service Order (Federal Government)', payer: 'JKR FEDERAL SERVICE ORDER', appType: 'Commercial', sst: '6' },
+  commercial: { label: 'Commercial (shoplot, warehouse, factory…)', payer: 'CUSTOMER', appType: 'Commercial', sst: '6' },
+  mixed: { label: 'Commercial + Residential (shoplot & housing)', payer: 'CUSTOMER', appType: 'Commercial + Residential', sst: '6' },
+  residential: { label: 'Residential (housing)', payer: 'CUSTOMER', appType: 'Domestic', sst: '0' },
+};
+/** a first guess from the customer's name and tariff (you can change it) */
+export function ntkTypeFor(client = '', tariff = '') {
+  const c = String(client).toUpperCase();
+  if (/\bBDA\b|BINTULU DEVELOPMENT AUTHORITY/.test(c)) return 'bda';
+  if (/\bJKR\b|JABATAN KERJA RAYA/.test(c)) return /MALAYSIA|PERSEKUTUAN|FEDERAL/.test(c) ? 'jkrf' : 'jkrs';
+  if (/domestic/i.test(tariff)) return 'residential';
+  return 'commercial';
+}
+/** Non Turnkey (NTK): the user's NTK examples (BDA / JKR service orders, commercial HT/LT/substation).
+ *  (c) is grouped LT / HT / Substation, each with its own total, and a TOTAL CONNECTION COST block when there is more than one group;
+ *  then 8) supply, 9) submitted by, 10) date, 11) remarks. */
+const NTK_GROUP = { lt: ['LOW TENSION COST', 'LT'], ltstreet: ['LOW TENSION COST', 'LT'], ht: ['HIGH TENSION COST', 'HT'], htexcess: ['HIGH TENSION COST', 'HT'], substation: ['SUBSTATION COST', 'Substation'] };
+const ntkGroupOf = comp => NTK_GROUP[comp] ? (comp.startsWith('lt') ? 'lt' : comp.startsWith('ht') ? 'ht' : comp) : comp;
+const ntkQty = (q, u) => /^meter/i.test(u) ? `${kv(q)}m` : `${kv(q)} ${qtyWord(u)}`;
+function ntkText(f, res) {
+  const W = [], out = [], P = (...x) => out.push(...x), p = parts(f, res), { b, oh, sst } = common(f, res, P, W);
+  const load = String(f.load ?? '').trim();
+  P(up(f.shortTitle), '', ...(f.ref ? [`REF. NO : ${f.ref}`] : []), `PROJECT REF: ${f.projectRef || ''}`, `PROJECT TITLE : ${up(f.title)}`, '',
+    `CONSULTANT/CONTRACTOR : ${up(f.consultant) || 'N/A'}`, ...clientLines(f), ...(f.contact ? [`CONTACT NO : ${f.contact}`] : []), '',
+    `1 ) TYPE OF APPLICATION : ${up(f.appType)}`, `2 ) ESTIMATED CONNECTED LOAD : ${load === '' || isNaN(+load) ? load : load + ' KVA'}`, `3 ) TARGET DATE OF SUPPLY : ${f.target || ''}`, `4 ) CATEGORY : ${f.cat || ''}`,
+    `5 ) TYPE OF USE : ${up(f.use)}`, '6 ) SCHEME OF SUPPLY (with drawing attached):', '', ...String(f.scheme || '').split(/\r?\n/), '',
+    '7 ) CONNECTION CHARGE CALCULATIONS :', `(a) TOTAL COST OF PROJECT (WITH OH) : ${oh ? RM(oh) : '-'}`, `(b) TOTAL COST OF PROJECT (WITHOUT OH) : ${RM(b ?? 0)}`, '', '(c) CONNECTION COST:', '');
+  // items by group (catalogue items, then extra items placed in that group)
+  const keys = [...new Set([...p.conn.map(l => ntkGroupOf(l.comp)), ...p.xs.map(x => x.group)])];
+  const order = ['lt', 'ht', 'substation'];
+  keys.sort((a, b) => (order.indexOf(a) + 1 || 9) - (order.indexOf(b) + 1 || 9));
+  const totals = [];
+  for (const k of keys) {
+    const [head, short] = NTK_GROUP[k] || [GROUP[k] || up(k), up(k)];
+    const gl = p.conn.filter(l => ntkGroupOf(l.comp) === k), gx = p.xs.filter(x => x.group === k);
+    const amts = [...gl.map(l => l.amount), ...gx.map(x => x.amount)], tot = r2(amts.reduce((a, b) => a + b, 0));
+    P(`${head} :`, '', ...gl.map(l => `- ${RM(l.rate)} ${p.desc(l)} (${l.unit}) x ${ntkQty(l.qty, l.unit)} = ${RM(l.amount)}`),
+      ...gx.flatMap(x => x.markup ? [`- ${x.desc} :`, `  = ${RM(x.rate)} per ${x.unit} x ${kv(r2(x.markup - 100))}% = ${RM(x.unitRate)}`, `  = ${RM(x.unitRate)} x ${ntkQty(x.qty, x.unit)} = ${RM(x.amount)}`]
+        : [`- ${RM(x.rate)} ${x.desc} (${x.unit}) x ${ntkQty(x.qty, x.unit)} = ${RM(x.amount)}`]),
+      '', `Total ${short} Cost : ${amts.length > 1 ? amts.map(RM).join(' + ') + ' = ' : ''}${RM(tot)}`, '');
+    totals.push([head, tot]);
+  }
+  for (const a of p.adjConn) P(`- LESS ${a.label.replace(/^Less /i, '')} = ${RM(a.amount)}`, '');
+  if (!keys.length) P('NOT APPLICABLE = RM 0.00', '');
+  if (totals.length > 1 || p.adjConn.length) {
+    const amts = [...totals.map(t => t[1]), ...p.adjConn.map(a => a.amount)];
+    P('---------------------------------------------------------------------------', '', `TOTAL CONNECTION COST : ${totals.map(t => t[0]).join(' + ')}`,
+      `= ${amts.map(RM).join(' + ').replace(/\+ - /g, '- ')} = ${RM(p.c)}`, '', '---------------------------------------------------------------------------', '');
+  }
+  // (d) capacity charge: SCC + LCC; per unit × units when every unit has the same load
+  const scc = p.cap.find(l => l.comp === 'scc'), lcc = p.cap.find(l => l.comp === 'lcc'), L = res.load || {};
+  if (p.cap.length) {
+    P(`(d) CAPACITY CHARGE : ${[scc && 'SUBSTATION CAPACITY CHARGE', lcc && 'LINE CAPACITY CHARGE'].filter(Boolean).join(' + ')}`);
+    if (L.perApplicant && L.items && L.gross == null) P(`= LOAD PER APPLICANT: ${L.items.map(kv).join(' + ')} kVA = ${kv(L.total)} kVA`);
+    const each = !L.perApplicant && L.gross == null && L.perUnit != null && L.perUnit >= 1 && L.units > 1 && Math.abs(L.perUnit * L.units - p.cap[0].qty) < 0.005;
+    if (each) { const one = r2([scc, lcc].filter(Boolean).reduce((a, l) => a + l.rate * L.perUnit, 0));
+      P(`= ${[scc, lcc].filter(Boolean).map(l => `(${kv(L.perUnit)} kVA X ${RM(l.rate)})`).join(' + ')} = ${RM(one)} x ${kv(L.units)} ea = ${RM(p.sum(p.cap))}`); }
+    else P(`= ${[scc, lcc].filter(Boolean).map(l => `(${RM(l.rate)} x ${kv(l.qty)} kVA)`).join(' + ')}`, `= ${RM(p.sum(p.cap))}`);
+    for (const a of p.adjCap) P(`LESS ${a.label} = ${RM(a.amount)}`, `CAPACITY CHARGE PAYABLE = ${RM(p.d)}`);
+  } else P('(d) CAPACITY CHARGE : N/A');
+  P('');
+  // (e) meter fee: N/A, one line, or a list with its total
+  if (!p.met.length) P('(e) METER FEE : N/A');
+  else if (p.met.length === 1) { const l = p.met[0]; P(`(e) METER FEE : ${RM(l.rate)} (${meterShort(l)}) x ${kv(l.qty)} ea = ${RM(l.amount)}`); }
+  else { const rn = ['i)', 'ii)', 'iii)', 'iv)', 'v)', 'vi)'];
+    P('(e) NON-TAXABLE ITEM (METER FEE) :', ...p.met.map((l, i) => `${rn[i] || '-'} ${RM(l.rate)} ${p.desc(l)} (${l.unit}) x ${kv(l.qty)} ea = ${RM(l.amount)}`), '',
+      `Total Non-Taxable Item (Meter Fee) = ${p.met.map(l => RM(l.amount)).join(' + ')} = ${RM(p.e)}`); }
+  P('');
+  const total = r2(p.c + p.d + p.e), cdp = b == null ? 0 : r2(b - p.c - p.d), cdpSeek = Math.max(0, cdp);
+  P(`(f) TOTAL CUSTOMER CONNECTION CHARGE : (c) + (d) + (e) = ${RM(total)}`, `(g) CAPACITY DEVELOPMENT BV (CDP) : (b) - (c) - (d) = ${RM(cdp)}`, `To seek ${RM(cdpSeek)} from Capacity Development BV ${f.cdpBV || ''}.`, '', '(h) BUDGET ALLOCATION SUMMARY:');
+  const taxable = r2(total - p.e), sstAmt = r2(taxable * sst / 100), withTax = r2(taxable + sstAmt), grand = r2(withTax + p.e);
+  const domestic = /domestic/i.test(f.appType || '');
+  P(`i) TOTAL CCG W/O SST = ${RM(total)}`, `ii) TOTAL NON-TAXABLE ITEM-TAX CODE S0 = ${p.e ? RM(p.e) + ' (METER FEE)' : 'N/A'}`,
+    `iii) TOTAL TAXABLE ITEM-TAX CODE ${domestic ? 'S0' : 'S1'} : (i - ii) + ${kv(sst)}% = ${RM(taxable)} + ${kv(sst)}% (${RM(sstAmt)}) = ${RM(withTax)}`,
+    ...(!sst && !domestic && f.sstExempt ? ['   *(Less : Tax exempted under Section 34 of Service Tax Act 2018)*'] : []),
+    ...(!sst && !domestic && !f.sstExempt ? (W.push('SST is 0% but this is not Residential: tick "SST relief letter attached" if the client has one, otherwise SST is 6%.'), []) : []),
+    `iv) TOTAL CCG INCLUSIVE OF SERVICE TAX ${kv(sst)}% (ii + iii) = ${RM(grand)}`, `v) CDP BV ${f.cdpBV || ''} = ${cdpSeek ? RM(cdpSeek) : 'N/A'}`, '');
+  P(`8) SUPPLY IS TAKEN FROM EXISTING : ${up(f.source)}`);
+  if (f.feeder || f.r || f.y || f.b) P(`Feeder : ${f.feeder || ''}`, `R - ${f.r ?? ''} A`, `Y - ${f.y ?? ''} A`, `B - ${f.b ?? ''} A`);
+  const payer = (NTK_TYPES[f.ntkType] || NTK_TYPES.commercial).payer, so = payer !== 'CUSTOMER';
+  // as written in the examples: "BDA SERVICE ORDER + 6% SST, CDP BV …" · "JKR SERVICE ORDER" · "CUSTOMER & CDP BV …"
+  const remark = f.remarks || ('FUND TO BE SOUGHT FROM ' + payer + (sst ? ` + ${kv(sst)}% SST` : '') + (cdpSeek ? `${so ? ',' : ' &'} CDP BV ${f.cdpBV || ''}` : '') + '.');
+  P('', `9 ) SUBMITTED BY : ${up(f.submittedBy)}`, '', `10 ) DATE OF SUBMISSION : ${up(f.date)}`, '', `11 ) REMARKS : ${up(remark)}`);
+  check(W, res, total, p);
+  return { text: out.join('\r\n'), totals: { c: p.c, d: p.d, e: p.e, total, cdp, cdpSeek, h: grand, pct: 0, gov: 0, cust: grand, band: null }, warnings: W };
 }
 
 /** Upgrading of Supply: the user's UOS example (capacity = actual declared load − existing / minimum assigned load) */
@@ -242,7 +337,7 @@ function uosText(f, res) {
   P('', p.met.length ? `(e) METER FEE: ${p.met.map(l => l.qty === 1 ? RM(l.rate) : `${RM(l.rate)} x ${kv(l.qty)} = ${RM(l.amount)}`).join(' + ')}` : '(e) METER FEE: RM 0.00', '');
   const total = r2(p.c + p.d + p.e), cdp = b == null ? 0 : r2(b - p.c - p.d), cdpSeek = Math.max(0, cdp);
   P(`(f) TOTAL CUSTOMER CONNECTION CHARGE: (c) + (d) + (e) = ${RM(total)}`, `(g) CAPACITY DEVELOPMENT BV (CDP): (b) - (c) - (d) = ${RM(cdp)}`, `     To seek ${RM(cdpSeek)} from Capacity Development BV.`, '', '(h) BUDGET ALLOCATION SUMMARY:');
-  const bt = budget(P, total, p.e, sst, f.cdpBV, cdpSeek, { na: false });
+  const bt = budget(P, total, p.e, sst, f.cdpBV, cdpSeek, { na: false, exempt: !!f.sstExempt });
   P('', `14) SUPPLY TAKEN FROM EXISTING: ${up(f.source)}`);
   if (f.feeder || f.r || f.y || f.b) P(`FEEDER : ${f.feeder || ''}`, `R - ${f.r ?? ''} A   Y - ${f.y ?? ''} A   B - ${f.b ?? ''} A`);
   P('', `15) SUBMITTED BY : ${up(f.submittedBy)}`, '', `16) REMARKS : ${up(remarkOf(f, sst))}`, '', `17) DATE OF SUBMISSION : ${up(f.date)}`);
@@ -322,6 +417,7 @@ function tk2Text(f, res) {
 export function longText(f, res) {
   switch (f.layout) {
     case 'standard': return standardText(f, res, false);
+    case 'ntk': return ntkText(f, res);
     case 'tos': return standardText(f, res, true);
     case 'uos': return uosText(f, res);
     case 'tk2': return tk2Text(f, res);

@@ -7,7 +7,8 @@ import * as E from './entities.js';
 import { h, icon, menu, sheet, toast, confirmBox, promptBox, textbox } from './ui.js';
 import { formatDate } from './dates.js';
 import { render, now as NOW, download, L as LBL } from './app.js';
-import { longText, schemeDraft, layoutFor, LAYOUTS, RM as RMS, applicantsOf } from './longtext.js';
+import { guessSide } from './checklists.js';
+import { longText, layoutFor, NTK_TYPES, ntkTypeFor, LAYOUTS, RM as RMS, applicantsOf } from './longtext.js';
 import { badge, optPill } from './project.js';
 import { GUIDELINE, RATE, PREMISES, PREMISE, COMPONENTS, TABLE51_NOTES } from './ccrates.js';
 import { CATS, SCOPES, METHODS, ELIGIBLE_PROJECT_CATS, methodology, calculate, contributionEligible, itemsFor, upgradeMin, serviceCableSplit, perCircuit, snapshot, rm } from './ccengine.js';
@@ -54,7 +55,7 @@ function refreshTotals(row, box, id) {
   const host = document.querySelector('.ccgrid'); if (!host) return;
   const w = work(row), res = calculate(w), l = res.lines.find(x => x.id === id);
   const r = box.closest('.ccr'); if (r && l) r.querySelector('.amt').textContent = money(l.amount);
-  host.querySelector('.ccformula')?.replaceWith(formulaBox(res)); host.querySelector('.cctotal')?.replaceWith(totalBox(res));
+  host.querySelector('.cctotal')?.replaceWith(totalBox(res));
 }
 /** redraw only the results column (used while typing, so the field you are in keeps its cursor) */
 function refreshResults(row, info) {
@@ -198,26 +199,17 @@ function right(row, info, w, res) {
   return h('div', { class: 'ccright' },
     h('section', { class: 'hcard pcard ccpanel' }, head, bulk, table, comps, excluded,
       res.notes?.length ? h('ul', { class: 'ccnotes' }, res.notes.map(n => h('li', {}, n))) : null, ...res.warnings.map(x => h('p', { class: 'ccinfo amber' }, icon('info', 14), x))),
-    h('div', { class: 'ccbottom' }, formulaBox(res), totalBox(res)),
+    h('div', { class: 'ccbottom' }, totalBox(res)), // the Calculation Formula card was merged into the breakdown (its rows show the same working)
     actions(row, info, w, res));
 }
 const money = n => Number(n).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtQ = q => Number(q).toLocaleString('en-MY', { maximumFractionDigits: 2, minimumFractionDigits: Number.isInteger(+q) ? 0 : 2 });
-function formulaBox(res) {
-  const cap = res.lines.filter(l => l.comp === 'scc' || l.comp === 'lcc'), other = res.lines.filter(l => l.comp !== 'scc' && l.comp !== 'lcc');
-  const li = l => h('li', {}, h('span', { class: 'fl' }, COMPONENTS[l.comp] + (l.comp === 'scc' || l.comp === 'lcc' ? '' : ' · ' + l.code)), h('span', { class: 'ff' }, '= ' + l.formula.replace(/ = .*/, '')), h('b', {}, '= ' + rm(l.amount)),
-    h('small', {}, l.source + (l.rule ? ' · ' + l.rule : '')));
-  return h('section', { class: 'hcard ccformula' }, h('h3', {}, icon('formula', 16), 'Calculation Formula' + (cap.length ? ' (Capacity Charge)' : '')),
-    cap.length ? h('ul', {}, cap.map(li)) : h('p', { class: 'muted small' }, 'No capacity charges in this methodology.'),
-    other.length ? h('details', {}, h('summary', {}, 'All other items (' + other.length + ')'), h('ul', {}, other.map(li))) : null,
-    res.adjustments.length ? h('ul', { class: 'adj' }, res.adjustments.map(a => h('li', {}, h('span', { class: 'fl' }, a.label), h('span', { class: 'ff' }), h('b', {}, rm(a.amount)), h('small', {}, a.rule)))) : null);
-}
 function totalBox(res) {
   const ok = res.complete && !res.na;
   return h('section', { class: 'hcard cctotal' + (ok ? '' : ' inc') }, h('h3', {}, icon('layers', 16), 'Total Connection Charge'),
     h('div', { class: 'cctot' }, rm(res.total)),
     h('dl', {}, h('dt', {}, 'Charge items'), h('dd', {}, String(res.lines.length)), h('dt', {}, 'Subtotal'), h('dd', {}, rm(res.subtotal)),
-      ...res.adjustments.flatMap(a => [h('dt', {}, a.label), h('dd', {}, rm(a.amount))])),
+      ...res.adjustments.flatMap(a => [h('dt', {}, a.label, a.rule ? h('small', {}, a.rule) : null), h('dd', {}, rm(a.amount))])),
     ok ? h('p', { class: 'ccok' }, icon('okcircle', 14), 'Complete · ' + GUIDELINE.id) : h('div', { class: 'ccincomplete' }, h('b', {}, 'Calculation Incomplete'), h('span', {}, 'Not a final amount. Missing:'), h('ul', {}, res.incomplete.map(x => h('li', {}, x)))));
 }
 
@@ -363,13 +355,21 @@ function exportPdf(row, info, w) {
 // ---------- ECX long text (.txt) ----------
 const ltRemember = k => { try { return localStorage.getItem('folio-lt-' + k) || ''; } catch { return ''; } };
 const ltKeep = (k, v) => { try { localStorage.setItem('folio-lt-' + k, v); } catch {} };
+/** a residential customer: Domestic tariff, or no tariff and a residential premise type */
+function isResidential(row) {
+  const c = E.customerOf(row), t = c ? String(g(c, 'tariff') || '') : '';
+  if (t) return /domestic|residential/i.test(t);
+  return guessSide(c ? g(c, 'premise', '') : '', '') === 'residential';
+}
 function ltDefaults(row, info, w, res) {
   const c = E.customerOf(row), P = n => DB.propByName(DB.kpiDb(), n), pv = n => P(n) ? DB.value(row, P(n)) : '';
   const ecx = E.ecxOf(row.id)[0], tariff = c && g(c, 'tariff'), sub = c && g(c, 'subsidy');
   const d = new Date(NOW());
   return { shortTitle: '', ref: DB.refParts(row).ecx || (ecx && g(ecx, 'number')) || '', projectRef: DB.refParts(row).wbs || (E.ecparOf(row) && g(E.ecparOf(row), 'ref')) || '', title: '', consultant: (c && g(c, 'pic')) || '', client: info.title, ic: '', contact: (c && g(c, 'phone')) || '',
-    appType: tariff || 'Domestic', load: w.inputs.applied || '', target: String(d.getFullYear()), cat: w.inputs.cat || '', use: '', scheme: schemeDraft(res.lines),
-    costOH: '', costNoOH: '', sst: tariff === 'Commercial' ? '6' : '0', subsidy: tariff === 'Commercial' || sub === 'No' ? 'none' : sub === 'Yes' && g(c, 'subsidyPct') ? (g(c, 'subsidyPct') === '70%' ? '70' : '100') : 'auto',
+    appType: tariff || 'Domestic', load: w.inputs.applied || '', target: String(d.getFullYear()), cat: w.inputs.cat || '', use: '', scheme: '', // typed in by hand (not drafted from the charge items)
+    ntkType: ntkTypeFor(info.title, tariff),
+    // SST: 6% for everyone except Residential (0%); an SST relief letter makes it 0% — same for NTK, SAL100KW, UOS and TOS
+    costOH: '', costNoOH: '', sst: (info.category || []).includes('Non Turnkey') ? NTK_TYPES[ntkTypeFor(info.title, tariff)].sst : isResidential(row) ? '0' : '6', subsidy: tariff === 'Commercial' || sub === 'No' ? 'none' : sub === 'Yes' && g(c, 'subsidyPct') ? (g(c, 'subsidyPct') === '70%' ? '70' : '100') : 'auto',
     subsidyBV: ltRemember('subsidyBV') || 'PLS-260221', cdpBV: ltRemember('cdpBV') || 'PLS-260205', source: '', feeder: 'RYB', r: '', y: '', b: '',
     submittedBy: ltRemember('submittedBy') || LBL('profile.name', ''), date: d.toLocaleString('en-GB', { month: 'long', year: 'numeric' }).toUpperCase(), remarks: '', desc: {},
     // layout by project category (TK2 / TOS / UOS / SAL100KW / NTK), and the fields only some layouts use
@@ -413,20 +413,18 @@ function longTextSheet(row, info, w) {
     warn.replaceChildren(...out.warnings.map(x => h('p', { class: 'ccinfo amber' }, icon('info', 14), x)));
   };
   const set = (k, v) => { f[k] = v; if (['subsidyBV', 'cdpBV', 'submittedBy'].includes(k)) ltKeep(k, v); touch(w); edited = false; draw(); };
-  const inp = (k, label, o = {}) => h('label', { class: 'ltf' + (o.wide ? ' wide' : '') }, h('span', {}, label),
+  const inp = (k, label, o = {}) => h('label', { class: 'ltf' + (o.wide ? ' wide' : ''), 'data-k': k }, h('span', {}, label),
     o.area ? h('textarea', { class: 'field', rows: o.rows || 3, value: f[k] ?? '', oninput: e => set(k, e.target.value) }, f[k] ?? '')
       : o.opts ? h('select', { class: 'field', onchange: e => set(k, e.target.value) }, o.opts.map(([v, l]) => h('option', { value: v, selected: String(f[k]) === v ? true : null }, l)))
       : h('input', { class: 'field', value: f[k] ?? '', inputmode: o.num ? 'decimal' : null, placeholder: o.ph || '', list: o.list ? 'ltl-' + k : null, oninput: e => set(k, e.target.value) }),
     o.list ? h('datalist', { id: 'ltl-' + k }, o.list.map(v => h('option', { value: v }))) : null);
-  const descRows = res.lines.filter(l => !['scc', 'lcc', 'meter'].includes(l.comp)).map(l => h('label', { class: 'ltf wide' }, h('span', {}, l.code + ' wording'),
-    h('input', { class: 'field', value: (f.desc || {})[l.id] || l.desc, oninput: e => { f.desc = { ...(f.desc || {}), [l.id]: e.target.value }; touch(w); edited = false; draw(); } })));
   // extra items not in the Guidelines catalogue (e.g. road reinstatement): included in the connection cost of the long text
   const extrasBox = h('div', { class: 'ltextras wide' });
   const drawExtras = () => {
     const list = f.extras || (f.extras = []);
     const cell = (x, k, ph, num) => h('input', { class: 'field', value: x[k] ?? '', placeholder: ph, inputmode: num ? 'decimal' : null, 'aria-label': ph, oninput: e => { x[k] = e.target.value; touch(w); edited = false; draw(); } });
     extrasBox.replaceChildren(h('span', { class: 'ltxl' }, 'Extra items not in the Guidelines (e.g. road reinstatement)'),
-      ...list.map((x, i) => h('div', { class: 'ltxrow' }, cell(x, 'desc', 'Description'), cell(x, 'rate', 'Rate (RM)', 1), cell(x, 'markup', 'Mark-up % (e.g. 115)', 1), cell(x, 'qty', 'Qty', 1), cell(x, 'unit', 'Unit (meter)'),
+      ...list.map((x, i) => h('div', { class: 'ltxrow' }, cell(x, 'desc', 'Description'), cell(x, 'rate', 'Rate (RM)', 1), cell(x, 'markup', 'Mark-up % (e.g. 115)', 1), cell(x, 'qty', 'Qty', 1), cell(x, 'unit', 'Unit (meter)'), f.layout === 'ntk' ? h('select', { class: 'field', 'aria-label': 'Cost group', onchange: e => { x.group = e.target.value; touch(w); edited = false; draw(); } }, [['lt', 'LT'], ['ht', 'HT'], ['substation', 'Substation']].map(([v, l]) => h('option', { value: v, selected: (x.group || 'lt') === v ? true : null }, l))) : null,
         h('button', { class: 'iconbtn', type: 'button', 'aria-label': 'Remove this item', onclick: () => { list.splice(i, 1); touch(w); edited = false; drawExtras(); draw(); } }, icon('close', 16)))),
       h('button', { class: 'btn', type: 'button', onclick: () => { list.push({ desc: 'Reinstate Road Surface for cable laying work', rate: '55', markup: '115', qty: '', unit: 'meter' }); touch(w); drawExtras(); } }, icon('plus', 15), 'Add extra item'));
   };
@@ -438,12 +436,20 @@ function longTextSheet(row, info, w) {
   const name = () => (String(f.shortTitle || f.ref || info.title).replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'Connection charge') + ' Long Text.txt';
   const body = h('div', { class: 'ltwrap' },
     h('div', { class: 'ltform' },
-      h('label', { class: 'ltf wide ltlayout' }, h('span', {}, 'Layout (from the project category)'), h('select', { class: 'field', 'aria-label': 'Layout', onchange: e => { f.layout = e.target.value; touch(w); edited = false; vis(); draw(); } },
+      h('label', { class: 'ltf wide ltlayout' }, h('span', {}, 'Layout (from the project category)'), h('select', { class: 'field', 'aria-label': 'Layout', onchange: e => { f.layout = e.target.value; touch(w); edited = false; vis(); drawExtras(); draw(); } },
         Object.entries(LAYOUTS).map(([k, l]) => h('option', { value: k, selected: f.layout === k ? true : null }, l)))),
       h('h4', {}, 'Project'), inp('shortTitle', 'Short title', { wide: true, ph: 'e.g. BTU-D-SF SL TO AISYAH AT KG PENAN MUSLIM' }), inp('ref', 'REF. NO (ECX)'), inp('projectRef', 'Project ref'),
       inp('title', 'Project title', { wide: true, area: true, rows: 2 }), inp('consultant', 'Consultant / contractor'), inp('client', 'Developer / client'), inp('ic', 'IC / company no.'), inp('contact', 'Contact number'),
-      h('h4', {}, 'Application'), inp('appType', 'Type of application', { list: ['Domestic', 'Commercial', 'Commercial 1 (C1)', 'Industrial'] }), inp('load', 'Estimated connected load (kVA)', { num: true }),
-      inp('target', 'Target date of supply'), inp('cat', 'Category'), inp('use', 'Type of use', { ph: 'e.g. DWELLING' }), inp('scheme', 'Scheme of supply', { wide: true, area: true, rows: 7 }), ...descRows,
+      ...only('ntk', h('label', { class: 'ltf wide' }, h('span', {}, 'NTK application type (who pays)'), h('select', { class: 'field', 'aria-label': 'NTK application type', onchange: e => {
+        const t = NTK_TYPES[e.target.value]; f.ntkType = e.target.value; f.appType = t.appType; f.sst = f.sstExempt && e.target.value !== 'residential' ? '0' : t.sst; touch(w); edited = false;
+        body.querySelectorAll('.ltform input').forEach(i => { const k = i.closest('label')?.dataset.k; if (k && f[k] != null) i.value = f[k]; }); draw(); } },
+        Object.entries(NTK_TYPES).map(([k, t]) => h('option', { value: k, selected: (f.ntkType || 'commercial') === k ? true : null }, t.label))))),
+      // a client with an SST relief letter pays 0% (Section 34 note); without one every type except Residential pays 6%
+      ...only('ntk standard tos uos', h('label', { class: 'ltf wide ltchk' }, h('input', { type: 'checkbox', class: 'hchk', 'aria-label': 'SST relief letter attached', checked: f.sstExempt ? true : null, onchange: e => {
+        f.sstExempt = e.target.checked; f.sst = e.target.checked ? '0' : f.layout === 'ntk' ? (NTK_TYPES[f.ntkType] || NTK_TYPES.commercial).sst : isResidential(row) ? '0' : '6'; touch(w); edited = false;
+        const b = body.querySelector('.ltform label[data-k="sst"] input'); if (b) b.value = f.sst; draw(); } }), h('span', {}, 'SST relief letter attached (0% SST, Section 34)'))),
+      h('h4', {}, 'Application'), inp('appType', 'Type of application', { list: ['Domestic', 'Commercial', 'Commercial + Residential', 'Commercial 1 (C1)', 'Industrial'] }), inp('load', 'Estimated connected load (kVA)', { num: true }),
+      inp('target', 'Target date of supply'), inp('cat', 'Category'), inp('use', 'Type of use', { ph: 'e.g. DWELLING' }), inp('scheme', 'Scheme of supply', { wide: true, area: true, rows: 7 }),
       h('h4', {}, 'Costs & funding'), inp('costOH', '(a) Cost of project with OH (RM)', { num: true }), inp('costNoOH', '(b) Cost of project without OH (RM)', { num: true }), inp('sst', 'SST %', { num: true }),
       ...only('subsidy', inp('subsidy', 'Government subsidy (Domestic only)', { opts: [['auto', 'By amount (≤ RM5,000 100% · ≤ RM10,000 70%)'], ['100', '100%'], ['70', '70%'], ['none', 'No subsidy']] }), inp('subsidyBV', 'Subsidy BV no.')),
       inp('cdpBV', 'CDP BV no.'),
@@ -451,7 +457,7 @@ function longTextSheet(row, info, w) {
       ...only('tk2', h('h4', {}, 'Turnkey (TK2)'), inp('hvLen', 'HV U/G cable total length (m)', { num: true }), inp('ltOhLen', 'LT O/H line total length (m)', { num: true }), inp('ltUgLen', 'LT U/G line total length (m)', { num: true }),
         inp('material', 'Material price (RM, blank = controlled items)', { num: true }), inp('trafoKva', 'Transformer kVA (performance bond)', { num: true }), inp('bondRate', 'Bond rate (RM/kVA)', { num: true }),
         inp('bondTrafoYears', 'Transformer bond valid for'), inp('bondOtherYears', 'Other installation bond valid for')),
-      ...only('standard tos uos', extrasBox),
+      ...only('standard ntk tos uos', extrasBox),
       h('h4', {}, 'Source of supply'), inp('source', 'Existing substation', { wide: true, ph: 'e.g. P/M KG PENAN MUSLIM 2 11KV S/S (DS71115)' }), inp('feeder', 'Feeder'), inp('r', 'R (A)', { num: true }), inp('y', 'Y (A)', { num: true }), inp('b', 'B (A)', { num: true }),
       h('h4', {}, 'Submission'), inp('submittedBy', 'Submitted by'), inp('date', 'Date of submission'), inp('remarks', 'Remarks (blank = automatic)', { wide: true })),
     h('div', { class: 'ltout' }, sums, warn, h('div', { class: 'lthead' }, h('b', {}, 'Preview'), h('small', {}, 'You can edit the text here before saving. Changing a field above rebuilds it.')), pre,

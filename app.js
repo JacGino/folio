@@ -15,7 +15,7 @@ import { startNotifier } from './notify.js';
 import { initKeyboardBar } from './kbar.js';
 import { commentsScreen, calendarScreen, inboxScreen } from './hub.js';
 import * as E from './entities.js';
-import { focusScreen, focusCounts } from './focus.js';
+import { focusScreen, focusCounts, ecparArchiveScreen } from './focus.js';
 import { setKpiRules } from './kpi.js';
 import { timelineScreen, boardScreen, reportsScreen, kpiScreen, pageHead } from './views.js';
 import { projectsScreen, projectScreen, newProjectSheet, dueTaskList } from './project.js';
@@ -298,6 +298,7 @@ function renderNow() {
       case 'today': main.append(focusScreen('today')); break;
       case 'survey': main.append(focusScreen('survey')); break;
       case 'ecpar': main.append(focusScreen('ecpar')); break;
+      case 'ecpar-archive': main.append(ecparArchiveScreen()); break;
       case 'tracker': case 'archive': {
         const d = DB.kpiDb(); if (!d) { main.append(emptyTracker()); break; }
         const pg = D.val(d, 'page'); main.append(renderPage(pg, { view: r[0] === 'archive' ? 1 : 0 })); break; }
@@ -478,7 +479,7 @@ function renderSide() {
 }
 
 // ---------- top bar (Notion style): menu, back, forward, title, share, favourite, more ----------
-const SCREEN = { home: ['Home', 'home'], activity: ['Recent Activity', 'history'], ecx: ['Rejected ECX', 'ecxs'], projects: ['Projects', 'folder'], project: ['Project Details', 'building'], kpi: ['KPI', 'barchart'], timeline: ['Timeline', 'timeline'], board: ['Board', 'columns'], reports: ['Reports', 'linechart'], comments: ['Activity Log', 'history'], calendar: ['Calendar', 'date'], inbox: ['Inbox', 'inbox'], today: ['Due Today', 'today'], survey: ['Pending Site Survey', 'target'], ecpar: ['Rejected ECPAR', 'ecpar'], pages: ['Pages', 'pages'], search: ['Search', 'search'], settings: ['Settings', 'settings'], trash: ['Trash', 'trash'] };
+const SCREEN = { 'ecpar-archive': ['Rejected ECPAR Archive', 'ecpar'], home: ['Home', 'home'], activity: ['Recent Activity', 'history'], ecx: ['Rejected ECX', 'ecxs'], projects: ['Projects', 'folder'], project: ['Project Details', 'building'], kpi: ['KPI', 'barchart'], timeline: ['Timeline', 'timeline'], board: ['Board', 'columns'], reports: ['Reports', 'linechart'], comments: ['Activity Log', 'history'], calendar: ['Calendar', 'date'], inbox: ['Inbox', 'inbox'], today: ['Due Today', 'today'], survey: ['Pending Site Survey', 'target'], ecpar: ['Rejected ECPAR', 'ecpar'], pages: ['Pages', 'pages'], search: ['Search', 'search'], settings: ['Settings', 'settings'], trash: ['Trash', 'trash'] };
 function topbar() {
   const r = state.route[0], ctx = state.ctx;
   const kp = DB.kpiDb() && D.val(DB.kpiDb(), 'page');

@@ -66,7 +66,8 @@ function hero(n) {
 // ---------- KPI summary bar ----------
 export function kpiNumbers(all, n) {
   const today = new Date(n), mStart = new Date(today.getFullYear(), today.getMonth(), 1);
-  const active = all.filter(t => !t.archived), done = active.filter(t => t.finished), prog = active.filter(t => !t.finished);
+  // Done projects are archived straight away: they still count as projects and as completed
+  const active = all.filter(t => !t.archived || t.finished), done = active.filter(t => t.finished), prog = active.filter(t => !t.finished);
   const t0 = startOfDay(today), overdue = prog.filter(t => { const d = t.row && DB.value(t.row, P('Due Date')); return d && startOfDay(d) < t0; });
   const added = active.filter(t => { const d = t.assigned || new Date(D.val(t.row, 'created', 0)); return d >= mStart; }).length;
   return { active: active.length, done: done.length, prog: prog.length, overdue: overdue.length, added, kpi: kpiPct(all.filter(t => t.archived || t.finished)) };

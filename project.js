@@ -121,11 +121,11 @@ const rejectFields = (reasons, rec) => [
   { key: 'reason', type: 'long', label: 'Rejection reason / remarks', required: true },
   { key: 'correction', type: 'long', label: 'Required correction' }];
 export async function rejectEcparFlow(row) {
-  const r = await formModal({ title: 'Reject ECPAR', fields: rejectFields(E.ECPAR_REASONS), ok: 'Confirm Reject', danger: true }); if (!r) return false;
-  E.rejectEcpar(row, r.date, r.reason, { cat: r.cat, correction: r.correction }); toast('ECPAR rejected. It is now in Rejected ECPAR.'); return true;
+  const r = await formModal({ title: 'Reject ECPAR', fields: [{ key: 'date', type: 'date', label: 'Rejection date', value: today(), required: true }, { key: 'correction', type: 'long', label: 'Required correction' }], ok: 'Confirm Reject', danger: true }); if (!r) return false;
+  E.rejectEcpar(row, r.date, '', { correction: r.correction }); toast('ECPAR rejected. It is now in Rejected ECPAR.'); return true;
 }
 export async function resubmitEcparFlow(row) {
-  const r = await formModal({ title: 'Resubmit revised ECPAR', fields: [{ key: 'date', type: 'date', label: 'Resubmission date', required: true }, { key: 'note', type: 'long', label: 'What changed' }], ok: 'Resubmit' }); if (!r) return false;
+  const r = await formModal({ title: 'Resubmit revised ECPAR', fields: [{ key: 'date', type: 'date', label: 'Resubmission date', value: today(), required: true }], ok: 'Resubmit' }); if (!r) return false;
   E.resubmitEcpar(row, r.date, r.note); toast('ECPAR resubmitted. Its rejection history is kept.'); return true;
 }
 export async function approveEcparFlow(row) {
@@ -158,28 +158,47 @@ export async function editRejectionFlow(rec, reasons) {
 // Projects page
 // =====================================================================================
 export function setProjectFilter({ cat = '' } = {}) { pcat = cat; ptab = 'all'; pq = ''; pstat = ''; pdue = ''; pfil = []; }
-let pq = '', ptab = 'all', pcat = '', pstat = '', pdue = '', psort = 'due', pshow = 50, pcol = null, pfil = [];
+let pq = '', ptab = 'all', pcat = '', pstat = '', pdue = '', psort = 'due', pshow = 50, pcol = null, pfil = [], pyear = 'all';
 // the chosen sort (menu or column header) is kept on this device, so it stays after closing and reopening the app
-try { const v = JSON.parse(localStorage.getItem('folio-psort') || 'null'); if (v) { if (['due', 'name', 'assigned'].includes(v.psort)) psort = v.psort; if (v.pcol && v.pcol.id) pcol = v.pcol; } } catch (e) {}
-const keepSort = () => { try { localStorage.setItem('folio-psort', JSON.stringify({ psort, pcol })); } catch (e) {} };
+try { const v = JSON.parse(localStorage.getItem('folio-psort') || 'null'); if (v) { if (['due', 'name', 'assigned'].includes(v.psort)) psort = v.psort; if (v.pcol && v.pcol.id) pcol = v.pcol; if (v.pyear) pyear = v.pyear; } } catch (e) {}
+const keepSort = () => { try { localStorage.setItem('folio-psort', JSON.stringify({ psort, pcol, pyear })); } catch (e) {} };
 const sel = new Set();
 const PTABS = [['all', 'All Projects'], ['progress', 'In Progress'], ['completed', 'Completed'], ['overdue', 'Overdue'], ['archived', 'Archived']];
 // Rejected projects sit with Completed (they still show in the Rejected Queue / ECPAR & ECX rejected pages until resubmitted)
+/** ⋯ menu: close a past year (its finished projects move to "Planning KPI Archive <year>"), open or bring back an archive */
+export function yearMenuItems(n) {
+  const k = DB.kpiDb(); if (!k) return [];
+  const now = new Date(n), cy = now.getFullYear(), ys = [...new Set(DB.rows(k.id).map(DB.projectYear))].filter(y => y < cy || (y === cy && now.getMonth() === 11)).sort((a, b) => b - a);
+  const out = [];
+  for (const y of ys) out.push({ label: `Close year ${y}…`, icon: 'archive', run: async () => {
+    const k2 = DB.kpiDb(), c = DB.rows(k2.id).filter(r => DB.projectYear(r) === y && DB.yearClosable(DB.kpiInfo(r, k2))).length;
+    if (!c) return toast(`No Done or archived ${y} projects to move.`);
+    if (!await confirmBox(`Move ${c} ${y} projects (Done, or with the Archive box ticked) to "Planning KPI Archive ${y}"? Open and Rejected ${y} projects stay here, on their pages, until you tick Archive. You can bring them back from this menu.`, `Close ${y}`)) return;
+    const moved = DB.closeYear(y); toast(`${moved} projects moved to Planning KPI Archive ${y}.`); render(); } });
+  for (const a of DB.yearArchives()) { const y = D.val(a, 'year');
+    out.push({ label: `Open Archive ${y}`, icon: 'table', run: () => go('#/p/' + D.val(a, 'page')) });
+    out.push({ label: `Bring ${y} back to the tracker…`, icon: 'undo', run: async () => { if (!await confirmBox(`Move the ${DB.rows(a.id).length} projects in Archive ${y} back to the tracker?`, 'Bring back')) return; const n2 = DB.reopenYear(y); toast(`${n2} projects back in the tracker.`); render(); } }); }
+  return out;
+}
 const bucket = t => t.archived ? 'archived' : (t.finished || /^rejected$/i.test(String(t.status || '').trim())) ? 'completed' : 'progress';
 function searchText(t) {
   return [t.title, t.ecx, DB.projectRef(t.row), ...E.ecxOf(t.id).map(x => [g(x, 'number'), g(x, 'appid')].join(' '))].join(' ').toLowerCase();
 }
 function projectList(n) {
   const dbr = DB.kpiDb(); if (!dbr) return [];
-  return DB.rows(dbr.id).map(r => { const t = DB.kpiInfo(r, dbr, n); t.dueDate = t.kpiDue || DB.value(r, P('Due Date')); t.dueDays = t.dueDate ? Math.round((startOfDay(t.dueDate) - startOfDay(new Date(n))) / 864e5) : null; return t; });
+  return DB.rows(dbr.id).map(r => { const t = DB.kpiInfo(r, dbr, n); t.dueDate = t.amend && t.due ? t.due : t.kpiDue || DB.value(r, P('Due Date')); t.dueDays = t.dueDate ? Math.round((startOfDay(t.dueDate) - startOfDay(new Date(n))) / 864e5) : null; return t; });
 }
 export function projectsScreen() {
   E.ensureAll();
   const n = NOW(), dbr = DB.kpiDb();
   const wrap = h('div', { class: 'wrap home projects' });
-  state.ctx = { export: a => exportList('today', a), more: a => moreMenu(a, { extra: [{ label: 'Open full tracker table', icon: 'table', run: () => go('#/tracker') }] }) };
+  state.ctx = { export: a => exportList('today', a), more: a => moreMenu(a, { extra: [{ label: 'Open full tracker table', icon: 'table', run: () => go('#/tracker') }, ...yearMenuItems(n)] }) };
   if (!dbr) { wrap.append(h('section', { class: 'hcard soon' }, h('p', {}, 'There is no Planning KPI Tracker yet. Import it from Notion in Settings, or make a new one.'), h('button', { class: 'hnew', onclick: () => { DB.createKpiTracker(); render(); } }, icon('plus', 16), h('span', {}, 'Make the tracker')))); return wrap; }
-  const all = projectList(n);
+  const every = projectList(n);
+  for (const t of every) t.year = DB.projectYear(t.row);
+  const years = [...new Set(every.map(t => t.year))].sort((a, b) => b - a);
+  if (pyear !== 'all' && !years.includes(+pyear)) pyear = 'all';
+  const all = pyear === 'all' ? every : every.filter(t => t.year === +pyear); // the year picker: by Date Assigned
   const counts = { all: all.filter(t => !t.archived).length, progress: 0, completed: 0, overdue: 0, archived: 0 };
   // overdue: still open, past the due date, and the ECX has no Completed / Rejection Date yet
   const isOver = t => bucket(t) === 'progress' && !t.ecxEnd && t.dueDays != null && t.dueDays < 0;
@@ -240,7 +259,7 @@ export function projectsScreen() {
     { el: h('div', { class: 'mhead' }, 'Status') }, { label: 'Any status', checked: !pstat, run: () => { pstat = ''; render(); } }, ...stats.map(c => ({ label: c, checked: pstat === c, run: () => { pstat = c; render(); } })), '-',
     { el: h('div', { class: 'mhead' }, 'Due date') }, ...[['', 'Any time'], ['overdue', 'Overdue'], ['week', 'Due in 7 days'], ['month', 'Due in 31 days'], ['none', 'No due date']].map(([k, l]) => ({ label: l, checked: pdue === k, run: () => { pdue = k; render(); } })), '-',
     { label: 'Filter by any property…', icon: 'plus', run: () => addFilter() }], { width: 260 });
-  const chips = [pcat && ['Category: ' + pcat, () => pcat = ''], pstat && ['Status: ' + pstat, () => pstat = ''], pdue && ['Due: ' + { overdue: 'Overdue', week: 'In 7 days', month: 'In 31 days', none: 'No date' }[pdue], () => pdue = ''],
+  const chips = [pyear !== 'all' && ['Year: ' + pyear, () => { pyear = 'all'; keepSort(); }], pcat && ['Category: ' + pcat, () => pcat = ''], pstat && ['Status: ' + pstat, () => pstat = ''], pdue && ['Due: ' + { overdue: 'Overdue', week: 'In 7 days', month: 'In 31 days', none: 'No date' }[pdue], () => pdue = ''],
     ...pfil.map(f => [C.filterText(dbr, f), () => pfil = pfil.filter(x => x !== f)]), pcol && ['Sorted by ' + C.label(dbr, pcol.id) + (pcol.dir === 'desc' ? ' ↓' : ' ↑'), () => { pcol = null; keepSort(); }]].filter(Boolean)
     .map(([l, clear]) => h('button', { class: 'hchip', onclick: () => { clear(); render(); } }, l, icon('close', 13)));
   wrap.append(
@@ -250,6 +269,8 @@ export function projectsScreen() {
         h('label', { class: 'hsearch glass' }, icon('search', 17), search),
         h('button', { class: 'hbtn glass' + (pcat || pstat || pdue || pfil.length ? ' on' : ''), 'aria-label': 'Filter projects', onclick: e => filterMenu(e.currentTarget) }, icon('filter', 18)),
         h('button', { class: 'hbtn glass', 'aria-label': 'Properties', title: 'Properties: show, hide and arrange columns', onclick: () => C.visibilitySheet(dbr) }, icon('sliders', 18)),
+        h('button', { class: 'hbtn glass yearbtn' + (pyear !== 'all' ? ' on' : ''), 'aria-label': 'Year', title: 'Show one year (by Date Assigned)', onclick: e => menu(e.currentTarget, [{ label: 'All years', checked: pyear === 'all', run: () => { pyear = 'all'; keepSort(); render(); } },
+          ...years.map(y => ({ label: `${y}  (${every.filter(t => t.year === y).length})`, checked: String(pyear) === String(y), run: () => { pyear = String(y); keepSort(); render(); } }))]) }, pyear !== 'all' ? h('span', { class: 'ybadge' }, String(pyear)) : icon('cal', 18)),
         h('button', { class: 'hbtn glass', 'aria-label': 'Sort projects', onclick: e => menu(e.currentTarget, [['due', 'Due date'], ['name', 'Customer name'], ['assigned', 'Date assigned (newest)']].map(([k, l]) => ({ label: 'Sort by ' + l, checked: psort === k, run: () => { psort = k; pcol = null; keepSort(); render(); } }))) }, icon('sort', 18)),
         h('button', { class: 'hnew', onclick: () => newProjectSheet() }, icon('plus', 17), h('span', {}, 'New Project'))] }),
     h('section', { class: 'hcard htable ptable' },
@@ -315,9 +336,10 @@ let logOrder = 'new';
 export function projectScreen(id, tab = 'overview') {
   E.ensureAll();
   const row = D.live(id), dbr = DB.kpiDb();
-  if (!row || !dbr || D.val(row, 'db') !== dbr.id) return h('div', { class: 'wrap home' }, h('section', { class: 'hcard soon' }, h('p', {}, 'This project is not here. It may be in Trash.'), h('button', { class: 'btn', onclick: () => go('#/projects') }, 'Back to Projects')));
+  if (!row || !dbr || !DB.isKpiRow(row)) return h('div', { class: 'wrap home' }, h('section', { class: 'hcard soon' }, h('p', {}, 'This project is not here. It may be in Trash.'), h('button', { class: 'btn', onclick: () => go('#/projects') }, 'Back to Projects')));
   const n = NOW(), info = DB.kpiInfo(row, dbr, n), rep = E.reportOnly(info.category);
-  const dueDate = DB.value(row, P('Due Date')), dueDays = dueDate ? Math.round((startOfDay(dueDate) - startOfDay(new Date(n))) / 864e5) : null;
+  // To Amend counts down to the ECPAR resubmission (Rejection Date + 1 day)
+  const dueDate = info.amend && info.due ? info.due : info.kpiDue || DB.value(row, P('Due Date')), dueDays = dueDate ? Math.round((startOfDay(dueDate) - startOfDay(new Date(n))) / 864e5) : null;
   const tasks = E.tasksOf(row.id), xs = E.ecxOf(row.id), pct = E.progress(row, info), kd = E.kpiDays(info, n);
   const TABS = [['overview', 'Overview', 'home'], ['tasks', 'Tasks', 'listcheck', tasks.filter(E.taskOpen).length], ['survey', 'Site Survey', 'target'],
     ...(rep ? [] : [['ecpar', 'ECPAR', 'ecpar']]), ...(ccEligible(info.category) ? [['cc', 'Connection Charge', 'table']] : []), ...(rep ? [] : [['ecx', 'ECX', 'filex', xs.length]]), ['docs', 'Documents', 'clip'], ['log', 'Activity Log', 'history']];
@@ -342,8 +364,11 @@ export function projectScreen(id, tab = 'overview') {
     h('section', { class: 'kstrip pstrip' },
       h('div', { class: 'kcell' }, h('div', {}, h('small', {}, 'Status'), propVal(row, 'Status'))),
       h('div', { class: 'kcell' }, h('div', {}, h('small', {}, 'Date Assigned'), propVal(row, 'Date Assigned'))),
-      h('div', { class: 'kcell' }, h('div', {}, h('small', {}, 'Due Date'), propVal(row, 'Due Date'))),
-      h('div', { class: 'kcell' }, h('div', {}, h('small', {}, 'Days Left'), info.finished || info.archived ? h('span', { class: 'muted' }, '—') : daysBadge(dueDays))),
+      h('div', { class: 'kcell' }, h('div', {}, h('small', {}, info.amend && info.due ? 'Resubmit by' : 'Due Date'), info.amend && info.due || info.kpiDue ? h('span', { class: 'val' }, formatDate(dueDate, 'DD/MM/YYYY')) : propVal(row, 'Due Date'))),
+      h('div', { class: 'kcell' }, h('div', {}, h('small', {}, info.amend && info.amendEnd ? 'Resubmitted' : 'Days Left'),
+        info.finished || info.archived ? h('span', { class: 'muted' }, '—')
+        : info.amend && info.amendEnd ? h('span', { class: 'dl amdone' + (info.amendDays <= 1 ? ' ok' : ' late'), title: 'Rejection Date to Resubmission Date (1 day allowed). Waiting for ECPAR approval.' }, `in ${info.amendDays} ${info.amendDays === 1 ? 'day' : 'days'}`)
+        : daysBadge(dueDays))),
       h('div', { class: 'kcell kprog' }, h('div', {}, h('small', {}, 'KPI Progress'), h('div', { class: 'pbar' }, h('b', {}, pct + '%'), h('span', { class: 'bar' }, h('i', { style: { width: pct + '%' } }))),
         h('small', { class: 'kd' + (kd != null && kd > 7 ? ' late' : '') }, kd == null ? 'Set Date Assigned for KPI' : (info.completed ? 'Done in ' : 'Day ') + kd + (info.completed ? ' days' : ' of 7') + (kd > 7 ? ' · over KPI' : ' · within KPI'))))),
     keepTabScroll(id, h('div', { class: 'ptabs htabs', role: 'tablist' }, TABS.map(([k, l, ic, c]) => h('a', { class: 'htab' + (tab === k ? ' on' : ''), role: 'tab', 'aria-selected': tab === k ? 'true' : 'false', href: `#/project/${id}/${k}`, onclick: e => { e.preventDefault(); go(`#/project/${id}/${k}`, { replace: true }); } },
@@ -515,10 +540,10 @@ function surveyTab(row, info, n) {
       kv('date', 'Survey date', wf('survey', 'Survey date', { type: 'date' })),
       rep ? kv('page', 'Report prepared', toggle('report', 'Report prepared')) : kv('listcheck', 'Documents checked', toggle('docs', 'Documents checked')),
 
-      rep ? null : kv('linechart', 'Transformer & feeder loading', wf('loading', 'Transformer & feeder loading')),
       kv('pin', 'Site address', h('span', {}, E.custAddress(row) || h('span', { class: 'muted' }, '—'))),
       kv('globe', 'Pin Location', pinField(row)),
       kv('text', 'Wayleave (Private/Utilities)', propVal(row, DB.WAYLEAVE)),
+      rep ? null : kv('linechart', 'Transformer & feeder loading', wf('loading', 'Transformer & feeder loading')),
       // full width at the bottom, with a taller box to type in
       h('div', { class: 'kv kvwide' }, h('span', { class: 'kl' }, icon('text', 16), 'Technical findings'), h('div', { class: 'kvv' }, wf('findings', 'Technical findings')))));
 }
@@ -528,30 +553,27 @@ function ecparTab(row, info, n) {
   const e = E.ecparOf(row);
   if (!e) return h('section', { class: 'hcard pcard' }, h('div', { class: 'phbar' }, h('h3', { class: 'ph' }, icon('ecpar', 17), 'ECPAR'), h('button', { class: 'hnew sm', onclick: () => { E.ecpar(row); E.log(row, 'ECPAR', 'ECPAR record added.', { ecpar: true }); render(); } }, icon('plus', 15), h('span', {}, 'Add ECPAR'))),
     h('p', { class: 'hempty' }, 'No ECPAR for this project yet. Each project has one ECPAR reference; its revisions are kept in its history.'));
-  const s = g(e, 'status') || 'Draft', w = E.workOf(row);
+  const s = g(e, 'status') || '', w = E.workOf(row);
   const ef = (key, label, extra = {}) => field(e, { key, label, ...extra });
   const hist = E.revisions(row);
   return h('section', { class: 'hcard pcard' },
     h('div', { class: 'phbar' }, h('h3', { class: 'ph' }, icon('ecpar', 17), 'ECPAR',
-      h('button', { class: 'val fv', 'aria-label': 'ECPAR status: ' + s, onclick: ev => pick(ev.currentTarget, E.ECPAR_STATUS, s, v => { if (v === 'Pending Revision' && !E.ECPAR_ACTIVE.includes(s)) rejectBtn.click(); else if (v === 'Approved') approveBtn.click(); else if (v === 'Resubmitted') resubBtn.click(); else { E.setEcparStatus(row, v); render(); } }) }, badge(s), icon('chevd', 14))),
+      h('button', { class: 'val fv', 'aria-label': 'ECPAR status: ' + (s || 'Not submitted'), onclick: ev => pick(ev.currentTarget, E.ECPAR_STATUS, s, v => { if (v === 'Pending Revision' && !E.ECPAR_ACTIVE.includes(s)) rejectBtn.click(); else if (v === 'Resubmitted' && E.ECPAR_ACTIVE.includes(s)) resubBtn.click(); else { E.setEcparStatus(row, v); render(); } }) }, s ? badge(s) : h('span', { class: 'muted' }, 'Not submitted'), icon('chevd', 14))),
       h('div', { class: 'wfacts' }, ...ecparButtons())),
     h('div', { class: 'kvs two' },
       kv('text', 'Project Reference', ef('ref', 'Project Reference (ECPAR No)', { mono: true })), kv('date', 'Submission Date', ef('submitted', 'Submission date', { type: 'date' })),
       kv('number', 'Budget Amount', ef('budget', 'Budget amount (RM)', { type: 'money' })), kv('layers', 'Version', h('span', { class: 'mono' }, E.ecparVersion(e))),
-      kv('date', 'Rejection Date', ef('rejected', 'Rejection date', { type: 'date' })),
-      kv('text', 'Rejection Reason', ef('reason', 'Rejection reason')), kv('date', 'Resubmission Date', ef('resubmitted', 'Resubmission date', { type: 'date' })),
-      kv('list', 'Reason Category', ef('rcat', 'Reason category', { type: 'select', options: E.ECPAR_REASONS })), kv('pencil', 'Required Correction', ef('correction', 'Required correction')),
-      kv('text', 'Remarks', ef('remarks', 'Remarks')),
+      kv('date', 'Rejection Date', ef('rejected', 'Rejection date', { type: 'date' })), kv('date', 'Resubmission Date', ef('resubmitted', 'Resubmission date', { type: 'date' })),
+      kv('pencil', 'Required Correction', ef('correction', 'Required correction')),
     ),
     h('p', { class: 'muted small note' }, 'The ECPAR budget is prepared in the company system; record its reference and amount here. Connection charges are estimated separately in the Connection Charge tab.'),
     historyBlock('Revision history', hist));
-  var rejectBtn, approveBtn, resubBtn;
+  var rejectBtn, resubBtn;
+  // one button: Resubmit while it is rejected; Reject otherwise (ready for the next rejection)
   function ecparButtons() {
     rejectBtn = h('button', { class: 'rbtn', onclick: async () => { if (await rejectEcparFlow(row)) render(); } }, icon('close', 13), 'Reject');
-    approveBtn = h('button', { class: 'sbtn', onclick: async () => { if (await approveEcparFlow(row)) render(); } }, icon('check', 13), 'Approve');
     resubBtn = h('button', { class: 'sbtn', onclick: async () => { if (await resubmitEcparFlow(row)) render(); } }, icon('redo', 13), 'Resubmit');
-    const act = E.ECPAR_ACTIVE.includes(s);
-    return [act ? resubBtn : null, s !== 'Approved' ? approveBtn : null, !act ? rejectBtn : null].filter(Boolean);
+    return [E.ECPAR_ACTIVE.includes(s) ? resubBtn : rejectBtn];
   }
 }
 /** edit a saved history / log entry: its date and its text (new lines allowed), or delete it. Saves on Done. */
@@ -595,25 +617,23 @@ function ecxTab(row, info, n) {
     xs.length ? xs.map(x => ecxCard(row, x)) : h('section', { class: 'hcard pcard' }, h('p', { class: 'hempty' }, 'No ECX application yet. A project can have several; each keeps its own rejection history.')));
 }
 function ecxCard(row, x) {
-  const s = g(x, 'status') || 'Draft', xf = (key, label, extra = {}) => field(x, { key, label, ...extra });
+  const s = g(x, 'status') || '', xf = (key, label, extra = {}) => field(x, { key, label, ...extra });
   const reject = async () => { if (await rejectEcxFlow(row, x)) render(); };
-  const approve = async () => { if (await approveEcxFlow(row, x)) render(); };
   const resub = async () => { if (await resubmitEcxFlow(row, x)) render(); };
   const act = E.ECX_ACTIVE.includes(s);
   return h('section', { class: 'hcard pcard xcard' },
     h('div', { class: 'phbar' }, h('div', { class: 'ph' }, icon('filex', 17), xf('number', 'ECX number', { mono: true, ph: 'ECX number' }),
-      h('button', { class: 'val fv', 'aria-label': 'ECX status: ' + s, onclick: ev => pick(ev.currentTarget, E.ECX_STATUS, s, v => { if (v === 'Pending Action' && !act) reject(); else if (v === 'Approved') approve(); else if (v === 'Resubmitted') resub(); else if (v === 'Closed') { E.closeEcx(row, x); render(); } else { E.setEcxStatus(row, x, v); render(); } }) }, badge(s), icon('chevd', 14))),
+      h('button', { class: 'val fv', 'aria-label': 'ECX status: ' + (s || 'Not submitted'), onclick: ev => pick(ev.currentTarget, E.ECX_STATUS, s, v => { if (v === 'Rejected' && !act) reject(); else if (v === 'Resubmitted' && act) resub(); else if (v === 'Closed') { E.closeEcx(row, x); render(); } else { E.setEcxStatus(row, x, v); render(); } }) }, s ? badge(s) : h('span', { class: 'muted' }, 'Not submitted'), icon('chevd', 14))),
       h('div', { class: 'wfacts' },
         act ? h('button', { class: 'sbtn', onclick: resub }, icon('redo', 13), 'Resubmit') : null,
-        s !== 'Approved' && s !== 'Closed' ? h('button', { class: 'sbtn', onclick: approve }, icon('check', 13), 'Approve') : null,
         !act ? h('button', { class: 'rbtn', onclick: reject }, icon('close', 13), 'Reject') : null,
         h('button', { class: 'c-act ebtn', 'aria-label': 'More for this ECX application', onclick: e => menu(e.currentTarget, [{ label: 'Delete application', icon: 'trash', danger: true, run: async () => { if (await confirmBox('Delete this ECX application? Its log entries stay in the Activity Log.', 'Delete')) { D.trash(x.id); E.log(row, 'ECX', (g(x, 'number') || 'ECX application') + ' deleted.'); render(); } } }]) }, icon('more', 18)))),
     h('div', { class: 'kvs two' },
       kv('date', 'Completed Date', xf('submitted', 'Completed date', { type: 'date' })),
-      kv('date', 'Rejection Date', xf('rejected', 'Rejection date', { type: 'date' })), kv('text', 'Rejection Reason', xf('reason', 'Rejection reason')),
-      kv('date', 'Reassigned Date', xf('resubmitted', 'Reassigned date', { type: 'date' })),
-      kv('list', 'Reason Category', xf('rcat', 'Reason category', { type: 'select', options: E.ECX_REASONS })), kv('pencil', 'Required Correction', xf('correction', 'Required correction')),
-      kv('text', 'Remarks', xf('remarks', 'Remarks'))),
+      // no Reassigned Date: a reassignment gives the project a new Date Assigned / Due Date (a new KPI count)
+      kv('date', 'Rejection Date', xf('rejected', 'Rejection date', { type: 'date' })),
+      kv('list', 'Reason Category', xf('rcat', 'Reason category', { type: 'select', options: E.ECX_REASONS })),
+      kv('text', 'Rejection Reason', xf('reason', 'Rejection reason'))),
     historyBlock('Rejection history', E.revisions(row, x.id)));
 }
 

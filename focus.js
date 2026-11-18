@@ -6,9 +6,10 @@ import * as DB from './db.js';
 import * as E from './entities.js';
 import { h, icon, menu, toast, textbox, sheet } from './ui.js';
 import { formatDate, toISODate, parseDate, dateAdd, startOfDay } from './dates.js';
-import { state, now as NOW, render, go, moreMenu, longPress, exportList } from './app.js';
+import { state, now as NOW, render, go, moreMenu, longPress, exportList, download } from './app.js';
+import { pageHead } from './views.js';
 import * as C from './cols.js';
-import { badge, optPill, linkedField, formModal, newProjectSheet, rejectEcparFlow, resubmitEcparFlow, approveEcparFlow, rejectEcxFlow, resubmitEcxFlow, approveEcxFlow, editRejectionFlow } from './project.js';
+import { badge, optPill, linkedField, formModal, newProjectSheet, rejectEcparFlow, resubmitEcparFlow, approveEcparFlow, rejectEcxFlow, resubmitEcxFlow, approveEcxFlow, editRejectionFlow, yearMenuItems } from './project.js';
 import { dueItems, completeItem, pickProject, logSheet, coverInto, quickBtn, quickBar, heroNav } from './home.js';
 import { promptBox } from './ui.js';
 
@@ -40,7 +41,7 @@ function dueRecords(n) {
     const priority = it.kind === 'task' ? (g(it.task, 'priority') || '') : priOf(it.row);
     const status = it.kind === 'task' ? TASK_STATUS_MAP[g(it.task, 'status')] || 'Pending'
       : it.kind === 'ecpar' ? (g(E.ecparOf(it.row) || { f: {} }, 'status') === 'In Revision' ? 'In Progress' : 'Pending')
-      : it.kind === 'ecx' ? (['In Review', 'Ready to Resubmit'].includes(g(D.live(it.ecxId) || { f: {} }, 'status')) ? 'In Progress' : 'Pending')
+      : it.kind === 'ecx' ? 'Pending'
       : it.status === 'Estimation' ? 'In Progress' : 'Pending';
     const risk = it.days != null && it.days < 0 ? 'overdue' : it.days === 0 && status !== 'In Progress' ? 'risk' : 'track';
     const ecxNo = it.kind === 'ecx' ? (g(D.live(it.ecxId) || { f: {} }, 'number') || it.ecx) : it.ecx;
@@ -103,19 +104,18 @@ const PAGES = {
     bars: { title: 'By Project Category', icon: 'layers', key: r => r.cats[0] || 'No category', order: [...DB.CATEGORIES, 'No category'], label: short, colors: {} },
     cols: ['eCX & WBS No', 'Customer', 'Category', 'Priority', 'Site Survey Date', 'Status'] },
   ecpar: { title: 'Rejected ECPAR', icon: 'ecpar', desc: 'ECPAR submissions that were rejected and require review, revision or resubmission.', records: ecparRecords, unit: 'ECPAR',
-    tabs: [['all', 'All', null, () => true], ['pending', 'Pending Revision', 'redo', r => r.status === 'Pending Revision'], ['ready', 'Ready to Resubmit', 'play', r => r.status === 'Ready to Resubmit'], ['over', 'Overdue', 'info', r => r.days != null && r.days < 0]],
-    metrics: rs => [['ecpar', 'Total Rejected ECPAR', rs.length, null], ['redo', 'Pending Revision', rs.filter(r => r.status === 'Pending Revision').length, 'red'], ['play', 'Ready to Resubmit', rs.filter(r => r.status === 'Ready to Resubmit').length, 'green'], ['today', 'Overdue', rs.filter(r => r.days != null && r.days < 0).length, 'red']],
+    tabs: [['all', 'All', null, () => true], ['over', 'Overdue', 'info', r => r.days != null && r.days < 0]],
+    metrics: rs => [['ecpar', 'Total Rejected ECPAR', rs.length, null], ['today', 'Due Today', rs.filter(r => r.days === 0).length, 'orange'], ['info', 'Overdue', rs.filter(r => r.days != null && r.days < 0).length, 'red'], ['redo', 'Rejected in the last 7 days', rs.filter(r => r.rejected && (startOfDay(new Date(NOW())) - parseDate(r.rejected)) / 864e5 <= 7).length, null]],
     statuses: E.ECPAR_ACTIVE, search: r => [r.ref, r.pref, r.cust, r.reason, r.correction, r.cats.join(' ')],
     dates: [['overdue', 'Overdue', r => r.days < 0], ['today', 'Due today', r => r.days === 0], ['week', 'Rejected in the last 7 days', r => r.rejected && (startOfDay(new Date(NOW())) - parseDate(r.rejected)) / 864e5 <= 7]],
-    donut: { title: 'Rejected ECPAR by Status', key: r => r.status, order: E.ECPAR_ACTIVE, colors: { 'Pending Revision': '#3B82F6', 'In Revision': '#A78BFA', 'Ready to Resubmit': '#3FA45B' } },
-    bars: { title: 'Rejection Reason Breakdown', icon: 'list', key: r => r.rcat || 'Not categorised', order: [...E.ECPAR_REASONS, 'Not categorised'], colors: { 'Technical data issues': '#E5484D', 'Drawing / layout issues': '#E5A50A', 'Load summary issues': '#F5C451', Other: '#A78BFA', 'Not categorised': '#B4B2AD' } },
+    donut: { title: 'Rejected ECPAR by Status', key: r => r.status, order: E.ECPAR_ACTIVE, colors: { 'Pending Revision': '#3B82F6' } },
     cols: ['ECPAR No.', 'Customer', 'Project / Category', 'Rejection Details', 'Rejected Date', 'Due Date', 'Status'] },
   ecx: { title: 'Rejected ECX', icon: 'filex', desc: 'ECX applications that were rejected and require review or follow-up action.', records: ecxRecords, unit: 'ECX',
-    tabs: [['all', 'All', null, r => r.status !== 'Closed'], ['pending', 'Pending Action', 'hourglass', r => r.status === 'Pending Action'], ['review', 'In Review', 'search', r => r.status === 'In Review'], ['resub', 'Resubmission', 'redo', r => r.status === 'Ready to Resubmit' || r.status === 'Resubmitted'], ['closed', 'Closed', 'okcircle', r => r.status === 'Closed']],
-    metrics: rs => { const open = rs.filter(r => r.status !== 'Closed'); return [['filex', 'Total Rejected ECX', open.length, null, null, open.length], ['okcircle', 'Pending Action', rs.filter(r => r.status === 'Pending Action').length, 'green', null, open.length], ['today', 'Due Today', rs.filter(r => r.days === 0).length, 'orange', null, open.length], ['info', 'Overdue', rs.filter(r => r.days != null && r.days < 0).length, 'red', null, open.length]]; },
-    statuses: ['Pending Action', 'In Review', 'Ready to Resubmit', 'Resubmitted', 'Closed'], search: r => [r.no, r.appid, r.cust, r.reason, r.correction, r.cats.join(' ')],
+    tabs: [['all', 'All', null, r => r.status !== 'Closed'], ['pending', 'Rejected', 'hourglass', r => r.status === 'Rejected'], ['resub', 'Resubmitted', 'redo', r => r.status === 'Resubmitted'], ['closed', 'Closed', 'okcircle', r => r.status === 'Closed']],
+    metrics: rs => { const open = rs.filter(r => r.status !== 'Closed'); return [['filex', 'Total Rejected ECX', open.length, null, null, open.length], ['okcircle', 'Rejected', rs.filter(r => r.status === 'Rejected').length, 'green', null, open.length], ['today', 'Due Today', rs.filter(r => r.days === 0).length, 'orange', null, open.length], ['info', 'Overdue', rs.filter(r => r.days != null && r.days < 0).length, 'red', null, open.length]]; },
+    statuses: ['Rejected', 'Resubmitted', 'Closed'], search: r => [r.no, r.appid, r.cust, r.reason, r.correction, r.cats.join(' ')],
     dates: [['overdue', 'Overdue', r => r.days != null && r.days < 0], ['today', 'Due today', r => r.days === 0], ['week', 'Rejected in the last 7 days', r => r.rejected && (startOfDay(new Date(NOW())) - parseDate(r.rejected)) / 864e5 <= 7]],
-    donut: { title: 'Rejected ECX by Status', key: r => r.status === 'Ready to Resubmit' || r.status === 'Resubmitted' ? 'Resubmission' : r.status, order: ['Pending Action', 'Resubmission', 'In Review', 'Closed'], colors: { 'Pending Action': '#3B82F6', Resubmission: '#A78BFA', 'In Review': '#E5A50A', Closed: '#3FA45B' } },
+    donut: { title: 'Rejected ECX by Status', key: r => r.status, order: ['Rejected', 'Resubmitted', 'Closed'], colors: { Rejected: '#3B82F6', Resubmitted: '#A78BFA', Closed: '#3FA45B' } },
     bars: { title: 'Rejection Reason Breakdown', icon: 'list', key: r => r.rcat || 'Not categorised', order: [...E.ECX_REASONS, 'Not categorised'], colors: { 'Incomplete documents': '#E5484D', 'Drawing not compliant': '#E5A50A', 'Additional information required': '#F5C451', 'Revised documents required': '#A78BFA', Other: '#3B82F6', 'Not categorised': '#B4B2AD' } },
     cols: ['ECX No.', 'Customer', 'Project / Category', 'Rejection Details', 'Rejected Date', 'Due Date', 'Status'] },
 };
@@ -176,6 +176,7 @@ function metricsBar(def, base) {
 function tableCard(kind, def, S, base, rows, n) {
   const list = h('div', { class: 'flist', role: 'table', 'aria-label': def.title });
   const tabEls = def.tabs.map(([k, l, ic, f]) => h('button', { class: 'dchip' + (S.tab === k ? ' on' : ''), 'aria-pressed': S.tab === k ? 'true' : 'false', onclick: () => { S.tab = k; S.show = 60; render(); } }, ic ? icon(ic, 14) : null, l, h('span', { class: 'dcount' }, base.filter(f).length)));
+  if (kind === 'ecpar') tabEls.push(h('button', { class: 'dchip ecarchip', onclick: () => go('#/ecpar-archive'), title: 'Every ECPAR rejection, by year, for the KPI review' }, icon('archive', 14), 'Archive'));
   const search = textbox({ value: S.q, cls: 'hsearch-in', placeholder: { today: 'Search ECX, customer, task…', survey: 'Search project, customer or location…', ecpar: 'Search by ECPAR no., customer, reason…', ecx: 'Search ECX, customer, reason…' }[kind], label: 'Search',
     oninput: () => { S.q = search.value; clearTimeout(search._t); search._t = setTimeout(() => refreshInPlace(kind, search), 220); } });
   const active = [S.cat && ['Category: ' + short(S.cat), () => S.cat = ''], S.pri && ['Priority: ' + S.pri, () => S.pri = ''], S.status && ['Status: ' + S.status, () => S.status = ''],
@@ -231,7 +232,7 @@ function bulkBar(kind, S, rows, n) {
     kind === 'survey' ? btn('date', 'Schedule', async () => { const v = await formModal({ title: 'Schedule ' + chosen.length + ' site surveys', fields: [{ key: 'date', type: 'date', label: 'Survey date', required: true }], ok: 'Schedule' }); if (v) { chosen.forEach(r => E.scheduleSurvey(r.row, v.date)); done('Scheduled'); } }) : null,
     kind === 'survey' ? btn('check', 'Mark completed', async () => { const v = await formModal({ title: 'Mark ' + chosen.length + ' site surveys completed', fields: [{ key: 'date', type: 'date', label: 'Survey date', required: true }], ok: 'Mark completed' }); if (v) { chosen.forEach(r => E.completeSurvey(r.row, v.date, n)); done('Completed'); } }) : null,
     kind === 'ecpar' ? btn('status', 'Set status', e => statusMenu(e.currentTarget, E.ECPAR_ACTIVE, (r, s) => E.setEcparStatus(r.row, s))) : null,
-    kind === 'ecx' ? btn('status', 'Set status', e => statusMenu(e.currentTarget, ['Pending Action', 'In Review', 'Ready to Resubmit', 'Closed'], (r, s) => s === 'Closed' ? E.closeEcx(r.row, r.x) : E.setEcxStatus(r.row, r.x, s))) : null,
+    kind === 'ecx' ? btn('status', 'Set status', e => statusMenu(e.currentTarget, ['Rejected', 'Closed'], (r, s) => s === 'Closed' ? E.closeEcx(r.row, r.x) : E.setEcxStatus(r.row, r.x, s))) : null,
     h('button', { class: 'btn', onclick: () => { S.sel.clear(); render(); } }, 'Clear'));
 }
 
@@ -321,15 +322,13 @@ function rowMenu(kind, r, anchor, n) {
       { label: 'Open project', icon: 'expand', run: () => open('survey') });
   } else if (kind === 'ecpar') {
     items.push({ label: 'Review ECPAR', icon: 'expand', run: () => open('ecpar') },
-      { label: 'Update revision status…', icon: 'status', run: () => menu(anchor, E.ECPAR_ACTIVE.map(s => ({ label: s, checked: r.status === s, run: () => { E.setEcparStatus(r.row, s); render(); } }))) },
       { label: 'Edit rejection details', icon: 'pencil', run: async () => { if (await editRejectionFlow(E.ecpar(r.row), E.ECPAR_REASONS)) render(); } },
-      { label: 'Resubmit ECPAR', icon: 'redo', run: async () => { if (await resubmitEcparFlow(r.row)) render(); } },
-      { label: 'Mark approved', icon: 'check', run: async () => { if (await approveEcparFlow(r.row)) render(); } });
+      { label: 'Resubmit ECPAR', icon: 'redo', run: async () => { if (await resubmitEcparFlow(r.row)) render(); } });
   } else {
     items.push({ label: 'Review ECX', icon: 'expand', run: () => open('ecx') },
-      { label: 'Update status…', icon: 'status', run: () => menu(anchor, ['Pending Action', 'In Review', 'Ready to Resubmit', 'Closed'].map(s => ({ label: s, checked: r.status === s, run: () => { if (s === 'Closed') E.closeEcx(r.row, r.x); else E.setEcxStatus(r.row, r.x, s); render(); } }))) },
+      { label: 'Update status…', icon: 'status', run: () => menu(anchor, ['Rejected', 'Closed'].map(s => ({ label: s, checked: r.status === s, run: () => { if (s === 'Closed') E.closeEcx(r.row, r.x); else E.setEcxStatus(r.row, r.x, s); render(); } }))) },
       { label: 'Edit rejection details', icon: 'pencil', run: async () => { if (await editRejectionFlow(r.x, E.ECX_REASONS)) render(); } });
-    if (r.status !== 'Closed') items.push({ label: 'Resubmit ECX', icon: 'redo', run: async () => { if (await resubmitEcxFlow(r.row, r.x)) render(); } }, { label: 'Mark approved', icon: 'check', run: async () => { if (await approveEcxFlow(r.row, r.x)) render(); } });
+    if (r.status !== 'Closed') items.push({ label: 'Resubmit ECX', icon: 'redo', run: async () => { if (await resubmitEcxFlow(r.row, r.x)) render(); } });
   }
   items.push('-', { label: 'Log activity', icon: 'history', run: () => logFor(r.row) });
   menu(anchor, items, { width: 250 });
@@ -380,7 +379,7 @@ function quickCard(kind) {
     qa('redo', 'Resubmit ECPAR', async () => { const r = await pickFrom('Resubmit which ECPAR?', recs()); if (r && await resubmitEcparFlow(r.row)) render(); }), logQA];
   else btns = [
     qa('expand', 'Review ECX', async () => { const r = await pickFrom('Review which ECX?', recs().filter(x => x.status !== 'Closed')); if (r) go('#/project/' + r.row.id + '/ecx'); }),
-    qa('pencil', 'Update ECX', async () => { const r = await pickFrom('Update which ECX?', recs()); if (r) menu(document.querySelector('.f-ecx .qbar') || document.body, [...['Pending Action', 'In Review', 'Ready to Resubmit', 'Closed'].map(s => ({ label: 'Status: ' + s, checked: r.status === s, run: () => { if (s === 'Closed') E.closeEcx(r.row, r.x); else E.setEcxStatus(r.row, r.x, s); render(); } })), '-', { label: 'Edit rejection details', icon: 'pencil', run: async () => { if (await editRejectionFlow(r.x, E.ECX_REASONS)) render(); } }]); }),
+    qa('pencil', 'Update ECX', async () => { const r = await pickFrom('Update which ECX?', recs()); if (r) menu(document.querySelector('.f-ecx .qbar') || document.body, [...['Rejected', 'Closed'].map(s => ({ label: 'Status: ' + s, checked: r.status === s, run: () => { if (s === 'Closed') E.closeEcx(r.row, r.x); else E.setEcxStatus(r.row, r.x, s); render(); } })), '-', { label: 'Edit rejection details', icon: 'pencil', run: async () => { if (await editRejectionFlow(r.x, E.ECX_REASONS)) render(); } }]); }),
     qa('redo', 'Resubmit ECX', async () => { const r = await pickFrom('Resubmit which ECX?', recs().filter(x => x.active)); if (r && await resubmitEcxFlow(r.row, r.x)) render(); }), logQA];
   return quickBar(btns);
 }
@@ -390,4 +389,52 @@ export function focusCounts(n) {
   const out = {};
   for (const k of Object.keys(PAGES)) { const all = PAGES[k].records(n); out[k] = all.filter(PAGES[k].tabs[0][3]).length; }
   return out;
+}
+
+// ---------------- Rejected ECPAR archive: every ECPAR rejection, by year, for the KPI review ----------------
+let EA = { year: null };
+try { const v = JSON.parse(localStorage.getItem('folio-ecpar-year') || 'null'); if (v) EA.year = v; } catch (e) {}
+/** all ECPAR rejections of the tracker and of the year archives (a closed year's projects keep their history here) */
+export function ecparArchiveRows() {
+  const k = DB.kpiDb(); if (!k) return [];
+  const dbs = [k, ...DB.yearArchives()], out = [];
+  for (const d of dbs) for (const row of DB.rows(d.id)) {
+    const cyc = E.ecparCycles(row); if (!cyc.length) continue;
+    const info = DB.kpiInfo(row, k), ep = D.live('ep' + row.id), no = (ep && g(ep, 'ref')) || DB.refParts(row).wbs || '';
+    cyc.forEach((c, i) => out.push({ row, id: row.id + ':' + i, no, ref: DB.refParts(row).ecx, cust: info.title, cats: info.category, n: i + 1, of: cyc.length, ...c,
+      year: c.rejected.getFullYear(), state: c.days == null ? 'Waiting' : c.days <= 1 ? 'Within KPI' : 'Over KPI', where: d === k ? '' : 'Archive ' + D.val(d, 'year') }));
+  }
+  return out.sort((a, b) => b.rejected - a.rejected);
+}
+export function ecparArchiveScreen() {
+  const all = ecparArchiveRows(), years = [...new Set(all.map(r => r.year))].sort((a, b) => b - a);
+  const cy = new Date(NOW()).getFullYear();
+  if (EA.year == null || (EA.year !== 'all' && !years.includes(+EA.year))) EA.year = years.includes(cy) ? String(cy) : years.length ? String(years[0]) : 'all';
+  const rows = EA.year === 'all' ? all : all.filter(r => r.year === +EA.year);
+  const keep = () => { try { localStorage.setItem('folio-ecpar-year', JSON.stringify(EA.year)); } catch (e) {} };
+  state.ctx = { more: a => moreMenu(a, { extra: [{ label: 'Back to Rejected ECPAR', icon: 'ecpar', run: () => go('#/ecpar') }, { label: 'Download as CSV', icon: 'export', run: () => csv() }, ...yearMenuItems(NOW())] }) };
+  const fmt = d => d ? formatDate(d, 'DD/MM/YYYY') : '—';
+  const csv = () => { const q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+    const lines = [['ECPAR No', 'Reference No (ECX No)', 'Customer', 'Rejection', 'Rejection Date', 'Resubmission Date', 'Days', 'KPI', 'Reason Category', 'Reason'].map(q).join(','),
+      ...rows.map(r => [r.no, r.ref, r.cust, r.n + ' of ' + r.of, fmt(r.rejected), fmt(r.resubmitted), r.days ?? '', r.state, r.cat, r.reason].map(q).join(','))];
+    download(`ECPAR rejections ${EA.year === 'all' ? 'all years' : EA.year}.csv`, '﻿' + lines.join('\n'), 'text/csv'); };
+  const within = rows.filter(r => r.state === 'Within KPI').length, over = rows.filter(r => r.state === 'Over KPI').length, wait = rows.filter(r => r.state === 'Waiting').length;
+  const pct = within + over ? Math.round(within / (within + over) * 100) : null;
+  const yearBtn = h('button', { class: 'hbtn glass yearbtn on', 'aria-label': 'Year', onclick: e => menu(e.currentTarget, [{ label: 'All years', checked: EA.year === 'all', run: () => { EA.year = 'all'; keep(); render(); } },
+    ...years.map(y => ({ label: `${y}  (${all.filter(r => r.year === y).length})`, checked: String(EA.year) === String(y), run: () => { EA.year = String(y); keep(); render(); } }))]) }, h('span', { class: 'ybadge' }, EA.year === 'all' ? 'All' : String(EA.year)));
+  const metric = (ic, label, v, tone) => h('div', { class: 'hcard dmetric' }, h('span', { class: 'dmi ' + (tone || '') }, icon(ic, 18)), h('div', {}, h('small', {}, label), h('b', {}, String(v))));
+  const table = h('div', { class: 'hlist eatable', role: 'table' },
+    h('div', { class: 'earow eahd', role: 'row' }, ...['ECPAR No', 'Customer', 'Rejected', 'Resubmitted', 'Days', 'Reason'].map(t => h('span', { role: 'columnheader' }, t))),
+    ...(rows.length ? rows.map(r => h('div', { class: 'earow', role: 'row', tabindex: '0', onclick: () => go('#/project/' + r.row.id + '/ecpar'), onkeydown: e => { if (e.key === 'Enter') go('#/project/' + r.row.id + '/ecpar'); } },
+      h('span', { class: 'mono' }, r.no || '—', h('small', {}, [r.ref, r.of > 1 ? `rejection ${r.n} of ${r.of}` : '', r.where].filter(Boolean).join(' · '))),
+      h('span', {}, r.cust), h('span', {}, fmt(r.rejected)), h('span', {}, fmt(r.resubmitted)),
+      h('span', {}, h('span', { class: 'dl amdone ' + (r.state === 'Within KPI' ? 'ok' : r.state === 'Over KPI' ? 'late' : '') }, r.days == null ? 'Waiting' : `${r.days} ${r.days === 1 ? 'day' : 'days'}`)),
+      h('span', { class: 'eareason' }, [r.cat, r.reason].filter(Boolean).join(' — ') || '—')))
+      : [h('p', { class: 'hempty' }, EA.year === 'all' ? 'No ECPAR rejections yet.' : `No ECPAR rejections in ${EA.year}.`)]));
+  return h('div', { class: 'wrap home focus ecarch' },
+    pageHead('Rejected ECPAR Archive', 'Every ECPAR rejection and how fast it was resubmitted (1 day allowed), by year — for the KPI review. Closed years stay here.', 'ecpar',
+      { crumb: h('span', {}, h('a', { href: '#/ecpar' }, 'Rejected ECPAR'), ' › Archive'), tools: [yearBtn, h('button', { class: 'hbtn glass', 'aria-label': 'Download as CSV', title: 'Download as CSV', onclick: csv }, icon('export', 18))] }),
+    h('div', { class: 'dmetrics' }, metric('ecpar', 'Rejections', rows.length), metric('okcircle', 'Resubmitted within 1 day', within, 'green'), metric('info', 'Over 1 day', over, 'red'),
+      metric('target', 'KPI', pct == null ? '—' : pct + '%', pct == null ? '' : pct >= 90 ? 'green' : 'red'), wait ? metric('date', 'Waiting', wait, 'blue') : null),
+    h('section', { class: 'hcard htable' }, table));
 }

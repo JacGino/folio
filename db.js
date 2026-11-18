@@ -123,6 +123,32 @@ export function newRow(dbr, values = {}) {
 // ---- KPI tracker ----
 export function kpiDb() { return dbs().find(d => D.val(d, 'role') === 'kpi') || dbs().find(d => propByName(d, 'Status') && propByName(d, 'Due Date')) || null; }
 
+// ---------- yearly archive: a closed year's finished projects move to their own table ("Planning KPI Archive 2026") ----------
+export const yearArchives = () => dbs().filter(d => D.val(d, 'role') === 'kpi-archive').sort((a, b) => D.val(b, 'year', 0) - D.val(a, 'year', 0));
+export const yearArchive = y => yearArchives().find(d => D.val(d, 'year') === y) || null;
+/** a project row of the tracker or of a year archive (both use the tracker's properties) */
+export const isKpiRow = row => { const d = row && D.live(D.val(row, 'db')); return !!d && (d === kpiDb() || D.val(d, 'role') === 'kpi-archive'); };
+/** the year a project belongs to: its Date Assigned (or when it was made) */
+export const projectYear = row => { const d = kpiDb(), p = d && propByName(d, 'Date Assigned'), v = p && value(row, p); const t = v ? new Date(v) : new Date(D.val(row, 'created', 0) || Date.now()); return t.getFullYear(); };
+/** what Close year moves: Done projects, and any project whose Archive box is ticked. A Rejected project (ECX rejected) stays
+ *  in the tracker and on the Rejected ECX page until you tick its Archive box; open projects stay too. */
+export const yearClosable = i => i.archived || i.status === 'Done';
+/** move a year's Done / archived projects into that year's archive table */
+export function closeYear(y) {
+  const k = kpiDb(); if (!k) return 0;
+  let a = yearArchive(y);
+  if (!a) { // its first view shows everything (Done projects are archived)
+    const page = D.create('page', 'ws', { title: 'Planning KPI Archive ' + y, blocks: [], created: Date.now(), order: Date.now() });
+    a = D.create('db', 'ws', { name: 'Archive ' + y, page: page.id, role: 'kpi-archive', year: y, props: props(k).map(p => ({ ...p })), views: [{ id: uid('v'), name: 'All projects', type: 'table', filter: [], sort: (da => da ? [{ prop: da.id, dir: 'asc' }] : [])(propByName(k, 'Date Assigned')), hidden: [] }, ...views(k).map(v => ({ ...v }))], colcfg: D.val(k, 'colcfg', null), created: Date.now() });
+    D.update(page.id, { blocks: [{ id: uid('b'), t: 'db', db: a.id }], db: a.id });
+  } else D.update(a.id, { props: props(k).map(p => ({ ...p })) }); // the tracker's properties as they are now
+  let n = 0;
+  for (const r of rows(k.id)) { if (projectYear(r) !== y || !yearClosable(kpiInfo(r, k))) continue; D.update(r.id, { db: a.id }); n++; }
+  return n;
+}
+/** bring a year's archive back into the tracker */
+export function reopenYear(y) { const k = kpiDb(), a = yearArchive(y); if (!k || !a) return 0; let n = 0; for (const r of rows(a.id)) { D.update(r.id, { db: k.id }); n++; } return n; }
+
 export function createKpiTracker(parentPage = null) {
   const P = (name, type, extra = {}) => ({ id: uid('p'), name, type, ...extra });
   const opts = (...l) => l.map(([name, color]) => ({ name, color }));
@@ -189,16 +215,15 @@ export function mergeProjectRef() {
 
 /** Classify a KPI task for the Today / Survey / ECPAR screens. */
 /** KPI clock of a project, from its latest ECX application:
- *  starts at the ECX Reassigned Date (when reassigned) or else the Date Assigned;
+ *  starts at the project's Date Assigned;
  *  stops at the first ECX Completed Date or Rejection Date on or after that start (null while still open). */
 export function ecxKpi(rowId, assigned) {
   const by = D.memo('ecxByProject', () => { const m = new Map(); for (const x of D.all('ecx')) { const k = D.val(x, 'project'); if (!m.has(k)) m.set(k, []); m.get(k).push(x); } for (const a of m.values()) a.sort((a, b) => D.val(a, 'created', 0) - D.val(b, 'created', 0)); return m; });
   const xs = by.get(rowId) || [];
   const x = xs[xs.length - 1]; if (!x) return { start: null, end: null };
   const day = k => { const d = parseDate(D.val(x, k)); return d ? startOfDay(d) : null; };
-  const re = day('p:resubmitted'), as = assigned ? startOfDay(assigned) : null;
-  const start = re && (!as || re >= as) ? re : null; // a reassignment restarts the clock
-  const from = start || as;
+  // the clock starts at the project's Date Assigned (a reassignment changes that date, so the count starts again)
+  const as = assigned ? startOfDay(assigned) : null, start = null, from = as;
   const ends = ['p:submitted', 'p:rejected'].map(day).filter(d => d && (!from || d >= from)).sort((a, b) => a - b);
   return { start, end: ends[0] || null };
 }
@@ -208,13 +233,20 @@ export function kpiInfo(row, dbr, now = Date.now()) {
   const archived = value(row, P('Archive')) === true;
   const closed = archived || ['Done', 'Rejected'].includes(status);
   let due = null, days = null, amend = status === 'To Amend';
-  if (amend) { const rj = value(row, P('ECPAR Rejected')); due = rj ? dateAdd(rj, 1, 'days') : null; }
+  // To Amend: resubmit the ECPAR within 1 day of its Rejection Date (the ECPAR tab's date, or the table's ECPAR Rejected)
+  // ECPAR amendment KPI: the Rejection Date starts the clock, the Resubmission Date stops it (1 day allowed); each new rejection starts it again until approved
+  let amendStart = null, amendEnd = null;
+  if (amend) {
+    const ep = D.live('ep' + row.id), rj = parseDate(ep && D.val(ep, 'p:rejected')) || value(row, P('ECPAR Rejected')), rs = parseDate(ep && D.val(ep, 'p:resubmitted'));
+    amendStart = rj ? startOfDay(rj) : null; amendEnd = rs && amendStart && startOfDay(rs) >= amendStart ? startOfDay(rs) : null;
+    due = amendStart ? dateAdd(amendStart, 1, 'days') : null;
+  }
   else due = value(row, P('Due Date'));
-  if (due) days = dateBetween(due, today, 'days');
+  if (due && !amendEnd) days = dateBetween(due, today, 'days');
   const g = n => { const p = P(n); return p ? value(row, p) : null; };
   const ck = ecxKpi(row.id, g('Date Assigned')), ecxEnd = ck.end;
-  if (ck.start && !amend) { due = dateAdd(ck.start, 7, 'days'); days = dateBetween(due, today, 'days'); } // reassigned: 7 days from the Reassigned Date
-  return { id: row.id, row, status, closed, amend, due, days, title: title(row), address: g('Address') || '', map: g('Pin Location') || '',
+  const amendDays = amendStart ? dateBetween(amendEnd || today, amendStart, 'days') : null; // days from rejection to resubmission (or to today while waiting)
+  return { id: row.id, row, status, closed, amend, amendStart, amendEnd, amendDays, due, days, title: title(row), address: g('Address') || '', map: g('Pin Location') || '',
     station: g('Station') || '', ecx: g(REF_ECX) || '', rejected: g('ECPAR Rejected'), alert: P('Alert') ? formulaToText(value(row, P('Alert'), now)) : '',
     category: [].concat(g('Project Category') || []), priority: g('Priority') || '', next: g('Next Task') || '', ecxRejected: g('ECX Rejected'),
     assigned: g('Date Assigned'), kpiStart: ck.start || g('Date Assigned'), reassigned: ck.start, kpiDue: ck.start ? due : null, archived, ecxEnd,
@@ -227,7 +259,7 @@ export function kpiTasks(now = Date.now()) { const d = kpiDb(); if (!d) return [
 const byDays = (a, b) => (a.days ?? 9999) - (b.days ?? 9999);
 export function todayGroups(now) {
   const t = kpiTasks(now).filter(x => !x.ecxEnd); // an ECX Completed / Rejection Date stops the KPI clock
-  return { overdue: t.filter(x => x.days != null && x.days < 0).sort(byDays), today: t.filter(x => (x.days != null && x.days >= 0 && x.days <= 2) || (x.amend && x.days == null)).sort(byDays) };
+  return { overdue: t.filter(x => x.days != null && x.days < 0).sort(byDays), today: t.filter(x => (x.days != null && x.days >= 0 && x.days <= 2) || (x.amend && x.days == null && !x.amendEnd)).sort(byDays) };
 }
 export function surveyGroups(now) {
   const t = kpiTasks(now).filter(x => x.status === 'Site Survey');
@@ -265,6 +297,6 @@ export function ensureHomeFields() {
   return changed;
 }
 export function ecparGroups(now) {
-  const t = kpiTasks(now).filter(x => x.amend);
+  const t = kpiTasks(now).filter(x => x.amend && !x.amendEnd); // resubmitted: the clock has stopped, waiting for approval
   return { overdue: t.filter(x => x.days != null && x.days < 0).sort(byDays), today: t.filter(x => !(x.days != null && x.days < 0)).sort(byDays) };
 }

@@ -1506,7 +1506,7 @@ svg.ok { color: #3B8A55; }
 .ccpi.need { background: #FBEAE7; } .ccpi.need span { color: #A43B32; } .ccpi.nr { background: var(--bg2); }
 .ccnotes { margin: 10px 0 0; padding-left: 18px; font-size: 12.5px; color: var(--ink2); } .ccnotes li + li { margin-top: 3px; }
 .ccna { display: flex; gap: 8px; align-items: center; padding: 14px; border-radius: 12px; background: #FBEAE7; color: #A43B32; font-size: 14px; }
-.ccbottom { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 12px; }
+.ccbottom { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
 @container pbody (max-width: 760px) { .ccbottom { grid-template-columns: minmax(0, 1fr); } }
 .ccformula { padding: 12px 14px !important; background: color-mix(in srgb, var(--cream) 70%, var(--bg)) !important; }
 .ccformula h3, .cctotal h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; font-size: 14.5px; font-weight: 600; }
@@ -2261,3 +2261,41 @@ html.kbup .gmodal-back { top: var(--vvt, 0px); bottom: auto; height: var(--vvh, 
 @container ccapl (max-width: 380px) { .ccapl-r > .ccapl-name { overflow-wrap: break-word; } }
 /* long lists: rows outside the screen are laid out only when scrolled to (faster screens and scrolling on phones) */
 .gantt .gtr:not(.ghd) { content-visibility: auto; contain-intrinsic-size: auto 44px; }
+/* ECPAR resubmitted: the amendment clock stopped (green within 1 day, red when later) */
+.dl.amdone { white-space: nowrap; } .dl.amdone.ok { background: #E3EEDF; color: #3F6B3A; }
+/* year picker: shows the chosen year in place of the calendar icon */
+.hbtn.yearbtn .ybadge { font-size: 12.5px; font-weight: 650; letter-spacing: -.2px; font-variant-numeric: tabular-nums; }
+.hbtn.yearbtn:has(.ybadge) { width: auto; padding: 0 10px; border-radius: 999px; }
+/* Rejected ECPAR archive */
+.earow { display: grid; grid-template-columns: minmax(130px, 1.1fr) minmax(140px, 1.4fr) 104px 104px 96px minmax(160px, 2fr); gap: 10px; align-items: start; padding: 12px 14px; border-top: 1px solid var(--line); cursor: pointer; }
+.earow.eahd { cursor: default; border-top: 0; font-size: 12.5px; color: var(--ink3); font-weight: 600; }
+.earow:not(.eahd):hover { background: var(--hover, rgba(0,0,0,.025)); }
+.earow > span { min-width: 0; overflow-wrap: anywhere; }
+.earow small { display: block; color: var(--ink3); font-size: 11.5px; margin-top: 2px; font-family: inherit; }
+.eareason { color: var(--ink2); }
+.dchip.ecarchip { margin-left: auto; }
+@container focus (max-width: 760px) {
+  .earow { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "a e" "b b" "c d" "f f"; row-gap: 4px; }
+  .earow.eahd { display: none; }
+  .earow > :nth-child(1) { grid-area: a; } .earow > :nth-child(2) { grid-area: b; } .earow > :nth-child(3) { grid-area: c; } .earow > :nth-child(3)::before { content: 'Rejected '; color: var(--ink3); }
+  .earow > :nth-child(4) { grid-area: d; text-align: right; } .earow > :nth-child(4)::before { content: 'Resubmitted '; color: var(--ink3); }
+  .earow > :nth-child(5) { grid-area: e; } .earow > :nth-child(6) { grid-area: f; font-size: .92em; }
+}
+
+/* Rejected ECPAR Archive: metric tiles */
+.dmetrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 14px 0; }
+.dmetric { display: flex; align-items: center; gap: 10px; padding: 12px 14px; min-width: 0; }
+.dmetric .dmi { flex: none; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: var(--hover, rgba(0,0,0,.04)); color: var(--ink2); }
+.dmetric .dmi.green { color: #2f7d4f; background: rgba(47,125,79,.1); }
+.dmetric .dmi.red { color: #b4443a; background: rgba(180,68,58,.1); }
+.dmetric > div { min-width: 0; display: flex; flex-direction: column; }
+.dmetric small { color: var(--ink3); font-size: 12px; line-height: 1.25; overflow-wrap: anywhere; }
+.dmetric b { font-size: 22px; line-height: 1.2; font-variant-numeric: tabular-nums; }
+@container focus (max-width: 420px) { .dmetrics { grid-template-columns: 1fr 1fr; } }
+.cctotal dt small { display: block; color: var(--ink3); font-size: 11.5px; font-weight: 400; }
+/* NTK long text: extra items get a cost-group picker (LT / HT / Substation) */
+.ltxrow:has(> select) { grid-template-columns: minmax(0, 2.4fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, .7fr) minmax(0, .9fr) minmax(0, .9fr) 34px; }
+@container (max-width: 560px) { .ltxrow:has(> select) { grid-template-columns: 1fr 1fr 34px; } }
+@media (max-width: 560px) { .ltxrow:has(> select) { grid-template-columns: 1fr 1fr 34px; } }
+.ltf.ltchk { display: flex; flex-direction: row; align-items: center; gap: 10px; }
+.ltf.ltchk > span { margin: 0; }

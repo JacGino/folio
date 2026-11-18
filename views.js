@@ -278,7 +278,7 @@ function nextAction(f) {
   if (f.stage === 'Site Survey') return [icon('date', 13), f.ev.surveyPlan ? 'Site survey: ' + dShort(f.ev.surveyPlan) : 'Schedule site survey'];
   if (f.stage === 'Report') return [icon('page', 13), 'Prepare report'];
   if (f.stage === 'ECPAR') { const s = ep ? E.g(ep, 'status') : 'Pending Revision'; return [icon('ecpar', 13), E.ECPAR_ACTIVE.includes(s) ? 'Revise ECPAR' : f.ev.ecparSubmitted ? 'ECPAR: ' + dShort(f.ev.ecparSubmitted) : 'Prepare ECPAR']; }
-  if (f.stage === 'ECX') { const x = f.ecx.find(x => E.ECX_ACTIVE.includes(E.g(x, 'status'))) || f.ecx.find(x => !['Approved', 'Closed'].includes(E.g(x, 'status'))); const s = x && E.g(x, 'status'), sub = x && parseDate(E.g(x, 'submitted'));
+  if (f.stage === 'ECX') { const x = f.ecx.find(x => E.ECX_ACTIVE.includes(E.g(x, 'status'))) || f.ecx.find(x => E.g(x, 'status') !== 'Closed'); const s = x && E.g(x, 'status'), sub = x && parseDate(E.g(x, 'submitted'));
     return [icon('filex', 13), E.ECX_ACTIVE.includes(s) ? 'Resubmit ' + (E.g(x, 'number') || 'ECX') : sub ? 'ECX: ' + dShort(sub) : 'Submit ECX']; }
   return null;
 }
@@ -362,7 +362,7 @@ function period(S, today) {
 const kpiIn = (list, from, to) => list.filter(f => f.kpiEnd && startOfDay(f.kpiEnd) >= from && startOfDay(f.kpiEnd) <= to);
 function cellSurvey(f) { return f.ev.survey ? dShort(f.ev.survey) : f.surveyState === 'pending' ? (f.ev.surveyPlan ? 'Planned ' + dShort(f.ev.surveyPlan) : 'Pending') : f.surveyState === 'done' ? 'Done' : '—'; }
 function cellEcpar(f) { if (f.rep) return 'Not applicable'; const ep = E.ecparOf(f.row); if (!ep && !f.ecparStatus) return 'Not started'; const s = f.ecparStatus || 'Draft'; return s + (f.ev.ecparSubmitted && !E.ECPAR_ACTIVE.includes(s) ? ' ' + dShort(f.ev.ecparSubmitted) : ''); }
-function cellEcx(f) { if (f.rep) return 'Not applicable'; if (!f.ecx.length) return 'None'; const st = f.ecx.map(x => E.g(x, 'status') || 'Draft'); const ap = st.filter(s => s === 'Approved').length; return f.ecx.length === 1 ? st[0] : `${f.ecx.length} applications · ${ap} approved`; }
+function cellEcx(f) { if (f.rep) return 'Not applicable'; if (!f.ecx.length) return 'None'; const st = f.ecx.map(x => E.g(x, 'status') || 'Not submitted'); const cl = st.filter(s => s === 'Closed').length; return f.ecx.length === 1 ? st[0] : `${f.ecx.length} applications · ${cl} closed`; }
 export function reportsScreen() {
   E.ensureAll();
   const n = NOW(), today = startOfDay(new Date(n)); if (!RS.anchor) RS.anchor = new Date(today.getFullYear(), today.getMonth(), 1);
