@@ -67,4 +67,10 @@ export const isDirty = sh => dirty.has(sh);
 export async function markClean(sh) { dirty.delete(sh); await S.meta.set('dirty', [...dirty]); }
 export const dirtyShards = () => [...dirty];
 export const count = () => recs.size;
+/** Start over: every record and attachment on this device is removed; settings, GitHub connection and keys stay */
+export async function resetRecords() {
+  clearTimeout(saveTimer); pendingSave.clear(); recs.clear(); dirty.clear();
+  await S.clearStores(['records', 'blobs']); await S.meta.set('dirty', []); await S.meta.set('upq', []);
+  emit({ type: 'wipe' });
+}
 export async function wipe() { recs.clear(); dirty.clear(); await S.clearAll(); emit({ type: 'wipe' }); }

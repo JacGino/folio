@@ -7,6 +7,18 @@ import { encryptBlob, decryptBlob } from './crypto.js';
 
 export const MAX_FILE = 25 * 1024 * 1024;
 let gh = null, running = null, status = { state: 'off', at: 0, error: '' };
+// Start over: the data lives in a fresh folder r/<id>/ of the repo, named in folio-root.json. A device that sees a new
+// folder clears its own copy first, so nothing old is merged back; an old app version keeps writing to the old place,
+// which no updated device reads.
+export const ROOT_FILE = 'folio-root.json';
+let base = '';
+const P = path => base + path;
+/** read folio-root.json; on a new folder, clear this device's copy before syncing */
+async function resolveBase() {
+  const ptr = await gh.getJSON(ROOT_FILE), ep = (ptr && ptr.data && ptr.data.epoch) || '', mine = (await S.meta.get('epoch')) || '';
+  if (ep && ep !== mine) { await D.resetRecords(); await S.meta.set('epoch', ep); }
+  base = ep ? `r/${ep}/` : (mine ? `r/${mine}/` : '');
+}
 const listeners = new Set();
 export const onStatus = fn => (listeners.add(fn), () => listeners.delete(fn));
 const setStatus = s => { status = { ...status, ...s }; listeners.forEach(f => f(status)); };
@@ -22,7 +34,7 @@ export const connected = () => !!gh;
 export async function remoteSettings() { const ws = await S.meta.get('ws-settings'); return ws || {}; }
 
 async function syncShard(sh, depth = 0) {
-  const path = D.shardPath(sh);
+  const path = P(D.shardPath(sh));
   const remote = await gh.getJSON(path);
   const local = D.shardRecords(sh);
   const { merged, changedLocal, changedRemote } = M.mergeMaps(local, remote ? remote.data.records || {} : {});
@@ -53,8 +65,9 @@ export function run() {
     setStatus({ state: 'syncing', error: '' });
     try {
       await D.flush();
+      await resolveBase();
       await syncShard('ws');
-      const remoteDbs = (await gh.list('db')).filter(f => f.name.endsWith('.json')).map(f => 'db:' + f.name.slice(0, -5));
+      const remoteDbs = (await gh.list(P('db'))).filter(f => f.name.endsWith('.json')).map(f => 'db:' + f.name.slice(0, -5));
       for (const sh of new Set([...D.shards().filter(s => s !== 'ws'), ...remoteDbs])) await syncShard(sh);
       await uploadQueue();
       setStatus({ state: 'idle', at: Date.now() });
@@ -83,7 +96,7 @@ async function uploadQueue() {
   if (!q.length || !fileKey) return;
   for (const id of [...q]) {
     const b = await S.get('blobs', id);
-    if (b) { const enc = await encryptBlob(fileKey, b.bytes); await gh.put(`files/${id}.enc`, enc, undefined, 'Folio: attachment'); await new Promise(r => setTimeout(r, 1500)); }
+    if (b) { const enc = await encryptBlob(fileKey, b.bytes); await gh.put(P(`files/${id}.enc`), enc, undefined, 'Folio: attachment'); await new Promise(r => setTimeout(r, 1500)); }
     q = q.filter(x => x !== id); await S.meta.set('upq', q);
   }
 }
@@ -91,8 +104,21 @@ async function uploadQueue() {
 export async function fileBytes(id) {
   const b = await S.get('blobs', id); if (b) return b;
   if (!gh || !fileKey) return null;
-  const enc = await gh.getBytes(`files/${id}.enc`); if (!enc) return null;
+  const enc = await gh.getBytes(P(`files/${id}.enc`)); if (!enc) return null;
   const bytes = await decryptBlob(fileKey, enc); const rec = { bytes, type: '', name: id };
   await S.put('blobs', rec, id); return rec;
+}
+/** Start over: erase everything on every device and in the GitHub copy (the old files stay in the repo, unread).
+ *  The new folder is named first, so if GitHub cannot be reached nothing is erased. */
+export async function startOver() {
+  const ep = M.uid('r'), settings = await remoteSettings();
+  if (gh) {
+    if (running) await running;
+    const cur = await gh.getJSON(ROOT_FILE);
+    await gh.putJSON(ROOT_FILE, { v: 1, app: 'folio', epoch: ep, at: new Date().toISOString() }, cur && cur.sha);
+  }
+  await D.resetRecords(); await S.meta.set('epoch', ep); base = `r/${ep}/`;
+  await S.meta.set('ws-settings-pending', settings); // encryption settings go with the new workspace
+  return ep;
 }
 export async function totalBlobBytes() { let n = 0; for (const b of await S.all('blobs')) n += b.bytes?.byteLength || 0; return n; }

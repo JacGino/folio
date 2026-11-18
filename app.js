@@ -629,8 +629,19 @@ function taskRow(t, color, kind) {
 }
 // Maps app on iPhone; plain web elsewhere
 const isIOS = () => /iP(hone|ad|od)/.test(navigator.platform) || (navigator.userAgent.includes('Mac') && 'ontouchend' in document);
-export const mapsUrl = u => u;
-export const browserUrl = u => isIOS() ? u.replace(/^https:\/\//i, 'x-safari-https://').replace(/^http:\/\//i, 'x-safari-http://') : u;
+// a Google Maps link: maps.app.goo.gl, goo.gl/maps, google.<tld>/maps, maps.google.<tld>
+const isGoogleMaps = u => /^(https?:\/\/)?((maps\.app\.goo\.gl|goo\.gl\/maps)\/|(www\.)?google\.[a-z.]+\/maps|maps\.google\.[a-z.]+)/i.test(String(u || '').trim());
+// on iPhone / iPad a Google Maps link opens the Google Maps app (comgooglemapsurl://, Google own scheme for map links);
+// if the app does not open, the link opens in Safari instead (see the click handler below)
+export const mapsUrl = u => isIOS() && isGoogleMaps(u) ? 'comgooglemapsurl://' + String(u).trim().replace(/^https?:\/\//i, '') : u;
+export const browserUrl = u => isIOS() && isGoogleMaps(u) ? mapsUrl(u) : isIOS() ? u.replace(/^https:\/\//i, 'x-safari-https://').replace(/^http:\/\//i, 'x-safari-http://') : u;
+// fallback: Google Maps app not installed (the page is still showing after a moment) → open the same link in Safari
+document.addEventListener('click', e => {
+  const a = e.target.closest && e.target.closest('a[href^="comgooglemapsurl://"]'); if (!a) return;
+  const web = 'x-safari-https://' + a.getAttribute('href').slice('comgooglemapsurl://'.length);
+  let left = false; const gone = () => { left = true; }; document.addEventListener('visibilitychange', gone, { once: true }); window.addEventListener('pagehide', gone, { once: true });
+  setTimeout(() => { document.removeEventListener('visibilitychange', gone); if (!left && document.visibilityState === 'visible') location.href = web; }, 1600);
+}, true);
 
 export function exportList(kind, anchor) {
   const g = kind === 'today' ? DB.todayGroups(NOW()) : kind === 'survey' ? DB.surveyGroups(NOW()) : DB.ecparGroups(NOW());

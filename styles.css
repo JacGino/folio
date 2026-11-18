@@ -1933,7 +1933,7 @@ span[data-s="s"] { font-size: .85em; } span[data-s="l"] { font-size: 1.25em; } s
 .plist.ctbl > .prow > :last-child, .flist.ctbl > .frow > :last-child, .plist.ctbl > .prow > :first-child, .flist.ctbl > .frow > :first-child { border-right: 0; }
 .plist.ctbl > .prow > .c-chk + *, .flist.ctbl > .frow > .fc-chk + * { border-left: 0; }
 .plist.ctbl > .prow.hhd, .flist.ctbl > .frow.fhd { border-bottom: 1px solid var(--nline) !important; }
-.plist.ctbl > .prow.rfix, .flist.ctbl > .frow.rfix { overflow: hidden; }
+.plist.ctbl > .prow.rfix, .flist.ctbl > .frow.rfix { overflow: hidden; overflow: clip; } /* clip, not hidden: hidden makes the row its own scroll box, so the pinned checkbox column stops staying put when you scroll sideways */
 .cc.ce > .val, .cc.ce > span > .val { margin-left: 0; }
 /* column line: invisible until you point at it, blue while dragging */
 .rzc { position: relative; }
@@ -2299,3 +2299,10 @@ html.kbup .gmodal-back { top: var(--vvt, 0px); bottom: auto; height: var(--vvh, 
 @media (max-width: 560px) { .ltxrow:has(> select) { grid-template-columns: 1fr 1fr 34px; } }
 .ltf.ltchk { display: flex; flex-direction: row; align-items: center; gap: 10px; }
 .ltf.ltchk > span { margin: 0; }
+/* Possible duplicate (same ECX No): the record, and Move to Trash beside it */
+.dupcard .dupli { display: flex; align-items: center; gap: 8px; }
+.dupcard .dupli > button:first-child { flex: 1; min-width: 0; }
+.dupcard .dupli .btn.sm { flex: none; white-space: nowrap; }
+@container pbody (max-width: 520px) { .dupcard .dupli { flex-wrap: wrap; } .dupcard .dupli .btn.sm { margin-left: auto; } }
+.startover { display: flex; flex-direction: column; gap: 10px; }
+.startover p { margin: 0; }

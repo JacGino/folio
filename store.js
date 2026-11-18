@@ -46,6 +46,12 @@ export async function clearAll() {
   for (const s of ['records', 'blobs', 'meta']) tx.objectStore(s).clear();
   return new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = () => rej(tx.error); });
 }
+/** empty some stores (Start over keeps 'meta': GitHub connection, keys, app lock, this device's id) */
+export async function clearStores(names) {
+  const db = await open(); const tx = db.transaction(names, 'readwrite');
+  for (const s of names) tx.objectStore(s).clear();
+  return new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = () => rej(tx.error); });
+}
 export const meta = { get: k => get('meta', k), set: (k, v) => put('meta', v, k) };
 
 /** Ask the browser not to evict our data (iOS evicts unused site data otherwise). */

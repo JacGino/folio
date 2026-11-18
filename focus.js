@@ -76,9 +76,9 @@ function ecxRecords(n) {
     const row = D.live(D.val(x, 'project')); if (!row || D.val(row, 'db') !== dbr.id) continue;
     const info = DB.kpiInfo(row, dbr, n); if (info.archived) continue;
     const status = ECX_SHOW(g(x, 'status')), active = E.ECX_ACTIVE.includes(status);
-    const rj = g(x, 'rejected'), due = rj ? dateAdd(parseDate(rj), 1, 'days') : null;
+    const rj = g(x, 'rejected'); // no due date: the rejection ends the ECX KPI, so it is never due or overdue
     out.push({ id: 'x' + x.id, x, row, cust: info.title, cats: info.category, no: g(x, 'number', ''), appid: g(x, 'appid', ''), status, active,
-      rejected: rj, due, days: active && due ? Math.round((startOfDay(due) - t0) / 864e5) : null, rcat: g(x, 'rcat') || '', reason: g(x, 'reason', ''), correction: g(x, 'correction', ''), remarks: g(x, 'remarks', ''), priority: priOf(row) });
+      rejected: rj, due: null, days: null, rcat: g(x, 'rcat') || '', reason: g(x, 'reason', ''), correction: g(x, 'correction', ''), remarks: g(x, 'remarks', ''), priority: priOf(row) });
   }
   return out;
 }
@@ -112,12 +112,12 @@ const PAGES = {
     cols: ['ECPAR No.', 'Customer', 'Project / Category', 'Rejection Details', 'Rejected Date', 'Due Date', 'Status'] },
   ecx: { title: 'Rejected ECX', icon: 'filex', desc: 'ECX applications that were rejected and require review or follow-up action.', records: ecxRecords, unit: 'ECX',
     tabs: [['all', 'All', null, r => r.status !== 'Closed'], ['pending', 'Rejected', 'hourglass', r => r.status === 'Rejected'], ['resub', 'Resubmitted', 'redo', r => r.status === 'Resubmitted'], ['closed', 'Closed', 'okcircle', r => r.status === 'Closed']],
-    metrics: rs => { const open = rs.filter(r => r.status !== 'Closed'); return [['filex', 'Total Rejected ECX', open.length, null, null, open.length], ['okcircle', 'Rejected', rs.filter(r => r.status === 'Rejected').length, 'green', null, open.length], ['today', 'Due Today', rs.filter(r => r.days === 0).length, 'orange', null, open.length], ['info', 'Overdue', rs.filter(r => r.days != null && r.days < 0).length, 'red', null, open.length]]; },
+    metrics: rs => { const open = rs.filter(r => r.status !== 'Closed'); return [['filex', 'Total Rejected ECX', open.length, null, null, open.length], ['okcircle', 'Rejected', rs.filter(r => r.status === 'Rejected').length, 'green', null, open.length], ['redo', 'Resubmitted', rs.filter(r => r.status === 'Resubmitted').length, 'orange', null, open.length], ['info', 'Closed', rs.filter(r => r.status === 'Closed').length, null, null, rs.length]]; },
     statuses: ['Rejected', 'Resubmitted', 'Closed'], search: r => [r.no, r.appid, r.cust, r.reason, r.correction, r.cats.join(' ')],
-    dates: [['overdue', 'Overdue', r => r.days != null && r.days < 0], ['today', 'Due today', r => r.days === 0], ['week', 'Rejected in the last 7 days', r => r.rejected && (startOfDay(new Date(NOW())) - parseDate(r.rejected)) / 864e5 <= 7]],
+    dates: [['week', 'Rejected in the last 7 days', r => r.rejected && (startOfDay(new Date(NOW())) - parseDate(r.rejected)) / 864e5 <= 7]],
     donut: { title: 'Rejected ECX by Status', key: r => r.status, order: ['Rejected', 'Resubmitted', 'Closed'], colors: { Rejected: '#3B82F6', Resubmitted: '#A78BFA', Closed: '#3FA45B' } },
     bars: { title: 'Rejection Reason Breakdown', icon: 'list', key: r => r.rcat || 'Not categorised', order: [...E.ECX_REASONS, 'Not categorised'], colors: { 'Incomplete documents': '#E5484D', 'Drawing not compliant': '#E5A50A', 'Additional information required': '#F5C451', 'Revised documents required': '#A78BFA', Other: '#3B82F6', 'Not categorised': '#B4B2AD' } },
-    cols: ['ECX No.', 'Customer', 'Project / Category', 'Rejection Details', 'Rejected Date', 'Due Date', 'Status'] },
+    cols: ['ECX No.', 'Customer', 'Project / Category', 'Rejection Details', 'Rejected Date', 'Status'] },
 };
 const CAT_COLORS = ['#3FA45B', '#F5C451', '#A78BFA', '#7BD389', '#E5A50A', '#9CC5F2', '#C9B6F2', '#E8A4A0', '#B4B2AD'];
 
@@ -255,8 +255,9 @@ const PAGE_COLS = {
       { k: 'rdate', def: 'Rejected Date', w: 100, cell: r => r.rejected ? dmy(r.rejected) : muted('—') }, { k: 'due', def: 'Due Date', w: 104, cell: dueCell },
       { k: 'status', def: 'Status', w: 132, cell: r => badge(r.status, undefined, false) }] },
   ecx: { lead: [{ k: 'no', def: 'ECX No.', w: 136, fixed: true, cell: r => h('span', { class: 'fid' }, linkedField(r.x, { key: 'number', label: 'ECX No.', mono: true, ph: 'No ECX no.' }), r.appid ? h('small', {}, r.appid) : null) }],
+    // no Due Date: an ECX rejection ends the ECX KPI (7 days from Date Assigned), unlike ECPAR's 1-day resubmission
     tail: [{ k: 'rej', def: 'Rejection Details', w: 230, cell: r => rejectionDetails(r, () => editRejectionFlow(r.x, E.ECX_REASONS)) },
-      { k: 'rdate', def: 'Rejected Date', w: 100, cell: r => r.rejected ? dmy(r.rejected) : muted('—') }, { k: 'due', def: 'Due Date', w: 104, cell: dueCell },
+      { k: 'rdate', def: 'Rejected Date', w: 100, cell: r => r.rejected ? dmy(r.rejected) : muted('—') },
       { k: 'status', def: 'Status', w: 132, cell: r => badge(r.status, undefined, false) }] } };
 // the page already has its own status, due date and priority, so the project's ones are not repeated here
 const SKIP_SHARED = ['Status', 'Due Date', 'Priority'];

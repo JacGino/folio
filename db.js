@@ -249,7 +249,7 @@ export function kpiInfo(row, dbr, now = Date.now()) {
   return { id: row.id, row, status, closed, amend, amendStart, amendEnd, amendDays, due, days, title: title(row), address: g('Address') || '', map: g('Pin Location') || '',
     station: g('Station') || '', ecx: g(REF_ECX) || '', rejected: g('ECPAR Rejected'), alert: P('Alert') ? formulaToText(value(row, P('Alert'), now)) : '',
     category: [].concat(g('Project Category') || []), priority: g('Priority') || '', next: g('Next Task') || '', ecxRejected: g('ECX Rejected'),
-    assigned: g('Date Assigned'), kpiStart: ck.start || g('Date Assigned'), reassigned: ck.start, kpiDue: ck.start ? due : null, archived, ecxEnd,
+    assigned: g('Date Assigned'), dueDate: g('Due Date'), kpiStart: ck.start || g('Date Assigned'), reassigned: ck.start, kpiDue: ck.start ? due : null, archived, ecxEnd,
     // the KPI runs from Date Assigned (or the ECX Reassigned Date) to the ECX Completed / Rejection Date, or Date Completed
     completed: ecxEnd || (ck.start ? null : g('Date Completed')),
     // finished: Done, or Rejected once it has a Date Completed or an ECX completed / rejection date (then it stops counting days, like a Done project)
@@ -257,9 +257,25 @@ export function kpiInfo(row, dbr, now = Date.now()) {
 }
 export function kpiTasks(now = Date.now()) { const d = kpiDb(); if (!d) return []; return rows(d.id).map(r => kpiInfo(r, d, now)).filter(t => !t.closed); }
 const byDays = (a, b) => (a.days ?? 9999) - (b.days ?? 9999);
+/** days over the ECX KPI (7 days), or ≤ 0 / null when within it:
+ *  with an ECX Completed / Rejection Date: (that date − Date Assigned) − 7; still waiting: today − Due Date */
+export function ecxLate(t, today) {
+  const end = t.ecxEnd ? startOfDay(t.ecxEnd) : null, as = t.assigned ? startOfDay(new Date(t.assigned)) : null, due = t.dueDate ? startOfDay(new Date(t.dueDate)) : null;
+  if (end) return as ? dateBetween(end, as, 'days') - 7 : due ? dateBetween(end, due, 'days') : null;
+  return due ? dateBetween(today, due, 'days') : null;
+}
+/** the main Due Today / Overdue: the ECX 7-day KPI only (a late ECPAR resubmission is overdue on the Rejected ECPAR page, not here).
+ *  Overdue: the ECX went over 7 days — still waiting past the Due Date, or completed / rejected more than 7 days after Date Assigned —
+ *  until the project is Done or archived. Today: still waiting, due within 2 days. */
 export function todayGroups(now) {
-  const t = kpiTasks(now).filter(x => !x.ecxEnd); // an ECX Completed / Rejection Date stops the KPI clock
-  return { overdue: t.filter(x => x.days != null && x.days < 0).sort(byDays), today: t.filter(x => (x.days != null && x.days >= 0 && x.days <= 2) || (x.amend && x.days == null && !x.amendEnd)).sort(byDays) };
+  const d = kpiDb(); if (!d) return { overdue: [], today: [] };
+  const today = startOfDay(new Date(now));
+  const open = rows(d.id).map(r => kpiInfo(r, d, now)).filter(t => !t.archived && t.status !== 'Done');
+  const withDue = t => ({ ...t, due: t.dueDate || null, days: t.dueDate ? dateBetween(startOfDay(new Date(t.dueDate)), today, 'days') : null });
+  const overdue = open.map(t => ({ t, late: ecxLate(t, today) })).filter(x => x.late != null && x.late > 0).map(x => ({ ...withDue(x.t), days: -x.late, ecxLate: x.late }));
+  const ids = new Set(overdue.map(t => t.id));
+  const soon = open.filter(t => !t.closed && !t.ecxEnd && !ids.has(t.id)).map(withDue).filter(t => t.days != null && t.days >= 0 && t.days <= 2);
+  return { overdue: overdue.sort(byDays), today: soon.sort(byDays) };
 }
 export function surveyGroups(now) {
   const t = kpiTasks(now).filter(x => x.status === 'Site Survey');

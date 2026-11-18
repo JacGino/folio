@@ -301,8 +301,8 @@ export function rejectedEcx(now = Date.now()) {
   for (const x of D.all('ecx', x => ECX_ACTIVE.includes(g(x, 'status')))) {
     const row = D.live(D.val(x, 'project')); if (!row || D.val(row, 'db') !== dbr.id) continue;
     const info = DB.kpiInfo(row, dbr, now); if (info.archived || info.status === 'Done') continue; // Status Rejected = the ECX is rejected: it stays on this page
-    const rj = parseDate(g(x, 'rejected')); const due = rj ? dateAdd(rj, 1, 'days') : null;
-    out.push({ ...info, due, days: due ? dateBetween(due, t0, 'days') : null, ecxDue: true, ecxId: x.id, ecx: g(x, 'number') || info.ecx, ecxReason: g(x, 'reason', '') });
+    // no due date: an ECX rejection ends the ECX KPI (Rejection Date − Date Assigned), so a rejected ECX is never due or overdue
+    out.push({ ...info, due: null, days: null, ecxDue: true, ecxId: x.id, ecx: g(x, 'number') || info.ecx, ecxReason: g(x, 'reason', '') });
   }
   return out;
 }

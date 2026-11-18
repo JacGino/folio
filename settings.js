@@ -50,8 +50,10 @@ export function renderSettings(sub) {
       group(row({ icon: 'sync', label: 'Clear app cache', value: 'Keeps your data', chev: false, onclick: clearCache })),
       h('p', { class: 'small muted', style: 'margin:6px 4px 0' }, 'Use this if Folio looks old or odd after an update: it removes the saved app files and reloads the newest ones. Your projects, pages, settings and sync stay.'),
       h('p', { class: 'ghead' }, 'Danger zone'),
-      group(row({ icon: 'trash', label: 'Remove all Folio data from this device', danger: true, chev: false, onclick: async () => {
-        if (await confirmBox('This removes Folio from this device only. Your GitHub copy stays. Continue?', 'Remove')) { await D.wipe(); location.reload(); } } }))].filter(Boolean));
+      group(row({ icon: 'trash', label: 'Start over: erase all data', danger: true, onclick: startOverSheet }),
+        row({ icon: 'trash', label: 'Remove all Folio data from this device', danger: true, chev: false, onclick: async () => {
+        if (await confirmBox('This removes Folio from this device only. Your GitHub copy stays. Continue?', 'Remove')) { await D.wipe(); location.reload(); } } })),
+      h('p', { class: 'small muted', style: 'margin:6px 4px 0' }, 'Start over erases every project, page and attachment on all your devices and in your GitHub copy, then gives you an empty Planning KPI Tracker. Your settings, GitHub connection and app lock stay.')].filter(Boolean));
   })();
   return wrap;
 }
@@ -137,6 +139,27 @@ function restoreSheet() {
         if (j.settings) await S.meta.set('ws-settings', { ...(await S.meta.get('ws-settings')), ...j.settings }); } catch (e) { msg.textContent = `${f.name}: ${e.message}`; } }
       msg.textContent = `Restored ${n} records.`; Sync.soon(500); render();
     } }, 'Restore'), msg));
+}
+/** Start over: backup first, type ERASE, then every device and the GitHub copy start empty (settings and sync stay) */
+function startOverSheet() {
+  let saved = false;
+  const word = h('input', { class: 'field', placeholder: 'Type ERASE', 'aria-label': 'Type ERASE to confirm', autocapitalize: 'characters', autocomplete: 'off', oninput: () => upd() });
+  const dl = h('button', { class: 'btn block', type: 'button', onclick: async () => { await backupNow(); saved = true; dl.textContent = 'Backup downloaded ✓'; upd(); } }, '1. Download a backup first');
+  const go = h('button', { class: 'btn block danger', type: 'button', disabled: true, onclick: async () => {
+    if (!(await confirmBox('Erase every project, page and attachment on all your devices and in your GitHub copy? This cannot be undone here; your backup file can restore it.', 'Erase everything'))) return;
+    go.disabled = true; go.textContent = 'Erasing…';
+    try {
+      await Sync.startOver();
+      const DB = await import('./db.js'), E = await import('./entities.js');
+      DB.createKpiTracker(); E.ensureAll(); await D.flush(); await Sync.run();
+      s.close(); toast('Started over: an empty Planning KPI Tracker is ready.'); location.hash = '#/projects'; render();
+    } catch (e) { go.disabled = false; go.textContent = '2. Erase everything'; toast('Could not start over: ' + (e.message || e) + '. Nothing was erased.'); }
+  } }, '2. Erase everything');
+  const upd = () => { go.disabled = !(saved && word.value.trim().toUpperCase() === 'ERASE'); };
+  const s = sheet('Start over', h('div', { class: 'startover' },
+    h('p', {}, 'This erases all your Folio data — every project, ECX / ECPAR record, connection charge, Long Text, page and attachment — on every device and in your GitHub copy. You then key in your projects again from an empty Planning KPI Tracker.'),
+    h('p', { class: 'muted small' }, 'Kept: your settings, GitHub connection, encryption keys and app lock. Open Folio on your other devices afterwards: they clear their old copy when they sync. Update them first (Settings › Clear app cache).'),
+    dl, h('label', { class: 'small muted' }, 'Type ERASE to confirm'), word, go));
 }
 async function backupNow() {
   const out = {}; for (const sh of D.shards()) out[sh] = D.shardRecords(sh);

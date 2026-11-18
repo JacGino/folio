@@ -418,22 +418,25 @@ const addApplicantBtn = (c, info) => c ? h('button', { class: 'iconbtn sm apladd
   const list = applicantList(c, info), a = await applicantSheet('Add applicant ' + (list.length + 1)); if (!a) return; saveApplicants(c, [...list, a]); toast('Applicant added'); } }, icon('plus', 16)) : null;
 function applicantsBlock(row, info, c) {
   if (!c) return null;
-  const ap = applicantsOf(g(c, 'name'));
-  if (ap.length < 2) return null;
-  const edit = i => async e => { e.stopPropagation(); const a = await applicantSheet('Applicant ' + (i + 1), ap[i]); if (!a) return; const list = ap.slice(); list[i] = a; saveApplicants(c, list); };
+  const ap = applicantList(c, info); // one customer too: its Applicant ID (IC No) is keyed in beside the name
+  const edit = i => async e => { e.stopPropagation(); const a = await applicantSheet(ap.length > 1 ? 'Applicant ' + (i + 1) : 'Customer', ap[i]); if (!a) return; const list = ap.slice(); list[i] = a; saveApplicants(c, list); };
   return h('div', { class: 'kv kvwide aplwrap' },
     h('div', { class: 'aplhead' }, h('span', { class: 'kl' }, icon('building', 16), 'Customer'), h('span', { class: 'kl aplid' }, 'Applicant ID'), addApplicantBtn(c, info)),
-    h('div', { class: 'apl' }, ap.map((a, i) => h('div', { class: 'aplr' }, h('span', { class: 'apln' }, (i + 1) + ')'),
+    h('div', { class: 'apl' }, ap.map((a, i) => h('div', { class: 'aplr' }, h('span', { class: 'apln' }, ap.length > 1 ? (i + 1) + ')' : ''),
       h('button', { class: 'val fv aplname', type: 'button', 'aria-label': `Customer ${i + 1}: ${a.name}`, onclick: edit(i) }, h('span', {}, a.name)),
       h('button', { class: 'val fv mono' + (a.ic ? '' : ' empty'), type: 'button', 'aria-label': `Applicant ID ${i + 1}: ${a.ic || 'Empty'}`, onclick: edit(i) }, h('span', {}, a.ic || 'Empty')),
-      h('button', { class: 'iconbtn sm', type: 'button', 'aria-label': `Remove applicant ${i + 1}`, onclick: async e => { e.stopPropagation();
-        if (!await confirmBox('Remove ' + a.name + ' from the customer list?', 'Remove')) return; saveApplicants(c, ap.filter((_, k) => k !== i)); } }, icon('close', 15))))));
+      ap.length > 1 ? h('button', { class: 'iconbtn sm', type: 'button', 'aria-label': `Remove applicant ${i + 1}`, onclick: async e => { e.stopPropagation();
+        if (!await confirmBox('Remove ' + a.name + ' from the customer list?', 'Remove')) return; saveApplicants(c, ap.filter((_, k) => k !== i)); } }, icon('close', 15)) : h('span')))));
 }
 function overview(row, info, n) {
   const c = E.customerOf(row);
   const cf = (ic, label, key, extra = {}) => kv(ic, label, c ? field(c, { key, label, onSet: v => E.setCustomer(c, key, v), ...extra }) : h('span', { class: 'muted' }, '—'));
   const custName = c ? field(c, { key: 'name', label: 'Customer name', onSet: v => { if (v && v.trim()) { E.setCustomer(c, 'name', v.trim()); E.ensureAll(); } } }) : h('span', {}, info.title);
-  const others = c ? E.projectsOf(c.id).filter(r => r.id !== row.id) : [];
+  // other projects of this customer: a different ECX No is a separate application (rare — usually the first is cancelled);
+  // the same ECX No is another record of this same application (a likely duplicate), shown apart so it can be removed
+  const ecxNo = r => String(DB.refParts(r).ecx || (E.ecxOf(r.id)[0] && g(E.ecxOf(r.id)[0], 'number')) || '').trim().toUpperCase();
+  const mine = ecxNo(row), all = c ? E.projectsOf(c.id).filter(r => r.id !== row.id) : [];
+  const dups = mine ? all.filter(r => ecxNo(r) === mine) : [], others = all.filter(r => !dups.includes(r));
   const year = r => { const i = DB.kpiInfo(r, DB.kpiDb(), n); return (i.assigned || new Date(D.val(r, 'created', n))).getFullYear(); };
   const ms = E.milestones(row, info), kd = E.kpiDays(info, n);
   return h('div', { class: 'pdgrid' },
@@ -460,11 +463,17 @@ function overview(row, info, n) {
             : h('span', { class: 'mchk' }, icon(m.done ? 'okcircle' : 'today', 18)), h('span', {}, m.label),
           m.key === 'survey' && !m.done ? h('button', { class: 'link sm', onclick: () => go(`#/project/${row.id}/survey`) }, 'Open') : null))),
         h('div', { class: 'kvs' }, kv('hourglass', 'KPI (within 7 days)', kd == null ? h('span', { class: 'muted' }, 'Needs Date Assigned') : h('span', { class: kd > 7 ? 'late' : '' }, (info.completed ? 'Done in ' + kd + ' days' : 'Day ' + kd + ' of 7') + (kd > 7 ? ', over KPI' : ''))))),
-      h('section', { class: 'hcard pcard' },
+      dups.length ? h('section', { class: 'hcard pcard dupcard' },
+        h('h3', { class: 'ph' }, icon('info', 17), 'Same ECX No', h('span', { class: 'hcount' }, dups.length)),
+        h('p', { class: 'muted small' }, `${dups.length > 1 ? 'These records have' : 'This record has'} the same ECX No (${mine}) — an earlier or later round of this application (e.g. before a RETRIGGER), or a copy. Keep it if it is a real round: it counts in your KPI.`),
+        h('ul', { class: 'rel' }, dups.map(r => { const i = DB.kpiInfo(r, DB.kpiDb(), n);
+          return h('li', { class: 'dupli' }, h('button', { onclick: () => go('#/project/' + r.id) }, h('span', { class: 'relc' }, catPills(i.category)), h('span', { class: 'rely' }, year(r)), i.archived ? badge('Archived', 'gray') : i.status ? optPill('Status', i.status, true) : h('span'), icon('chevr', 14, 'kgo')),
+            h('button', { class: 'btn danger sm', onclick: async () => { if (await confirmBox('Move this duplicate record of ' + mine + ' to Trash? You can restore it from Trash.', 'Move to Trash')) { D.trash(r.id); toast('Moved to Trash. Restore it from Trash.'); render(); } } }, icon('trash', 14), 'Move to Trash')); }))) : null,
+      others.length ? h('section', { class: 'hcard pcard' },
         h('h3', { class: 'ph' }, icon('folder', 17), 'Related Projects', others.length ? h('span', { class: 'hcount' }, others.length) : null),
         others.length ? h('ul', { class: 'rel' }, others.map(r => { const i = DB.kpiInfo(r, DB.kpiDb(), n);
           return h('li', {}, h('button', { onclick: () => go('#/project/' + r.id) }, h('span', { class: 'relc' }, catPills(i.category)), h('span', { class: 'rely' }, year(r)), i.archived ? badge('Archived', 'gray') : i.status ? optPill('Status', i.status, true) : h('span'), icon('chevr', 14, 'kgo'))); }))
-          : h('p', { class: 'muted small' }, 'No other projects for this customer.'))));
+          : null) : null));
 }
 
 // ---------- Tasks ----------
@@ -614,7 +623,9 @@ function ecxTab(row, info, n) {
   const add = async () => { const no = await promptBox('New ECX application', '', 'ECX number (you can add it later)'); if (no == null) return; E.addEcx(row, no.trim()); render(); };
   return h('div', { class: 'xlist' },
     h('div', { class: 'phbar out' }, h('h3', { class: 'ph' }, icon('filex', 17), 'ECX Applications', h('span', { class: 'hcount' }, xs.length)), h('button', { class: 'hnew sm', onclick: add }, icon('plus', 15), h('span', {}, 'Add ECX Application'))),
-    xs.length ? xs.map(x => ecxCard(row, x)) : h('section', { class: 'hcard pcard' }, h('p', { class: 'hempty' }, 'No ECX application yet. A project can have several; each keeps its own rejection history.')));
+    xs.length ? xs.map(x => ecxCard(row, x)) : h('section', { class: 'hcard pcard' }, h('p', { class: 'hempty' }, 'No ECX application yet. A project can have several; each keeps its own rejection history.')),
+    // the project's ECX Link (moved here from Documents), at the bottom of the ECX tab
+    h('section', { class: 'hcard pcard' }, h('div', { class: 'kvs' }, kv('link', 'ECX Link', propVal(row, 'ECX Link')))));
 }
 function ecxCard(row, x) {
   const s = g(x, 'status') || '', xf = (key, label, extra = {}) => field(x, { key, label, ...extra });
@@ -638,7 +649,7 @@ function ecxCard(row, x) {
 }
 
 // ---------- Documents ----------
-function docsTab(row) {
+function docsTab(row, info) {
   const docs = E.docsOf(row.id);
   const add = async () => { const url = (await promptBox('Paste the link', '', 'https://…'))?.trim(); if (!url) return; const name = (await promptBox('Name of the document', '', 'e.g. Site photos'))?.trim(); E.addDoc(row, name || url, url); render(); };
   const hostOf = u => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return ''; } };
@@ -649,7 +660,8 @@ function docsTab(row) {
         { label: 'Remove', icon: 'trash', danger: true, run: async () => { if (await confirmBox('Remove this link?', 'Remove')) { D.trash(d.id); render(); } } }]) }, icon('more', 18)))))
       : h('p', { class: 'hempty' }, 'No documents yet. Add links to files in iCloud Drive, Google Drive or the company system.'),
     h('div', { class: 'kvs' }, kv('clip', 'Files', propEditor(row, { id: 'docs', name: 'Files', type: 'files' }, DB.kpiDb())),
-      kv('link', 'ECX Link', propVal(row, 'ECX Link'))));
+      // ECX Link lives at the bottom of the ECX tab; report-only projects have no ECX tab, so it stays here for them
+      info && E.reportOnly(info.category) ? kv('link', 'ECX Link', propVal(row, 'ECX Link')) : null));
 }
 
 // ---------- Activity Log ----------

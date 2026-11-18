@@ -68,7 +68,8 @@ export function kpiNumbers(all, n) {
   const today = new Date(n), mStart = new Date(today.getFullYear(), today.getMonth(), 1);
   // Done projects are archived straight away: they still count as projects and as completed
   const active = all.filter(t => !t.archived || t.finished), done = active.filter(t => t.finished), prog = active.filter(t => !t.finished);
-  const t0 = startOfDay(today), overdue = prog.filter(t => { const d = t.row && DB.value(t.row, P('Due Date')); return d && startOfDay(d) < t0; });
+  // Overdue: the ECX went over 7 days (still waiting past the Due Date, or completed / rejected > 7 days after Date Assigned), until Done or archived
+  const t0 = startOfDay(today), overdue = all.filter(t => !t.archived && t.status !== 'Done' && (DB.ecxLate(t, t0) ?? 0) > 0);
   const added = active.filter(t => { const d = t.assigned || new Date(D.val(t.row, 'created', 0)); return d >= mStart; }).length;
   return { active: active.length, done: done.length, prog: prog.length, overdue: overdue.length, added, kpi: kpiPct(all.filter(t => t.archived || t.finished)) };
 }
@@ -95,13 +96,15 @@ export function dueItems(n) {
   const out = new Map();
   const add = (key, it) => { if (!out.has(key)) out.set(key, it); };
   for (const t of flat(DB.ecparGroups(n))) add('ep' + t.id, { key: 'ep' + t.id, kind: 'ecpar', row: t.row, title: 'Revise ECPAR', cust: t.title, ecx: t.ecx, cats: t.category, status: 'Rejected', priority: t.priority, due: t.due, days: t.days, tab: 'ecpar' });
-  for (const t of flat(DB.ecxGroups(n))) add('x' + t.ecxId, { key: 'x' + t.ecxId, kind: 'ecx', ecxId: t.ecxId, row: t.row, title: 'Resubmit ' + (t.ecx || 'ECX'), cust: t.title, ecx: t.ecx, cats: t.category, status: 'Rejected', due: t.due, days: t.days, tab: 'ecx' });
+  // rejected ECX are not due items: the rejection ends the ECX KPI (they stay on the Rejected ECX page)
+  if (false) for (const t of flat(DB.ecxGroups(n))) add('x' + t.ecxId, { key: 'x' + t.ecxId, kind: 'ecx', ecxId: t.ecxId, row: t.row, title: 'Resubmit ' + (t.ecx || 'ECX'), cust: t.title, ecx: t.ecx, cats: t.category, status: 'Rejected', due: t.due, days: t.days, tab: 'ecx' });
   for (const x of E.dueTasks(n)) add('t' + x.task.id, { key: 't' + x.task.id, kind: 'task', task: x.task, row: x.row, title: x.name, cust: x.customer, ecx: x.info.ecx, cats: x.info.category, status: E.g(x.task, 'status') || 'Not Started', due: parseDate(E.g(x.task, 'due')), days: x.days, tab: 'tasks' });
   const sv = DB.surveyGroups(n);
   for (const t of [...sv.overdue, ...sv.today]) add('p' + t.id, { key: 'p' + t.id, kind: 'survey', row: t.row, title: 'Site survey', cust: t.title, ecx: t.ecx, cats: t.category, status: 'Site Survey', due: t.due, days: t.days, tab: 'survey' });
-  for (const t of flat(DB.todayGroups(n))) if (!t.amend) add('p' + t.id, { key: 'p' + t.id, kind: 'project', row: t.row, title: t.status === 'Estimation' ? 'Estimation due' : 'Project due', cust: t.title, ecx: t.ecx, cats: t.category, status: t.status || 'Open', due: t.due, days: t.days, tab: 'overview' });
+  for (const t of flat(DB.todayGroups(n))) add('p' + t.id, { key: 'p' + t.id, kind: 'project', row: t.row, title: t.ecxEnd ? 'ECX over 7 days' : t.status === 'Estimation' ? 'Estimation due' : 'Project due', cust: t.title, ecx: t.ecx, cats: t.category, status: t.status || 'Open', due: t.due, days: t.days, tab: 'overview' });
   // rejected follow-ups count once they are due (today or overdue)
-  return [...out.values()].filter(it => !(it.kind === 'ecpar' || it.kind === 'ecx') || (it.days != null && it.days <= 0)).sort((a, b) => (a.days ?? 999) - (b.days ?? 999) || a.cust.localeCompare(b.cust));
+  // a rejected ECPAR is here only on the day its resubmission is due; once late it is overdue on the Rejected ECPAR page, not in the main Overdue
+  return [...out.values()].filter(it => !(it.kind === 'ecpar' || it.kind === 'ecx') || it.days === 0).sort((a, b) => (a.days ?? 999) - (b.days ?? 999) || a.cust.localeCompare(b.cust));
 }
 const dueText = it => it.days == null ? '—' : it.days === 0 ? 'Today' : it.days === 1 ? 'Tomorrow' : it.days === -1 ? 'Yesterday' : it.due ? formatDate(it.due, 'DD/MM/YYYY') : '—';
 export async function completeItem(it, n) {
@@ -328,7 +331,7 @@ export function calEvents(n, from, to) {
     else if (!t.closed && t.status !== 'To Amend' && inR(due)) ev.push({ d: due, type: 'Due', label: 'Due', cust, cat, id: r.id, tab: '' });
   }
   for (const t of flat(DB.ecparGroups(n))) { const d = iso(t.due); if (inR(d)) ev.push({ d, type: 'ECPAR', label: 'ECPAR', cust: t.title, cat: t.category[0] || '', id: t.id, tab: 'ecpar' }); }
-  for (const t of flat(DB.ecxGroups(n))) { const d = iso(t.due); if (inR(d)) ev.push({ d, type: 'ECX', label: 'ECX', cust: t.title, cat: t.category[0] || '', id: t.id, tab: 'ecx' }); }
+  for (const t of flat(DB.ecxGroups(n))) { if (!t.due) continue; const d = iso(t.due); if (inR(d)) ev.push({ d, type: 'ECX', label: 'ECX', cust: t.title, cat: t.category[0] || '', id: t.id, tab: 'ecx' }); }
   for (const x of E.dueTasks(n, { within: 99999 })) { const d = E.g(x.task, 'due'); if (inR(d)) ev.push({ d, type: 'Task', label: x.name, cust: x.customer, cat: x.info.category[0] || '', id: x.row.id, tab: 'tasks' }); }
   const order = { ECPAR: 0, ECX: 1, 'Site Survey': 2, Task: 3, Due: 4 };
   return ev.sort((p, q) => p.d.localeCompare(q.d) || order[p.type] - order[q.type] || p.cust.localeCompare(q.cust));
