@@ -90,12 +90,15 @@ export const CHECKLISTS = {
 /** the checklists that apply to a project, in category order; SAL100KW uses the Residential or Non-Residential side */
 export function checklistsFor(categories, side = 'residential') {
   const out = [];
-  // Non Turnkey (NTK) uses the SAL100KW checklist, Residential or Commercial side (one list when a project has both)
-  const cats = categories.includes('Non Turnkey') && !categories.includes('SAL100KW') ? [...categories, 'SAL100KW'] : categories;
-  const ntkOnly = cats !== categories;
+  // Non Turnkey (NTK) and Upgrading of Supply (UOS) use the SAL100KW checklist, Residential or Non-Residential side
+  // (one list when a project has more than one of them); it is labelled with the project's own category
+  const SAME = { 'Non Turnkey': 'NTK', 'Upgrading of Supply': 'UOS' };
+  const like = Object.keys(SAME).filter(c => categories.includes(c));
+  const cats = like.length && !categories.includes('SAL100KW') ? [...categories, 'SAL100KW'] : categories;
+  const ntkOnly = cats !== categories, aliasLabel = like.map(c => SAME[c]).join(' / ');
   for (const [cat, def] of Object.entries(CHECKLISTS)) {
     if (!cats.includes(cat)) continue;
-    if (def.sides) { const s = def.sides[side] || def.sides.residential; out.push({ cat, label: (ntkOnly && cat === 'SAL100KW' ? 'NTK' : def.label) + ' · ' + s.label, items: s.items, sides: def.sides, side }); }
+    if (def.sides) { const s = def.sides[side] || def.sides.residential; out.push({ cat, label: (ntkOnly && cat === 'SAL100KW' ? aliasLabel : def.label) + ' · ' + s.label, items: s.items, sides: def.sides, side }); }
     else out.push({ cat, label: def.label, items: def.items });
   }
   return out;

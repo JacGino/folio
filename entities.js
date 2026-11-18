@@ -75,6 +75,28 @@ export function setCustomer(c, key, v) {
   const prop = { name: DB.titleProp(DB.kpiDb())?.name, address: 'Address', map: 'Pin Location' }[key];
   if (prop) for (const r of projectsOf(c.id)) setRow(r, prop, v);
 }
+// ---- Applicant ID (IC / company no.) of a single customer: its own field, not inside the name ----
+// an IC / company no. has a digit (so "(M) SDN BHD" stays part of a name); several applicants keep "1) NAME (IC) 2) …" in the name
+const IC_RE = /^(?=.*\d)[0-9A-Z][0-9A-Z.\-\/ ]{3,}$/i;
+const MULTI_RE = /(?:^|\s)\d{1,2}\s*[).]\s+/g;
+export const isMultiApplicant = t => (String(t || '').match(MULTI_RE) || []).length >= 2;
+/** 'NAME (920522-13-6055)' → { name: 'NAME', ic: '920522-13-6055' }; otherwise { name, ic: '' } */
+export function splitNameIc(t) {
+  const s = String(t || '').trim(), m = s.match(/^(.*?)\s*\(([^)]*)\)\s*$/);
+  return m && m[1].trim() && IC_RE.test(m[2].trim()) ? { name: m[1].trim(), ic: m[2].trim() } : { name: s, ic: '' };
+}
+/** the single customer's Applicant ID (IC No): shared by the Overview and the Long Text */
+export const custIc = c => !c || isMultiApplicant(g(c, 'name')) ? '' : (g(c, 'ic') || splitNameIc(g(c, 'name')).ic || '');
+export function setCustomerIc(c, ic) { if (c && !isMultiApplicant(g(c, 'name'))) D.update(c.id, { 'p:ic': String(ic || '').trim() || null }); }
+/** once: a single customer saved as 'NAME (IC)' becomes name 'NAME' + Applicant ID 'IC' (project titles follow) */
+function splitCustomerIcs() {
+  for (const c of D.all('cust')) {
+    const n = g(c, 'name'); if (!n || isMultiApplicant(n)) continue;
+    const s = splitNameIc(n); if (!s.ic) continue;
+    if (!g(c, 'ic')) D.update(c.id, { 'p:ic': s.ic });
+    setCustomer(c, 'name', s.name);
+  }
+}
 export const custAddress = (row, c = customerOf(row)) => (c && g(c, 'address')) || rowVal(row, 'Address') || '';
 export const custMap = (row, c = customerOf(row)) => (c && g(c, 'map')) || rowVal(row, 'Pin Location') || '';
 
@@ -273,10 +295,28 @@ export function addEcx(row, number = '') {
   log(row, 'ECX', 'ECX application added' + (number ? ': ' + number : '') + '.', { ecx: x.id }); return x;
 }
 const ecxName = x => g(x, 'number') || 'ECX application';
+let ecxOp = false; // set while the Reject button writes the card, so the field link below does not act twice
 export function rejectEcx(row, x, date, reason, { cat = '', correction = '', remarks = '' } = {}) {
-  D.update(x.id, { 'p:status': 'Rejected', 'p:rejected': date, 'p:reason': reason || '', 'p:rcat': cat || null, 'p:correction': correction || '', ...(remarks ? { 'p:remarks': remarks } : {}) });
-  log(row, 'ECX', ecxName(x) + ' rejected.' + (reason ? ' ' + reason : ''), { ecx: x.id, ev: 'rejected', date, reason, cat, correction });
+  ecxOp = true;
+  try {
+    D.update(x.id, { 'p:status': 'Rejected', 'p:rejected': date, 'p:reason': reason || '', 'p:rcat': cat || null, 'p:correction': correction || '', ...(remarks ? { 'p:remarks': remarks } : {}) });
+    log(row, 'ECX', ecxName(x) + ' rejected.' + (reason ? ' ' + reason : ''), { ecx: x.id, ev: 'rejected', date, reason, cat, correction });
+  } finally { ecxOp = false; }
 }
+// ECX card ⇄ rejection: typing a Rejection Date marks the application Rejected and records it in its Rejection history
+// (like the Reject button); editing the reason or category afterwards updates that history entry
+D.onChange(info => {
+  if (ecxOp || info.type !== 'update' || !info.fields) return;
+  const x = D.getRec(info.id); if (!x || x.k !== 'ecx') return;
+  const row = D.live(D.val(x, 'project')); if (!row) return;
+  const has = k => info.fields.includes('p:' + k), rj = g(x, 'rejected'), st = g(x, 'status') || '';
+  const last = () => D.all('act', a => D.val(a, 'ecx') === x.id && D.val(a, 'ev') === 'rejected').sort((a, b) => D.val(b, 't', 0) - D.val(a, 't', 0))[0];
+  ecxOp = true;
+  try {
+    if (has('rejected') && rj && !ECX_ACTIVE.includes(st) && st !== 'Closed') { ecxOp = false; rejectEcx(row, x, rj, g(x, 'reason', ''), { cat: g(x, 'rcat') || '' }); ecxOp = true; }
+    else if (ECX_ACTIVE.includes(st) && (has('reason') || has('rcat') || has('rejected'))) { const l = last(); if (l) D.update(l.id, { reason: g(x, 'reason', ''), cat: g(x, 'rcat') || '', ...(rj ? { date: rj } : {}) }); }
+  } catch (e) { console.error(e); } finally { ecxOp = false; }
+});
 export function closeEcx(row, x, note) {
   D.update(x.id, { 'p:status': 'Closed' });
   log(row, 'ECX', ecxName(x) + ' closed.' + (note ? ' ' + note : ''), { ecx: x.id, ev: 'closed' });
@@ -468,4 +508,5 @@ export function ensureAll() {
   DB.upgradeAlert(); DB.mergeProjectRef(); try { DB.ensureHomeFields(); ensureModel(); } catch (e) { console.error(e); }
   try { syncRejectedStatus(); } catch (e) { console.error(e); }
   try { migrateEcparStatus(); } catch (e) { console.error(e); }
+  try { splitCustomerIcs(); } catch (e) { console.error(e); }
   try { syncRefs(); } catch (e) { console.error(e); } }

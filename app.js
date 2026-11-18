@@ -633,7 +633,10 @@ const isIOS = () => /iP(hone|ad|od)/.test(navigator.platform) || (navigator.user
 const isGoogleMaps = u => /^(https?:\/\/)?((maps\.app\.goo\.gl|goo\.gl\/maps)\/|(www\.)?google\.[a-z.]+\/maps|maps\.google\.[a-z.]+)/i.test(String(u || '').trim());
 // on iPhone / iPad a Google Maps link opens the Google Maps app (comgooglemapsurl://, Google own scheme for map links);
 // if the app does not open, the link opens in Safari instead (see the click handler below)
-export const mapsUrl = u => isIOS() && isGoogleMaps(u) ? 'comgooglemapsurl://' + String(u).trim().replace(/^https?:\/\//i, '') : u;
+// short share links (maps.app.goo.gl) are not supported by comgooglemapsurl:// ("Unsupported link"): give iOS the plain
+// https link, which iOS hands to the Google Maps app itself (not forced into Safari)
+const isShortMaps = u => /^(https?:\/\/)?maps\.app\.goo\.gl\//i.test(String(u || '').trim());
+export const mapsUrl = u => isIOS() && isGoogleMaps(u) && !isShortMaps(u) ? 'comgooglemapsurl://' + String(u).trim().replace(/^https?:\/\//i, '') : u;
 export const browserUrl = u => isIOS() && isGoogleMaps(u) ? mapsUrl(u) : isIOS() ? u.replace(/^https:\/\//i, 'x-safari-https://').replace(/^http:\/\//i, 'x-safari-http://') : u;
 // fallback: Google Maps app not installed (the page is still showing after a moment) → open the same link in Safari
 document.addEventListener('click', e => {

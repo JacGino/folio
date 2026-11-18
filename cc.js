@@ -8,7 +8,7 @@ import { h, icon, menu, sheet, toast, confirmBox, promptBox, textbox } from './u
 import { formatDate } from './dates.js';
 import { render, now as NOW, download, L as LBL } from './app.js';
 import { guessSide } from './checklists.js';
-import { longText, layoutFor, NTK_TYPES, ntkTypeFor, LAYOUTS, RM as RMS, applicantsOf } from './longtext.js';
+import { longText, layoutFor, NTK_TYPES, ntkTypeFor, extras as extrasOf, LAYOUTS, RM as RMS, applicantsOf } from './longtext.js';
 import { badge, optPill } from './project.js';
 import { GUIDELINE, RATE, PREMISES, PREMISE, COMPONENTS, TABLE51_NOTES } from './ccrates.js';
 import { CATS, SCOPES, METHODS, ELIGIBLE_PROJECT_CATS, methodology, calculate, contributionEligible, itemsFor, upgradeMin, serviceCableSplit, perCircuit, snapshot, rm } from './ccengine.js';
@@ -29,8 +29,13 @@ function fromSaved(c) { const s = D.val(c, 'snap'); return { inputs: { basis: 'g
 function work(row) {
   let w = WORK.get(row.id);
   if (!w) { const last = calcsOf(row.id)[0]; w = last ? fromSaved(last) : fromCustomer(row); WORK.set(row.id, w); }
+  // additional items (not in the Guidelines) belong to the calculation; older ones were kept with the Long Text
+  if (!w.inputs.extras) w.inputs.extras = (w.inputs.lt && w.inputs.lt.extras) || [];
   return w;
 }
+/** the additional items, worked out (rate × mark-up × qty), and their sum: added to the Total Connection Charge */
+const extrasRes = w => extrasOf({ extras: w.inputs.extras || [] });
+const extrasSum = w => Math.round(extrasRes(w).reduce((a, x) => a + x.amount, 0) * 100) / 100;
 /** a new calculation starts with the customer's Meter Type and Premise Type (you can still change them) */
 function fromCustomer(row) {
   const w = blank(), c = E.customerOf(row); if (!c) return w;
@@ -55,7 +60,7 @@ function refreshTotals(row, box, id) {
   const host = document.querySelector('.ccgrid'); if (!host) return;
   const w = work(row), res = calculate(w), l = res.lines.find(x => x.id === id);
   const r = box.closest('.ccr'); if (r && l) r.querySelector('.amt').textContent = money(l.amount);
-  host.querySelector('.cctotal')?.replaceWith(totalBox(res));
+  host.querySelector('.cctotal')?.replaceWith(totalBox(res, w));
 }
 /** redraw only the results column (used while typing, so the field you are in keeps its cursor) */
 function refreshResults(row, info) {
@@ -199,18 +204,43 @@ function right(row, info, w, res) {
   return h('div', { class: 'ccright' },
     h('section', { class: 'hcard pcard ccpanel' }, head, bulk, table, comps, excluded,
       res.notes?.length ? h('ul', { class: 'ccnotes' }, res.notes.map(n => h('li', {}, n))) : null, ...res.warnings.map(x => h('p', { class: 'ccinfo amber' }, icon('info', 14), x))),
-    h('div', { class: 'ccbottom' }, totalBox(res)), // the Calculation Formula card was merged into the breakdown (its rows show the same working)
+    extrasCard(row, info, w), h('div', { class: 'ccbottom' }, totalBox(res, w)), // the Calculation Formula card was merged into the breakdown (its rows show the same working)
     actions(row, info, w, res));
 }
 const money = n => Number(n).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtQ = q => Number(q).toLocaleString('en-MY', { maximumFractionDigits: 2, minimumFractionDigits: Number.isInteger(+q) ? 0 : 2 });
-function totalBox(res) {
-  const ok = res.complete && !res.na;
+function totalBox(res, w) {
+  const ok = res.complete && !res.na, ex = w ? extrasSum(w) : 0, nx = w ? extrasRes(w).length : 0;
   return h('section', { class: 'hcard cctotal' + (ok ? '' : ' inc') }, h('h3', {}, icon('layers', 16), 'Total Connection Charge'),
-    h('div', { class: 'cctot' }, rm(res.total)),
+    h('div', { class: 'cctot' }, rm(res.total + ex)),
     h('dl', {}, h('dt', {}, 'Charge items'), h('dd', {}, String(res.lines.length)), h('dt', {}, 'Subtotal'), h('dd', {}, rm(res.subtotal)),
-      ...res.adjustments.flatMap(a => [h('dt', {}, a.label, a.rule ? h('small', {}, a.rule) : null), h('dd', {}, rm(a.amount))])),
+      ...res.adjustments.flatMap(a => [h('dt', {}, a.label, a.rule ? h('small', {}, a.rule) : null), h('dd', {}, rm(a.amount))]),
+      ...(nx ? [h('dt', {}, 'Additional items (' + nx + ')', h('small', {}, 'not in the Guidelines')), h('dd', {}, rm(ex))] : [])),
     ok ? h('p', { class: 'ccok' }, icon('okcircle', 14), 'Complete · ' + GUIDELINE.id) : h('div', { class: 'ccincomplete' }, h('b', {}, 'Calculation Incomplete'), h('span', {}, 'Not a final amount. Missing:'), h('ul', {}, res.incomplete.map(x => h('li', {}, x)))));
+}
+
+// ---------- additional items (not in the Guidelines), below the Charge Breakdown ----------
+const NTK_GROUPS = [['lt', 'LT'], ['ht', 'HT'], ['substation', 'Substation']];
+function extrasCard(row, info, w) {
+  const list = w.inputs.extras || (w.inputs.extras = []);
+  // while typing: this row's amount and the total change; the box you are in keeps its cursor
+  const refresh = (x, el) => { const a = el.closest('.ccxr')?.querySelector('.amt'), v = amountOf(x); if (a) a.textContent = v == null ? '—' : money(v);
+    document.querySelector('.ccgrid .cctotal')?.replaceWith(totalBox(calculate(w), w)); };
+  // each box has a small caption, shown on a phone where the column headings are hidden
+  const cell = (x, k, ph, num, cls = '', cap = ph) => h('label', { class: 'ccxf ' + cls }, h('small', {}, cap),
+    h('input', { class: 'field', value: x[k] ?? '', placeholder: ph, inputmode: num ? 'decimal' : null, 'aria-label': ph, oninput: e => { x[k] = e.target.value; touch(w); refresh(x, e.target); } }));
+  const amountOf = x => { const r = +x.rate, q = +x.qty, m = x.markup === '' || x.markup == null ? 0 : +x.markup; if (!x.rate || !x.qty || isNaN(r) || isNaN(q)) return null; return Math.round((m ? r * m / 100 : r) * q * 100) / 100; };
+  const rowEl = (x, i) => h('div', { class: 'ccxr' },
+    cell(x, 'desc', 'Description', false, 'd'), cell(x, 'rate', 'Rate (RM)', true, 'c-r'), cell(x, 'markup', 'Mark-up % (e.g. 115)', true, 'c-m', 'Mark-up %'), cell(x, 'qty', 'Qty', true, 'c-q'), cell(x, 'unit', 'Unit (meter)', false, 'c-u', 'Unit'),
+    h('label', { class: 'ccxf c-g' }, h('small', {}, 'Group'), h('select', { class: 'field', 'aria-label': 'Cost group (for the NTK Long Text)', onchange: e => { x.group = e.target.value; touch(w); } }, NTK_GROUPS.map(([v, l]) => h('option', { value: v, selected: (x.group || 'lt') === v ? true : null }, l)))),
+    h('span', { class: 'r num amt' }, amountOf(x) == null ? '—' : money(amountOf(x))),
+    h('button', { class: 'iconbtn', type: 'button', 'aria-label': 'Remove this item', onclick: () => { list.splice(i, 1); touch(w); render(); } }, icon('close', 16)));
+  return h('section', { class: 'hcard pcard ccpanel ccextras' },
+    h('div', { class: 'ccbh' }, h('span', { class: 'ccic sm' }, icon('plus', 18)), h('h2', {}, 'Additional Items'),
+      h('div', { class: 'ccacts' }, h('button', { class: 'sbtn', onclick: () => { list.push({ desc: 'Reinstate Road Surface for cable laying work', rate: '55', markup: '115', qty: '', unit: 'meter', group: 'lt' }); touch(w); render(); } }, icon('plus', 14), 'Add Item'))),
+    h('p', { class: 'muted small' }, 'Items not in the Guidelines (e.g. road reinstatement, HDD): rate × mark-up × quantity. Added to the Total Connection Charge and to the connection cost in the Long Text.'),
+    list.length ? h('div', { class: 'ccxlist' }, h('div', { class: 'ccxr cchd' }, ...['Description', 'Rate (RM)', 'Mark-up %', 'Qty', 'Unit', 'Group', 'Amount (RM)', ''].map(t => h('span', {}, t))), ...list.map(rowEl))
+      : h('p', { class: 'hempty' }, 'No additional items.'));
 }
 
 // ---------- adding items ----------
@@ -283,10 +313,11 @@ function save(row, info, w, status) {
   const meta = { projectId: row.id, projectCategory: info.category.join(', '), chargingCategory: CATS[w.inputs.cat] || '', method: METHODS[w.inputs.method] || '', scope: SCOPES[w.inputs.scope] || '', premise: PREMISE[w.inputs.premise]?.label || '', appliedLoad: w.inputs.applied, status };
   const snap = snapshot(w, res, meta), t = Date.now();
   let rec;
-  if (loaded && D.val(loaded, 'status') === 'Draft') { rec = loaded; D.update(rec.id, { snap, status, updated: t, total: res.total }); } // a draft is updated (or becomes Final); a Final is never changed
-  else rec = D.create('ccalc', row.sh, { project: row.id, version: nextVersion(row.id), status, snap, total: res.total, created: t, updated: t, guideline: GUIDELINE.id });
+  const grand = res.total + extrasSum(w);
+  if (loaded && D.val(loaded, 'status') === 'Draft') { rec = loaded; D.update(rec.id, { snap, status, updated: t, total: grand }); } // a draft is updated (or becomes Final); a Final is never changed
+  else rec = D.create('ccalc', row.sh, { project: row.id, version: nextVersion(row.id), status, snap, total: grand, created: t, updated: t, guideline: GUIDELINE.id });
   w.loadedId = rec.id; w.dirty = false;
-  E.log(row, 'Connection charge', `Connection charge calculation v${D.val(rec, 'version')} saved (${status}): ${rm(res.total)}${res.complete ? '' : ' — incomplete'}.`);
+  E.log(row, 'Connection charge', `Connection charge calculation v${D.val(rec, 'version')} saved (${status}): ${rm(grand)}${res.complete ? '' : ' — incomplete'}.`);
   toast(`Saved v${D.val(rec, 'version')} (${status})`); render();
 }
 function resetUnsaved(row, info) {
@@ -342,7 +373,7 @@ function exportPdf(row, info, w) {
       ['Calculation', c ? label(c) : 'Unsaved'], ['Prepared', formatDate(new Date(NOW()), 'DD/MM/YYYY')]].map(([k, v]) => h('tr', {}, h('th', {}, k), h('td', {}, v)))),
     h('table', { class: 'items' }, h('thead', {}, h('tr', {}, ['Charge component', 'Specification / Description', 'Qty', 'Unit', 'Rate (RM)', 'Amount (RM)', 'Source'].map(x => h('th', {}, x)))),
       h('tbody', {}, res.lines.map(l => h('tr', {}, h('td', {}, COMPONENTS[l.comp]), h('td', {}, l.spec || l.desc, l.override ? h('div', { class: 'o' }, 'Rate overridden (guideline ' + money(l.catalogueRate) + '): ' + l.override.reason) : null), h('td', { class: 'r' }, fmtQ(l.qty)), h('td', {}, l.unit), h('td', { class: 'r' }, money(l.rate)), h('td', { class: 'r' }, money(l.amount)), h('td', {}, l.code + ' · ' + l.source))))),
-    h('table', { class: 'tot' }, h('tr', {}, h('th', {}, 'Subtotal'), h('td', {}, rm(res.subtotal))), ...res.adjustments.map(a => h('tr', {}, h('th', {}, a.label + ' — ' + a.rule), h('td', {}, rm(a.amount)))), h('tr', { class: 'g' }, h('th', {}, 'Total Connection Charge'), h('td', {}, rm(res.total)))),
+    h('table', { class: 'tot' }, h('tr', {}, h('th', {}, 'Subtotal'), h('td', {}, rm(res.subtotal))), ...res.adjustments.map(a => h('tr', {}, h('th', {}, a.label + ' — ' + a.rule), h('td', {}, rm(a.amount)))), ...extrasRes(w).map(x => h('tr', {}, h('th', {}, 'Additional item — ' + x.desc + ' (' + x.qty + ' ' + x.unit + ')'), h('td', {}, rm(x.amount)))), h('tr', { class: 'g' }, h('th', {}, 'Total Connection Charge'), h('td', {}, rm(res.total + extrasSum(w))))),
     res.complete ? null : h('p', { class: 'warn' }, 'CALCULATION INCOMPLETE — not a final amount. Missing: ' + res.incomplete.join('; ')),
     Object.keys(w.notRequired).length ? h('p', {}, 'Marked not required: ' + Object.entries(w.notRequired).map(([k, v]) => COMPONENTS[k] + ' (' + v + ')').join('; ')) : null,
     h('h2', {}, 'Formulas'), h('ul', {}, res.lines.map(l => h('li', {}, COMPONENTS[l.comp] + ': ' + l.formula + ' — ' + l.source + (l.rule ? ' — ' + l.rule : '')))),
@@ -398,6 +429,13 @@ function longTextSheet(row, info, w) {
   if (!f.layout) f.layout = layoutFor(info.category || []);
   { const rp = DB.refParts(row), src = rp.ecx + '|' + rp.wbs; if (f.refSrc !== src) { f.ref = rp.ecx || f.ref; f.projectRef = rp.wbs || f.projectRef; f.refSrc = src; } } // Reference No / Project Reference follow the project
   if (f.clientSrc !== info.title) { f.client = info.title; f.clientSrc = info.title; } // the customer list changed: Long Text follows it
+  // one customer: Developer / client is the name alone, IC / company no. is the Overview's Applicant ID (linked both ways)
+  const ltCust = E.customerOf(row), single = !E.isMultiApplicant(info.title);
+  // Type of use ⇄ the Overview's Type of Use: the Overview wins when it has one; otherwise what was typed here fills it
+  if (ltCust) { const u = E.g(ltCust, 'use'); if (u) f.use = u; else if (f.use) E.setCustomer(ltCust, 'use', f.use); }
+  // Scheme of supply ⇄ Site Survey's Technical findings (one text): the findings win when they have text; otherwise what was typed here fills them
+  { const wk = E.workOf(row), tf = wk ? E.g(wk, 'findings', '') : ''; if (tf) f.scheme = tf; else if (f.scheme) D.update(E.work(row).id, { 'p:findings': f.scheme }); }
+  if (single) { const s1 = E.splitNameIc(f.client); f.client = s1.name; const ov = E.custIc(ltCust); if (ov) f.ic = ov; else if (f.ic && ltCust) E.setCustomerIc(ltCust, f.ic); else if (s1.ic) f.ic = s1.ic; }
   const pre = h('textarea', { class: 'field ltpre', rows: 18, spellcheck: 'false', 'aria-label': 'Long text preview' });
   const warn = h('div', { class: 'ltwarn' }), sums = h('div', { class: 'ltsum' });
   let edited = false;
@@ -412,23 +450,13 @@ function longTextSheet(row, info, w) {
       .map(([k, v]) => h('span', {}, h('small', {}, k), h('b', {}, RMS(v)))));
     warn.replaceChildren(...out.warnings.map(x => h('p', { class: 'ccinfo amber' }, icon('info', 14), x)));
   };
-  const set = (k, v) => { f[k] = v; if (['subsidyBV', 'cdpBV', 'submittedBy'].includes(k)) ltKeep(k, v); touch(w); edited = false; draw(); };
+  const set = (k, v) => { f[k] = v; if (['subsidyBV', 'cdpBV', 'submittedBy'].includes(k)) ltKeep(k, v); if (k === 'ic' && single && ltCust) E.setCustomerIc(ltCust, v); if (k === 'use' && ltCust) E.setCustomer(ltCust, 'use', v); if (k === 'scheme') D.update(E.work(row).id, { 'p:findings': v }); touch(w); edited = false; draw(); };
   const inp = (k, label, o = {}) => h('label', { class: 'ltf' + (o.wide ? ' wide' : ''), 'data-k': k }, h('span', {}, label),
     o.area ? h('textarea', { class: 'field', rows: o.rows || 3, value: f[k] ?? '', oninput: e => set(k, e.target.value) }, f[k] ?? '')
       : o.opts ? h('select', { class: 'field', onchange: e => set(k, e.target.value) }, o.opts.map(([v, l]) => h('option', { value: v, selected: String(f[k]) === v ? true : null }, l)))
       : h('input', { class: 'field', value: f[k] ?? '', inputmode: o.num ? 'decimal' : null, placeholder: o.ph || '', list: o.list ? 'ltl-' + k : null, oninput: e => set(k, e.target.value) }),
     o.list ? h('datalist', { id: 'ltl-' + k }, o.list.map(v => h('option', { value: v }))) : null);
-  // extra items not in the Guidelines catalogue (e.g. road reinstatement): included in the connection cost of the long text
-  const extrasBox = h('div', { class: 'ltextras wide' });
-  const drawExtras = () => {
-    const list = f.extras || (f.extras = []);
-    const cell = (x, k, ph, num) => h('input', { class: 'field', value: x[k] ?? '', placeholder: ph, inputmode: num ? 'decimal' : null, 'aria-label': ph, oninput: e => { x[k] = e.target.value; touch(w); edited = false; draw(); } });
-    extrasBox.replaceChildren(h('span', { class: 'ltxl' }, 'Extra items not in the Guidelines (e.g. road reinstatement)'),
-      ...list.map((x, i) => h('div', { class: 'ltxrow' }, cell(x, 'desc', 'Description'), cell(x, 'rate', 'Rate (RM)', 1), cell(x, 'markup', 'Mark-up % (e.g. 115)', 1), cell(x, 'qty', 'Qty', 1), cell(x, 'unit', 'Unit (meter)'), f.layout === 'ntk' ? h('select', { class: 'field', 'aria-label': 'Cost group', onchange: e => { x.group = e.target.value; touch(w); edited = false; draw(); } }, [['lt', 'LT'], ['ht', 'HT'], ['substation', 'Substation']].map(([v, l]) => h('option', { value: v, selected: (x.group || 'lt') === v ? true : null }, l))) : null,
-        h('button', { class: 'iconbtn', type: 'button', 'aria-label': 'Remove this item', onclick: () => { list.splice(i, 1); touch(w); edited = false; drawExtras(); draw(); } }, icon('close', 16)))),
-      h('button', { class: 'btn', type: 'button', onclick: () => { list.push({ desc: 'Reinstate Road Surface for cable laying work', rate: '55', markup: '115', qty: '', unit: 'meter' }); touch(w); drawExtras(); } }, icon('plus', 15), 'Add extra item'));
-  };
-  drawExtras();
+  f.extras = w.inputs.extras || (w.inputs.extras = []); // the Additional Items of the Connection Charge tab
   // fields that only some layouts use
   const only = (layouts, ...els) => els.map(el => { el.dataset.only = layouts; return el; });
   const vis = () => body.querySelectorAll('[data-only]').forEach(el => { el.hidden = !el.dataset.only.split(' ').includes(f.layout); });
@@ -436,10 +464,10 @@ function longTextSheet(row, info, w) {
   const name = () => (String(f.shortTitle || f.ref || info.title).replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'Connection charge') + ' Long Text.txt';
   const body = h('div', { class: 'ltwrap' },
     h('div', { class: 'ltform' },
-      h('label', { class: 'ltf wide ltlayout' }, h('span', {}, 'Layout (from the project category)'), h('select', { class: 'field', 'aria-label': 'Layout', onchange: e => { f.layout = e.target.value; touch(w); edited = false; vis(); drawExtras(); draw(); } },
+      h('label', { class: 'ltf wide ltlayout' }, h('span', {}, 'Layout (from the project category)'), h('select', { class: 'field', 'aria-label': 'Layout', onchange: e => { f.layout = e.target.value; touch(w); edited = false; vis(); draw(); } },
         Object.entries(LAYOUTS).map(([k, l]) => h('option', { value: k, selected: f.layout === k ? true : null }, l)))),
       h('h4', {}, 'Project'), inp('shortTitle', 'Short title', { wide: true, ph: 'e.g. BTU-D-SF SL TO AISYAH AT KG PENAN MUSLIM' }), inp('ref', 'REF. NO (ECX)'), inp('projectRef', 'Project ref'),
-      inp('title', 'Project title', { wide: true, area: true, rows: 2 }), inp('consultant', 'Consultant / contractor'), inp('client', 'Developer / client'), inp('ic', 'IC / company no.'), inp('contact', 'Contact number'),
+      inp('title', 'Project title', { wide: true, area: true, rows: 2 }), inp('consultant', 'Consultant / contractor'), inp('client', 'Developer / client'), single ? inp('ic', 'IC / company no.') : null, inp('contact', 'Contact number'),
       ...only('ntk', h('label', { class: 'ltf wide' }, h('span', {}, 'NTK application type (who pays)'), h('select', { class: 'field', 'aria-label': 'NTK application type', onchange: e => {
         const t = NTK_TYPES[e.target.value]; f.ntkType = e.target.value; f.appType = t.appType; f.sst = f.sstExempt && e.target.value !== 'residential' ? '0' : t.sst; touch(w); edited = false;
         body.querySelectorAll('.ltform input').forEach(i => { const k = i.closest('label')?.dataset.k; if (k && f[k] != null) i.value = f[k]; }); draw(); } },
@@ -457,7 +485,6 @@ function longTextSheet(row, info, w) {
       ...only('tk2', h('h4', {}, 'Turnkey (TK2)'), inp('hvLen', 'HV U/G cable total length (m)', { num: true }), inp('ltOhLen', 'LT O/H line total length (m)', { num: true }), inp('ltUgLen', 'LT U/G line total length (m)', { num: true }),
         inp('material', 'Material price (RM, blank = controlled items)', { num: true }), inp('trafoKva', 'Transformer kVA (performance bond)', { num: true }), inp('bondRate', 'Bond rate (RM/kVA)', { num: true }),
         inp('bondTrafoYears', 'Transformer bond valid for'), inp('bondOtherYears', 'Other installation bond valid for')),
-      ...only('standard ntk tos uos', extrasBox),
       h('h4', {}, 'Source of supply'), inp('source', 'Existing substation', { wide: true, ph: 'e.g. P/M KG PENAN MUSLIM 2 11KV S/S (DS71115)' }), inp('feeder', 'Feeder'), inp('r', 'R (A)', { num: true }), inp('y', 'Y (A)', { num: true }), inp('b', 'B (A)', { num: true }),
       h('h4', {}, 'Submission'), inp('submittedBy', 'Submitted by'), inp('date', 'Date of submission'), inp('remarks', 'Remarks (blank = automatic)', { wide: true })),
     h('div', { class: 'ltout' }, sums, warn, h('div', { class: 'lthead' }, h('b', {}, 'Preview'), h('small', {}, 'You can edit the text here before saving. Changing a field above rebuilds it.')), pre,
@@ -466,5 +493,5 @@ function longTextSheet(row, info, w) {
         navigator.share ? h('button', { class: 'ccbtn', onclick: () => { const file = new File([txt()], name(), { type: 'text/plain' }); (navigator.canShare && navigator.canShare({ files: [file] }) ? navigator.share({ files: [file], title: name() }) : navigator.share({ title: name(), text: txt() })).catch(() => {}); } }, icon('export', 17), h('span', {}, 'Share')) : null,
         h('button', { class: 'ccbtn primary', onclick: () => { download(name(), txt(), 'text/plain;charset=utf-8'); E.log(row, 'Connection charge', 'Long text saved as .txt: ' + name()); toast('Saved ' + name()); } }, icon('export', 17), h('span', {}, 'Save .txt')))));
   draw(); vis();
-  sheet('Long Text — ' + shortApplicants(info.title), body, { done: 'Close', wide: true, onDone: () => render() });
+  sheet('Long Text — ' + shortApplicants(E.splitNameIc(info.title).name), body, { done: 'Close', wide: true, onDone: () => render() });
 }

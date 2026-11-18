@@ -2306,3 +2306,19 @@ html.kbup .gmodal-back { top: var(--vvt, 0px); bottom: auto; height: var(--vvh, 
 @container pbody (max-width: 520px) { .dupcard .dupli { flex-wrap: wrap; } .dupcard .dupli .btn.sm { margin-left: auto; } }
 .startover { display: flex; flex-direction: column; gap: 10px; }
 .startover p { margin: 0; }
+/* Additional Items (not in the Guidelines), below the Charge Breakdown */
+.ccextras > .muted.small { margin: 2px 0 10px; }
+.ccxlist { display: flex; flex-direction: column; gap: 6px; }
+.ccxr { display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, .7fr) minmax(0, .9fr) minmax(0, .9fr) minmax(0, 1fr) 34px; gap: 6px; align-items: center; }
+.ccxr.cchd { font-size: 12.5px; color: var(--ink3); font-weight: 600; }
+.ccxf { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ccxf > small { display: none; font-size: 11.5px; color: var(--ink3); }
+.ccxr .field { min-width: 0; width: 100%; }
+.ccxr .amt { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; overflow-wrap: anywhere; }
+@container cctable (max-width: 640px) {
+  .ccxr { grid-template-columns: repeat(3, minmax(0, 1fr)) 34px; grid-template-areas: "d d d x" "r m q ." "u g a ."; row-gap: 8px; padding: 10px 0; border-top: 1px solid var(--line); }
+  .ccxr.cchd { display: none; }
+  .ccxf > small { display: block; }
+  .ccxr > .d { grid-area: d; } .ccxr > .iconbtn { grid-area: x; align-self: end; } .ccxr > .c-r { grid-area: r; } .ccxr > .c-m { grid-area: m; } .ccxr > .c-q { grid-area: q; }
+  .ccxr > .c-u { grid-area: u; } .ccxr > .c-g { grid-area: g; } .ccxr > .amt { grid-area: a; align-self: end; padding-bottom: 8px; }
+}

@@ -139,7 +139,7 @@ const unitWord = u => u === 'each' ? ' each' : '';
 const qtyWord = u => u === 'each' ? 'ea' : /^meter/i.test(u) ? 'meter' : qtyUnit(u);
 const ceilDiv = (len, per) => Math.ceil(len / per);
 /** extra items that are not in the Guidelines catalogue (e.g. road reinstatement): { desc, rate, markup (%), qty, unit } */
-function extras(f) {
+export function extras(f) {
   return (f.extras || []).map(x => ({ desc: String(x.desc || '').trim(), rate: num(x.rate), markup: num(x.markup), qty: num(x.qty), unit: String(x.unit || 'meter').trim(), group: x.group || 'lt' }))
     .filter(x => x.desc && x.rate != null && x.qty != null)
     .map(x => { const r = x.markup ? r2(x.rate * x.markup / 100) : x.rate; return { ...x, unitRate: r, amount: r2(r * x.qty) }; });
@@ -216,7 +216,6 @@ function standardText(f, res, tos = false) {
 function check(W, res, total, p) {
   const xs = p.sum(p.xs);
   if (Math.abs(total - xs - res.total) > 0.005) W.push('The long text total does not match the calculator total.');
-  if (p.xs.length) W.push(`Extra items not in the Guidelines (${RM(xs)}) are added to the connection cost; they are not in the calculator total.`);
 }
 
 /** NTK types of application: who pays, and the defaults each one sets (Type of application, SST %).

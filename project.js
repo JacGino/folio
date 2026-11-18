@@ -133,8 +133,12 @@ export async function approveEcparFlow(row) {
   E.approveEcpar(row, r.date); return true;
 }
 export async function rejectEcxFlow(row, x) {
-  const r = await formModal({ title: 'Reject ' + (g(x, 'number') || 'ECX application'), fields: rejectFields(E.ECX_REASONS), ok: 'Confirm Reject', danger: true }); if (!r) return false;
-  E.rejectEcx(row, x, r.date, r.reason, { cat: r.cat, correction: r.correction }); toast('ECX rejected. It is now in Rejected ECX.'); return true;
+  // filled in from the ECX card (Rejection Date, Reason Category, Rejection Reason), so nothing is typed twice
+  const r = await formModal({ title: 'Reject ' + (g(x, 'number') || 'ECX application'), fields: [
+    { key: 'date', type: 'date', label: 'Rejection date', value: g(x, 'rejected') || today(), required: true },
+    { key: 'cat', type: 'select', label: 'Reason category', options: E.ECX_REASONS, value: g(x, 'rcat') || '', placeholder: 'Choose a category' },
+    { key: 'reason', type: 'long', label: 'Rejection reason / remarks', value: g(x, 'reason', '') }], ok: 'Confirm Reject', danger: true }); if (!r) return false;
+  E.rejectEcx(row, x, r.date, r.reason, { cat: r.cat }); toast('ECX rejected. It is now in Rejected ECX.'); return true;
 }
 export async function resubmitEcxFlow(row, x) {
   const r = await formModal({ title: 'Resubmit ' + (g(x, 'number') || 'ECX application'), fields: [{ key: 'date', type: 'date', label: 'Resubmission date', required: true }, { key: 'note', type: 'long', label: 'What changed' }], ok: 'Resubmit' }); if (!r) return false;
@@ -395,7 +399,7 @@ function keepTabScroll(id, strip) {
 }
 /** one ECX application, several applicants (e.g. a longhouse): each name with its Applicant ID (IC No) beside it, + to add another.
  *  Saved back into the customer name as '1) NAME (IC)\n2) …', so the table and the Long Text stay in sync. */
-const joinApplicants = list => list.length === 1 ? list[0].name + (list[0].ic ? ' (' + list[0].ic + ')' : '') : list.map((a, i) => `${i + 1}) ${a.name}${a.ic ? ' (' + a.ic + ')' : ''}`).join('\n');
+const joinApplicants = list => list.length === 1 ? list[0].name : list.map((a, i) => `${i + 1}) ${a.name}${a.ic ? ' (' + a.ic + ')' : ''}`).join('\n');
 function applicantSheet(title, a = { name: '', ic: '' }) {
   return new Promise(res => {
     let form, done = false;
@@ -407,12 +411,13 @@ function applicantSheet(title, a = { name: '', ic: '' }) {
       { done: 'Cancel', onDone: () => { if (!done) res(null); } });
   });
 }
-function saveApplicants(c, list) { E.setCustomer(c, 'name', joinApplicants(list)); E.ensureAll(); render(); }
+// one customer: the name stays plain and its Applicant ID (IC No) is a field of its own (also the Long Text's IC / company no.)
+function saveApplicants(c, list) { E.setCustomer(c, 'name', joinApplicants(list)); D.update(c.id, { 'p:ic': list.length === 1 ? (list[0].ic || null) : null }); E.ensureAll(); render(); }
 function applicantList(c, info) {
   const t = c ? g(c, 'name') : info.title, ap = applicantsOf(t);
   if (ap.length) return ap;
-  const m = String(t || '').trim().match(/^(.*?)\s*\(([^)]*)\)\s*$/);
-  return [m ? { name: m[1].trim(), ic: m[2].trim() } : { name: String(t || '').trim(), ic: '' }];
+  const one = E.splitNameIc(t);
+  return [{ name: one.name, ic: (c && E.custIc(c)) || one.ic }];
 }
 const addApplicantBtn = (c, info) => c ? h('button', { class: 'iconbtn sm apladd', type: 'button', 'aria-label': 'Add applicant', onclick: async e => { e.stopPropagation();
   const list = applicantList(c, info), a = await applicantSheet('Add applicant ' + (list.length + 1)); if (!a) return; saveApplicants(c, [...list, a]); toast('Applicant added'); } }, icon('plus', 16)) : null;
@@ -451,7 +456,8 @@ function overview(row, info, n) {
         c && g(c, 'tariff') === 'Domestic' && g(c, 'subsidy') === 'Yes' ? cf('number', 'Subsidy %', 'subsidyPct', { type: 'select', options: ['70%', '100%'] }) : null,
         cf('layers', 'Type of Application', 'apptype', { type: 'select', options: E.APP_TYPES }),
         cf('today', 'Meter Type', 'meter', { type: 'select', options: E.METER_TYPES }),
-        cf('building', 'Premise Type', 'premise', { type: 'select', options: E.PREMISE_TYPES })),
+        cf('building', 'Premise Type', 'premise', { type: 'select', options: E.PREMISE_TYPES }),
+        cf('home', 'Type of Use', 'use', { ph: 'e.g. DWELLING' })), // the Long Text's Type of use (linked both ways)
       h('h3', { class: 'ph' }, icon('info', 17), 'Project Information'),
       h('div', { class: 'kvs' }, kv('layers', 'Category', propVal(row, 'Project Category')), kv('text', 'Reference No (ECX No)', propVal(row, DB.REF_ECX)), kv('text', 'Project Reference (ECPAR No)', E.reportOnly(info.category) ? h('span', { class: 'muted' }, 'Not applicable') : propVal(row, DB.REF_ECPAR)), kv('pin', 'Station', propVal(row, 'Station')),
         kv('date', 'Date Assigned', propVal(row, 'Date Assigned')), kv('date', 'Due Date', propVal(row, 'Due Date')))),
