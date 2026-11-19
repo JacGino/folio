@@ -36,9 +36,12 @@ export function methodology(inp) {
   const cell = row[inp.scope];
   if (!cell) return { na: `${SCOPES[inp.scope]} is Not Applicable for ${CATS[cat]} (Section 3.2).`, comps: [], notes: [], ref };
   const comps = [], notes = [];
+  // a Temporary Supply project: Substation and Line Capacity Charges are waived, whatever the charging category
+  if (inp.tos && cat !== 4) notes.push('Temporary Supply: Substation Capacity Charge and Line Capacity Charge are waived.');
   const add = (key, extra = {}) => comps.push({ key, label: COMPONENTS[key], mode: AUTO.has(key) ? 'auto' : 'items', required: true, ...extra });
   for (const t of cell[inp.method]) {
     const optional = t.endsWith('?'), base = t.replace(/[?]|\^\d/g, '');
+    if (inp.tos && (base === 'scc' || base === 'lcc') && !(t.includes('^1') && inp.dedicated)) continue; // waived for Temporary Supply (a dedicated substation is still its full cost)
     if (t.includes('^1')) { // [1] If new substation is dedicated, full Substation Cost is charged instead of Substation Capacity Charge.
       if (inp.dedicated) { add('substation', { rule: 'Footnote [1]: new substation is dedicated — full Substation Cost instead of Substation Capacity Charge.' }); notes.push('Footnote [1] applied: Substation Capacity Charge replaced by full Substation Cost.'); }
       else add('scc', { rule: 'Footnote [1]: shared new substation — Substation Capacity Charge.' });

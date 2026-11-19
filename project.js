@@ -560,7 +560,9 @@ function surveyTab(row, info, n) {
       kv('text', 'Wayleave (Private/Utilities)', propVal(row, DB.WAYLEAVE)),
       rep ? null : kv('linechart', 'Transformer & feeder loading', wf('loading', 'Transformer & feeder loading')),
       // full width at the bottom, with a taller box to type in
-      h('div', { class: 'kv kvwide' }, h('span', { class: 'kl' }, icon('text', 16), 'Technical findings'), h('div', { class: 'kvv' }, wf('findings', 'Technical findings')))));
+      h('div', { class: 'kv kvwide' }, h('span', { class: 'kl' }, icon('text', 16), 'Technical findings'), h('div', { class: 'kvv' }, wf('findings', 'Technical findings'))),
+      // site notes kept apart from the Technical findings (which also fill the Long Text's Scheme of supply)
+      h('div', { class: 'kv kvwide' }, h('span', { class: 'kl' }, icon('text', 16), 'Remark'), h('div', { class: 'kvv' }, wf('remark', 'Remark')))));
 }
 
 // ---------- ECPAR ----------

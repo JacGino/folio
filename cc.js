@@ -52,7 +52,9 @@ const touch = w => { w.dirty = true; };
 // The tab
 // =====================================================================================
 export function ccTab(row, info) {
-  const w = work(row); autoUnits(w, info); const res = calculate(w);
+  const w = work(row); autoUnits(w, info);
+  w.inputs.tos = (info.category || []).includes('Temporary Supply'); // capacity charges waived for Temporary Supply
+  const res = calculate(w);
   const wrap = h('div', { class: 'ccgrid' }, left(row, info, w, res), right(row, info, w, res));
   wrap.dataset.row = row.id;
   return wrap;
@@ -79,6 +81,8 @@ const pickBtn = (label, cur, opts, set, ph = 'Choose…') => {
     h('span', {}, (opts.find(o => o[0] === cur) || [])[1] || ph), icon('chevd', 15));
   return b;
 };
+// Supply upgrading: Applied Load ⇄ Existing capacity (one value) — the other box follows while you type
+const mirrorBox = (label, v) => { const b = document.querySelector(`.ccnum[aria-label="${label}"]`); if (b && b !== document.activeElement) b.textContent = v ?? ''; };
 const numBox = (val, label, onval, unit) => {
   const t = textbox({ value: val ?? '', cls: 'ccnum', label, attrs: { inputmode: 'decimal' }, oninput: () => onval(t.value.replace(/[^0-9.]/g, '')), onkeydown: e => { if (e.key === 'Enter') t.blur(); } });
   return h('label', { class: 'ccinp' }, t, unit ? h('span', { class: 'ccu' }, unit) : null);
@@ -147,12 +151,12 @@ function loadSection(row, info, w, res) {
   const elig = contributionEligible(I);
   return h('section', { class: 'ccsec ccload' },
     h('h3', { class: 'ccsh' }, h('span', { class: 'ccn' }, icon('play', 13)), '2. Load / Capacity'),
-    I.premise === 'publight' ? null : frow('Applied Load', numBox(I.applied, 'Applied Load', v => { I.applied = v; touch(w); refreshResults(row, info); }, 'kVA'), p && p.listed ? 'Per unit. Charged at the Table 5.1 minimum, or the applied load if higher' : 'Maximum demand declared by the customer (per unit)'),
+    I.premise === 'publight' ? null : frow('Applied Load', numBox(I.applied, 'Applied Load', v => { I.applied = v; if (I.upgrade) { I.existing = v; mirrorBox('Existing capacity', v); } touch(w); refreshResults(row, info); }, 'kVA'), p && p.listed ? 'Per unit. Charged at the Table 5.1 minimum, or the applied load if higher' : 'Maximum demand declared by the customer (per unit)'),
     frow('Load basis', segs([['practice', 'Your rule'], ['guideline', 'Guideline 5.2']], I.basis === 'guideline' ? 'guideline' : 'practice', v => { I.basis = v; I.basisChosen = true; touch(w); render(); }, 'Load basis'),
       I.basis === 'guideline' ? 'Table 5.1 / Section 5.2 as written' : '1-phase min 5 kVA · 3-phase min 10 kVA · Table 5.1 for Longhouse & upgrading'),
     ...applicantLoads(I, p, w, row, info),
-    frow('Supply upgrading (existing customer)', tog(!!I.upgrade, v => { I.upgrade = v; touch(w); render(); }, 'Supply upgrading'), 'Section 5.2.3'),
-    I.upgrade && upgradeMin(I, p) == null ? frow('Existing capacity', numBox(I.existing, 'Existing capacity', v => { I.existing = v; touch(w); refreshResults(row, info); }, 'kVA'), 'No Table 5.1 minimum for this premise: charged on the difference') : null,
+    frow('Supply upgrading (existing customer)', tog(!!I.upgrade, v => { I.upgrade = v; if (v) I.existing = I.applied ?? ''; touch(w); render(); }, 'Supply upgrading'), 'Section 5.2.3'), // on: Existing capacity starts as the Applied Load
+    I.upgrade && upgradeMin(I, p) == null ? frow('Existing capacity', numBox(I.existing, 'Existing capacity', v => { I.existing = v; I.applied = v; mirrorBox('Applied Load', v); touch(w); refreshResults(row, info); }, 'kVA'), 'No Table 5.1 minimum for this premise: charged on the difference') : null,
     I.upgrade && upgradeMin(I, p) != null ? h('p', { class: 'muted small note' }, `Upgrading is charged on Applied Load − Minimum Assigned Load (${upgradeMin(I, p)} kVA per unit).`) : null,
     loadResult(w, res),
     elig && needs ? frow('Apply SESCO Contribution', tog(!!I.contribution, v => { I.contribution = v; touch(w); render(); }, 'SESCO Contribution'), 'Section 3.1.17(a): capacity charges borne by SESCO') : null);

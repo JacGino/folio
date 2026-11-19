@@ -90,9 +90,10 @@ export const CHECKLISTS = {
 /** the checklists that apply to a project, in category order; SAL100KW uses the Residential or Non-Residential side */
 export function checklistsFor(categories, side = 'residential') {
   const out = [];
-  // Non Turnkey (NTK) and Upgrading of Supply (UOS) use the SAL100KW checklist, Residential or Non-Residential side
-  // (one list when a project has more than one of them); it is labelled with the project's own category
-  const SAME = { 'Non Turnkey': 'NTK', 'Upgrading of Supply': 'UOS' };
+  // Non Turnkey (NTK), Upgrading of Supply (UOS) and Temporary Supply (TOS) use the SAL100KW checklist, Residential or
+  // Non-Residential side (one list when a project has more than one of them), labelled with the project's own category;
+  // Temporary Supply keeps its own Appendix B section as well
+  const SAME = { 'Non Turnkey': 'NTK', 'Upgrading of Supply': 'UOS', 'Temporary Supply': 'TOS' };
   const like = Object.keys(SAME).filter(c => categories.includes(c));
   const cats = like.length && !categories.includes('SAL100KW') ? [...categories, 'SAL100KW'] : categories;
   const ntkOnly = cats !== categories, aliasLabel = like.map(c => SAME[c]).join(' / ');
