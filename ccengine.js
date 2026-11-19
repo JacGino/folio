@@ -38,10 +38,13 @@ export function methodology(inp) {
   const comps = [], notes = [];
   // a Temporary Supply project: Substation and Line Capacity Charges are waived, whatever the charging category
   if (inp.tos && cat !== 4) notes.push('Temporary Supply: Substation Capacity Charge and Line Capacity Charge are waived.');
+  // special case set by hand (e.g. an upgrading customer): capacity charge is RM 0.00, not a waiver (only Temporary Supply is waived)
+  else if (inp.waiveCap && cat !== 4) notes.push('Capacity charge (Substation + Line Capacity Charge) = RM 0.00 — special case' + ((inp.waiveReason || '').trim() ? ': ' + inp.waiveReason.trim() : '') + '.');
+  const waive = (inp.tos || inp.waiveCap) && cat !== 4;
   const add = (key, extra = {}) => comps.push({ key, label: COMPONENTS[key], mode: AUTO.has(key) ? 'auto' : 'items', required: true, ...extra });
   for (const t of cell[inp.method]) {
     const optional = t.endsWith('?'), base = t.replace(/[?]|\^\d/g, '');
-    if (inp.tos && (base === 'scc' || base === 'lcc') && !(t.includes('^1') && inp.dedicated)) continue; // waived for Temporary Supply (a dedicated substation is still its full cost)
+    if (waive && (base === 'scc' || base === 'lcc') && !(t.includes('^1') && inp.dedicated)) continue; // waived for Temporary Supply, or RM 0.00 set by hand (a dedicated substation is still its full cost)
     if (t.includes('^1')) { // [1] If new substation is dedicated, full Substation Cost is charged instead of Substation Capacity Charge.
       if (inp.dedicated) { add('substation', { rule: 'Footnote [1]: new substation is dedicated — full Substation Cost instead of Substation Capacity Charge.' }); notes.push('Footnote [1] applied: Substation Capacity Charge replaced by full Substation Cost.'); }
       else add('scc', { rule: 'Footnote [1]: shared new substation — Substation Capacity Charge.' });
@@ -181,6 +184,7 @@ export function calculate(state) {
   const need = (cond, msg) => { if (cond) res.incomplete.push(msg); };
   need(!inp.cat, 'Connection Charging Category'); need(!inp.method, 'Charging Method'); need(!inp.scope, 'Scope of Work'); need(inp.phase !== 1 && inp.phase !== 3, 'Supply Phase'); need(!inp.premise, 'Premise Type');
   if (m.na) { res.na = m.na; return res; }
+  if (inp.waiveCap && !inp.tos && +inp.cat !== 4) res.waiveCap = { reason: (inp.waiveReason || '').trim() }; // capacity charge RM 0.00 set by hand (special case)
   const has = k => m.comps.some(c => c.key === k), comp = k => m.comps.find(c => c.key === k);
   // capacity charges
   if ((has('scc') || has('lcc')) && inp.premise && (inp.phase === 1 || inp.phase === 3)) {

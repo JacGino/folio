@@ -158,6 +158,9 @@ function loadSection(row, info, w, res) {
     frow('Supply upgrading (existing customer)', tog(!!I.upgrade, v => { I.upgrade = v; if (v) I.existing = I.applied ?? ''; touch(w); render(); }, 'Supply upgrading'), 'Section 5.2.3'), // on: Existing capacity starts as the Applied Load
     I.upgrade && upgradeMin(I, p) == null ? frow('Existing capacity', numBox(I.existing, 'Existing capacity', v => { I.existing = v; I.applied = v; mirrorBox('Applied Load', v); touch(w); refreshResults(row, info); }, 'kVA'), 'No Table 5.1 minimum for this premise: charged on the difference') : null,
     I.upgrade && upgradeMin(I, p) != null ? h('p', { class: 'muted small note' }, `Upgrading is charged on Applied Load − Minimum Assigned Load (${upgradeMin(I, p)} kVA per unit).`) : null,
+    // special case (e.g. an upgrading customer): capacity charge RM 0.00 — not a waiver; only Temporary Supply is waived
+    !I.tos && (needs || I.waiveCap) ? frow('Capacity charge RM 0.00', tog(!!I.waiveCap, v => { I.waiveCap = v; touch(w); render(); }, 'Capacity charge RM 0.00'), 'Special case, e.g. upgrading customer: Substation & Line Capacity Charge = RM 0.00') : null,
+    !I.tos && I.waiveCap ? frow('Reason', h('input', { class: 'field', value: I.waiveReason || '', placeholder: 'Optional', 'aria-label': 'RM 0.00 reason', oninput: e => { I.waiveReason = e.target.value; touch(w); refreshResults(row, info); } }), 'Shown in the calculator notes and the PDF') : null,
     loadResult(w, res),
     elig && needs ? frow('Apply SESCO Contribution', tog(!!I.contribution, v => { I.contribution = v; touch(w); render(); }, 'SESCO Contribution'), 'Section 3.1.17(a): capacity charges borne by SESCO') : null);
 }

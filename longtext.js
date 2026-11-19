@@ -68,7 +68,7 @@ function subsidyText(f, res) {
     if (res.load && res.load.perApplicant && res.load.items && res.load.gross == null) P(`= LOAD PER APPLICANT: ${res.load.items.map(kv).join(' + ')} kVA = ${kv(res.load.total)} kVA`);
     P(`= [${cap.map(l => `(${kv(l.qty)} kVA x ${RM(l.rate)})`).join(' + ')}] = ${RM(sum(cap))}`);
     for (const a of adjCap) P(`LESS ${a.label} = ${RM(a.amount)}`, `CAPACITY CHARGE PAYABLE = ${RM(d)}`);
-  } else P('(d) CAPACITY CHARGE : NOT APPLICABLE = RM 0.00');
+  } else P(capWaived(res) || '(d) CAPACITY CHARGE : NOT APPLICABLE = RM 0.00');
   P('');
   // (e) meter fee
   const meterName = l => /single|1-phase/i.test(l.desc) ? '1-Phase Meter' : /Three Phase whole current/i.test(l.desc) ? '3-Phase Meter' : desc(l);
@@ -185,6 +185,8 @@ function budget(P, total, e, sst, cdpBV, cdpSeek, { na = true, exempt = false } 
 }
 const remarkOf = (f, sst) => f.remarks || ('FUND TO BE SOUGHT FROM CUSTOMER' + (sst ? ` + ${kv(sst)}% SST.` : '.'));
 
+// capacity charge set to RM 0.00 by hand in the calculator (special case, not a waiver): '(d) CAPACITY CHARGE : RM 0.00'
+const capWaived = (res, lbl = '(d) CAPACITY CHARGE :') => res && res.waiveCap ? `${lbl} RM 0.00` : null;
 /** SAL100KW (Commercial), NTK and TOS: the user's SAL100KW / TOS examples */
 function standardText(f, res, tos = false) {
   const W = [], out = [], P = (...x) => out.push(...x), p = parts(f, res), { b, oh, sst } = common(f, res, P, W);
@@ -206,7 +208,8 @@ function standardText(f, res, tos = false) {
     if (res.load && res.load.perApplicant && res.load.items && res.load.gross == null) P(`= LOAD PER APPLICANT: ${res.load.items.map(kv).join(' + ')} kVA = ${kv(res.load.total)} kVA`);
     P(`= ${ordered.map(l => `(${kv(l.qty)} kVA X ${RM(l.rate)})`).join(' + ')} = ${RM(p.sum(p.cap))}`);
     for (const a of p.adjCap) P(`LESS ${a.label} = ${RM(a.amount)}`, `CAPACITY CHARGE PAYABLE = ${RM(p.d)}`);
-  } else P(tos ? '(d) CAPACITY CHARGE : LINE CAPACITY CHARGE + SUBSTATION CAPACITY CHARGE' : '(d) CAPACITY CHARGE : NOT APPLICABLE', tos ? '= WAIVE FOR TEMPORARY SUPPLY' : '= RM 0.00');
+  } else if (capWaived(res)) P(capWaived(res));
+  else P(tos ? '(d) CAPACITY CHARGE : LINE CAPACITY CHARGE + SUBSTATION CAPACITY CHARGE' : '(d) CAPACITY CHARGE : NOT APPLICABLE', tos ? '= WAIVE FOR TEMPORARY SUPPLY' : '= RM 0.00');
   P('', p.met.length ? `(e) METER FEE : ${p.met.map(l => l.qty === 1 ? `${RM(l.rate)} (${meterShort(l)})` : `${RM(l.rate)} x ${kv(l.qty)} (${meterShort(l)}) = ${RM(l.amount)}`).join(' + ')}` : '(e) METER FEE : RM 0.00', '');
   const total = r2(p.c + p.d + p.e), cdp = b == null ? 0 : r2(b - p.c - p.d), cdpSeek = Math.max(0, cdp);
   P(`(f) TOTAL CUSTOMER CONNECTION CHARGE : (c) + (d) + (e) = ${RM(total)}`, `(g) CAPACITY DEVELOPMENT BV (CDP) : (b) - (c) - (d) = ${RM(cdp)}`, `To seek from ${RM(cdpSeek)} Capacity Development BV ${f.cdpBV || ''}.`, '', '(h) BUDGET ALLOCATION SUMMARY:');
@@ -289,7 +292,7 @@ function ntkText(f, res) {
       P(`= ${[scc, lcc].filter(Boolean).map(l => `(${kv(L.perUnit)} kVA X ${RM(l.rate)})`).join(' + ')} = ${RM(one)} x ${kv(L.units)} ea = ${RM(p.sum(p.cap))}`); }
     else P(`= ${[scc, lcc].filter(Boolean).map(l => `(${RM(l.rate)} x ${kv(l.qty)} kVA)`).join(' + ')}`, `= ${RM(p.sum(p.cap))}`);
     for (const a of p.adjCap) P(`LESS ${a.label} = ${RM(a.amount)}`, `CAPACITY CHARGE PAYABLE = ${RM(p.d)}`);
-  } else P('(d) CAPACITY CHARGE : N/A');
+  } else P(capWaived(res) || '(d) CAPACITY CHARGE : N/A');
   P('');
   // (e) meter fee: N/A, one line, or a list with its total
   if (!p.met.length) P('(e) METER FEE : N/A');
@@ -340,7 +343,7 @@ function uosText(f, res) {
     else if (ex != null && L.perUnit != null) P(`= ACTUAL DECLARE LOAD - ${up(f.existingLabel || 'MINIMUM ASSIGNED LOAD')}`, `= ${kv(L.perUnit * (L.units || 1))} kVA - ${kv(ex)} kVA = ${kv(q)} kVA`);
     P(`=[${[scc, lcc].filter(Boolean).map(l => `(${kvRM(l.rate)} x ${kv(l.qty)} kVA)`).join(' + ')}]`, `= ${RM(p.sum(p.cap))}`);
     for (const a of p.adjCap) P(`LESS ${a.label} = ${RM(a.amount)}`, `CAPACITY CHARGE PAYABLE = ${RM(p.d)}`);
-  } else P('(d) CAPACITY CHARGE: NOT APPLICABLE = RM 0.00');
+  } else P(capWaived(res, '(d) CAPACITY CHARGE:') || '(d) CAPACITY CHARGE: NOT APPLICABLE = RM 0.00');
   P('', p.met.length ? `(e) METER FEE: ${p.met.map(l => l.qty === 1 ? RM(l.rate) : `${RM(l.rate)} x ${kv(l.qty)} = ${RM(l.amount)}`).join(' + ')}` : '(e) METER FEE: RM 0.00', '');
   const total = r2(p.c + p.d + p.e), cdp = b == null ? 0 : r2(b - p.c - p.d), cdpSeek = Math.max(0, cdp);
   P(`(f) TOTAL CUSTOMER CONNECTION CHARGE: (c) + (d) + (e) = ${RM(total)}`, `(g) CAPACITY DEVELOPMENT BV (CDP): (b) - (c) - (d) = ${RM(cdp)}`, `     To seek ${RM(cdpSeek)} from Capacity Development BV.`, '', '(h) BUDGET ALLOCATION SUMMARY:');
