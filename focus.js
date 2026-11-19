@@ -77,6 +77,7 @@ function ecxRecords(n) {
     const row = D.live(D.val(x, 'project')); if (!row || D.val(row, 'db') !== dbr.id) continue;
     const info = DB.kpiInfo(row, dbr, n); if (info.archived) continue;
     const status = ECX_SHOW(g(x, 'status')), active = E.ECX_ACTIVE.includes(status);
+    if (status !== 'Rejected') continue; // resubmitted or closed: back in normal progress, not on this page
     const rj = g(x, 'rejected'); // no due date: the rejection ends the ECX KPI, so it is never due or overdue
     out.push({ id: 'x' + x.id, x, row, cust: info.title, cats: info.category, no: g(x, 'number', ''), appid: g(x, 'appid', ''), status, active,
       rejected: rj, due: null, days: null, rcat: g(x, 'rcat') || '', reason: g(x, 'reason', ''), correction: g(x, 'correction', ''), remarks: g(x, 'remarks', ''), priority: priOf(row) });
@@ -112,12 +113,12 @@ const PAGES = {
     donut: { title: 'Rejected ECPAR by Status', key: r => r.status, order: E.ECPAR_ACTIVE, colors: { 'Pending Revision': '#3B82F6' } },
     cols: ['ECPAR No.', 'Customer', 'Project / Category', 'Rejection Details', 'Rejected Date', 'Due Date', 'Status'] },
   ecx: { title: 'Rejected ECX', icon: 'filex', desc: 'ECX applications that were rejected and require review or follow-up action.', records: ecxRecords, unit: 'ECX',
-    tabs: [['all', 'All', null, r => r.status !== 'Closed'], ['pending', 'Rejected', 'hourglass', r => r.status === 'Rejected'], ['resub', 'Resubmitted', 'redo', r => r.status === 'Resubmitted'], ['closed', 'Closed', 'okcircle', r => r.status === 'Closed']],
-    metrics: rs => { const open = rs.filter(r => r.status !== 'Closed'); return [['filex', 'Total Rejected ECX', open.length, null, null, open.length], ['okcircle', 'Rejected', rs.filter(r => r.status === 'Rejected').length, 'green', null, open.length], ['redo', 'Resubmitted', rs.filter(r => r.status === 'Resubmitted').length, 'orange', null, open.length], ['info', 'Closed', rs.filter(r => r.status === 'Closed').length, null, null, rs.length]]; },
-    statuses: ['Rejected', 'Resubmitted', 'Closed'], search: r => [r.no, r.appid, r.cust, r.reason, r.correction, r.cats.join(' ')],
+    tabs: [['all', 'All', null, () => true], ['week', 'This week', 'date', r => r.rejected && (startOfDay(new Date(NOW())) - parseDate(r.rejected)) / 864e5 <= 7], ['older', 'Older', 'hourglass', r => !(r.rejected && (startOfDay(new Date(NOW())) - parseDate(r.rejected)) / 864e5 <= 7)]],
+    metrics: rs => { const wk = rs.filter(r => r.rejected && (startOfDay(new Date(NOW())) - parseDate(r.rejected)) / 864e5 <= 7).length, nc = rs.filter(r => !r.rcat).length; return [['filex', 'Total Rejected ECX', rs.length, null, null, rs.length], ['date', 'Rejected this week', wk, 'orange', null, rs.length], ['hourglass', 'Older than 7 days', rs.length - wk, null, null, rs.length], ['info', 'No reason category', nc, null, null, rs.length]]; },
+    statuses: ['Rejected'], search: r => [r.no, r.appid, r.cust, r.reason, r.correction, r.cats.join(' ')],
     dates: [['week', 'Rejected in the last 7 days', r => r.rejected && (startOfDay(new Date(NOW())) - parseDate(r.rejected)) / 864e5 <= 7]],
-    donut: { title: 'Rejected ECX by Status', key: r => r.status, order: ['Rejected', 'Resubmitted', 'Closed'], colors: { Rejected: '#3B82F6', Resubmitted: '#A78BFA', Closed: '#3FA45B' } },
-    bars: { title: 'Rejection Reason Breakdown', icon: 'list', key: r => r.rcat || 'Not categorised', order: [...E.ECX_REASONS, 'Not categorised'], colors: { 'Incomplete documents': '#E5484D', 'Drawing not compliant': '#E5A50A', 'Additional information required': '#F5C451', 'Revised documents required': '#A78BFA', Other: '#3B82F6', 'Not categorised': '#B4B2AD' } },
+    donut: { title: 'Rejected ECX by Reason', key: r => r.rcat || 'Not categorised', order: [...E.ECX_REASONS, 'Not categorised'], colors: { 'Incomplete documents': '#E5484D', 'Drawing not compliant': '#E5A50A', 'Additional information required': '#F5C451', 'Revised documents required': '#A78BFA', Other: '#3B82F6', 'Not categorised': '#B4B2AD' } },
+    bars: { title: 'By Project Category', icon: 'layers', key: r => r.cats[0] || 'No category', order: [...DB.CATEGORIES, 'No category'], label: short, colors: {} },
     cols: ['ECX No.', 'Customer', 'Project / Category', 'Rejection Details', 'Rejected Date', 'Status'] },
 };
 const CAT_COLORS = ['#3FA45B', '#F5C451', '#A78BFA', '#7BD389', '#E5A50A', '#9CC5F2', '#C9B6F2', '#E8A4A0', '#B4B2AD'];
