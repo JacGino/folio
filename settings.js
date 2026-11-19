@@ -53,7 +53,8 @@ export function renderSettings(sub) {
       group(row({ icon: 'trash', label: 'Start over: erase all data', danger: true, onclick: startOverSheet }),
         row({ icon: 'trash', label: 'Remove all Folio data from this device', danger: true, chev: false, onclick: async () => {
         if (await confirmBox('This removes Folio from this device only. Your GitHub copy stays. Continue?', 'Remove')) { await D.wipe(); location.reload(); } } })),
-      h('p', { class: 'small muted', style: 'margin:6px 4px 0' }, 'Start over erases every project, page and attachment on all your devices and in your GitHub copy, then gives you an empty Planning KPI Tracker. Your settings, GitHub connection and app lock stay.')].filter(Boolean));
+      h('p', { class: 'small muted', style: 'margin:6px 4px 0' }, 'Start over erases every project, page and attachment on all your devices and in your GitHub copy, then gives you an empty Planning KPI Tracker. Your settings, GitHub connection and app lock stay.'),
+      h('p', { class: 'copyr' }, '© 2026 byRomienaa. All rights reserved.')].filter(Boolean));
   })();
   return wrap;
 }

@@ -2329,3 +2329,13 @@ html.kbup .gmodal-back { top: var(--vvt, 0px); bottom: auto; height: var(--vvh, 
 #splash { transition: opacity .9s ease, -webkit-backdrop-filter .9s ease, backdrop-filter .9s ease; }
 #splash.out .sp-stage { transform: scale(.96); filter: blur(4px); transition: transform .9s cubic-bezier(.4,0,.2,1), filter .9s ease; }
 body.arrive #app, body.arrive #lock { animation-duration: .9s; }
+/* Reduce Motion (Mac / Windows / iOS setting): same timing, fade only, no scaling or blur */
+@media (prefers-reduced-motion: reduce) {
+  #splash .sp-logo.sp-icon { animation: spFadeOnly 1.1s ease both !important; }
+  @keyframes spFadeOnly { from { opacity: 0; } to { opacity: 1; } }
+  #splash { transition: opacity .9s ease !important; }
+}
+/* small copyright: bottom of the opening animation and the end of Settings */
+#splash .sp-copy { position: absolute; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom) + 22px); margin: 0; text-align: center; font: 500 11px/1.2 -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif; letter-spacing: .2px; color: var(--muted, #8a8a8e); opacity: .8; animation: spFadeOnly 1.1s .3s ease both; }
+@keyframes spFadeOnly { from { opacity: 0; } to { opacity: .8; } }
+.copyr { margin: 22px 0 6px; text-align: center; font-size: 11px; color: var(--muted, #8a8a8e); opacity: .8; }
