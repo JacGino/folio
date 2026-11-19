@@ -270,7 +270,7 @@ export function ecxLate(t, today) {
 export function todayGroups(now) {
   const d = kpiDb(); if (!d) return { overdue: [], today: [] };
   const today = startOfDay(new Date(now));
-  const open = rows(d.id).map(r => kpiInfo(r, d, now)).filter(t => !t.archived && t.status !== 'Done');
+  const open = rows(d.id).map(r => kpiInfo(r, d, now)).filter(t => !t.archived && !t.finished); // Done, or Rejected with a completion date, is finished like Done
   const withDue = t => ({ ...t, due: t.dueDate || null, days: t.dueDate ? dateBetween(startOfDay(new Date(t.dueDate)), today, 'days') : null });
   const overdue = open.map(t => ({ t, late: ecxLate(t, today) })).filter(x => x.late != null && x.late > 0).map(x => ({ ...withDue(x.t), days: -x.late, ecxLate: x.late }));
   const ids = new Set(overdue.map(t => t.id));

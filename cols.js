@@ -364,7 +364,7 @@ export function visibilitySheet(dbr, { page = null, pageTitle = '', pageCols = [
         const on = !pg.includes(x.id);
         return h('div', { class: 'pvrow', 'data-id': x.id }, h('span', { class: 'pvh off' }), h('span', { class: 'pvi' }, icon('formula', 18)),
           h('button', { class: 'pvn', type: 'button', title: 'Rename', onclick: async () => { await rename(dbr, x.id, x.def); c = cfg(dbr); paint(); } }, c.names[x.id] || x.def),
-          eye(on, x.def, () => { const s = new Set(c.page[page] || []); on ? s.add(x.id) : s.delete(x.id); c.page = { ...c.page, [page]: [...s] }; commit(); paint(); }, x.fixed));
+          eye(on, x.def, () => { const s = new Set(c.page[page] || []); on ? s.add(x.id) : s.delete(x.id); c.page = { ...c.page, [page]: [...s] }; commit(); paint(); }, x.lock)); // 'fixed' is only a set width, never a reason to lock the eye
       })) : []),
       h('button', { class: 'pvnew', type: 'button', onclick: async e => { if (await newProperty(DB.db(dbr.id), e.currentTarget)) fresh(); } }, icon('plus', 18), 'New property'),
       h('p', { class: 'pvnote' }, 'Applies to every table linked to ' + (D.val(dbr, 'name') || 'the tracker') + ': Projects, the Focus pages and the full tracker table. Tap a name to rename the column.'));

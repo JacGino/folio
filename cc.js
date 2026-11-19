@@ -460,6 +460,11 @@ function longTextSheet(row, info, w) {
       ...(subs ? [[t.pct ? `Government subsidy ${t.pct}%` : 'Government subsidy', t.gov], ['Customer', t.cust]] : [['Total with SST', t.h]])]
       .map(([k, v]) => h('span', {}, h('small', {}, k), h('b', {}, RMS(v)))));
     warn.replaceChildren(...out.warnings.map(x => h('p', { class: 'ccinfo amber' }, icon('info', 14), x)));
+    // ECPAR Budget Amount follows CDP to seek (once (b) Total cost of project is filled in, so CDP is a real figure)
+    if (String(f.costNoOH ?? '').trim() !== '' && isFinite(+String(f.costNoOH).replace(/,/g, ''))) {
+      const ep = E.ecpar(row), cur = E.g(ep, 'budget');
+      if (cur === '' || cur == null || Math.abs(+cur - t.cdpSeek) > 0.004) D.update(ep.id, { 'p:budget': t.cdpSeek });
+    }
   };
   const set = (k, v) => { f[k] = v; if (['subsidyBV', 'cdpBV', 'submittedBy'].includes(k)) ltKeep(k, v); if (k === 'ic' && single && ltCust) E.setCustomerIc(ltCust, v); if (k === 'use' && ltCust) E.setCustomer(ltCust, 'use', v); if (k === 'scheme') D.update(E.work(row).id, { 'p:findings': v }); touch(w); edited = false; draw(); };
   const inp = (k, label, o = {}) => h('label', { class: 'ltf' + (o.wide ? ' wide' : ''), 'data-k': k }, h('span', {}, label),

@@ -40,6 +40,7 @@ export function homeScreen() {
 export function coverInto(el) {
   const rec = D.live('home'), cover = rec && D.val(rec, 'cover');
   el.classList.add('cover'); if (!cover) el.classList.add('default');
+  const th = rec && D.val(rec, 'coverThumb'); if (cover && th && th.id === cover.id && th.data) el.style.backgroundImage = `url("${th.data}")`; // small synced copy first
   if (cover) import('./page.js').then(m => m.fileUrl(cover.id)).then(u => { if (u) el.style.backgroundImage = `url("${u}")`; });
   if (rec) el.style.backgroundPosition = D.val(rec, 'coverPos', '50% 50%');
   return el;

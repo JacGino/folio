@@ -29,20 +29,37 @@ export function newPage(parent = null) { return D.create('page', 'ws', { title: 
 const fontClass = () => ''; // the font is now one setting for the whole app (⋯ → Font)
 
 // ---------- cover + photo ----------
+// a small copy of the photo / cover travels with the normal synced data, so it shows straight away on a device whose
+// attachments are not on it yet (re-added to the Home Screen, new device, attachments locked); the full file replaces it once it loads
+const THUMB = { icon: { key: 'iconThumb', px: 256, q: .82 }, cover: { key: 'coverThumb', px: 720, q: .72 } };
+async function makeThumb(url, px, q) {
+  const img = new Image(); img.src = url; await img.decode();
+  const k = Math.min(1, px / Math.max(img.naturalWidth, img.naturalHeight)), w = Math.max(1, Math.round(img.naturalWidth * k)), hh = Math.max(1, Math.round(img.naturalHeight * k));
+  const cv = document.createElement('canvas'); cv.width = w; cv.height = hh; cv.getContext('2d').drawImage(img, 0, 0, w, hh);
+  return cv.toDataURL('image/jpeg', q);
+}
+function showImage(el, rec, field) {
+  const ref = D.val(rec, field), t = THUMB[field], th = D.val(rec, t.key);
+  if (th && th.id === ref.id && th.data) el.style.backgroundImage = `url("${th.data}")`;
+  fileUrl(ref.id).then(async u => {
+    if (!u) return; el.style.backgroundImage = `url("${u}")`;
+    if (!th || th.id !== ref.id) { try { const data = await makeThumb(u, t.px, t.q); const r = D.getRec(rec.id); if (r && (D.val(r, field) || {}).id === ref.id) D.update(rec.id, { [t.key]: { id: ref.id, data } }); } catch (e) { /* not an image the browser can draw */ } }
+  });
+}
 export function coverAndPhoto(rec, { always = false } = {}) {
   const cover = D.val(rec, 'cover'), photo = D.val(rec, 'icon');
   const pick = (field) => pickImage(async f => { const ref = await addFile(f); D.update(rec.id, { [field]: ref }); go(location.hash); }, { max: field === 'cover' ? 2000 : 800 });
   const out = [];
   if (cover || always || D.val(rec, 'db')) { // pages holding a database always show a cover; a soft default until one is picked
-    const c = h('div', { class: 'cover' + (cover ? '' : ' default'), role: 'img', 'aria-label': 'Cover photo' }, h('button', { class: 'chg', onclick: () => menu(c.querySelector('.chg'), [{ label: 'Change cover', icon: 'paint', run: () => pick('cover') }, ...(cover ? [{ label: 'Reposition & resize', icon: 'expand', run: () => adjust(c, rec, 'cover') }] : []), { label: 'Remove cover', icon: 'trash', danger: true, run: () => { D.update(rec.id, { cover: null }); go(location.hash); } }]) }, 'Change cover'));
-    if (cover) fileUrl(cover.id).then(u => { if (u) c.style.backgroundImage = `url("${u}")`; });
+    const c = h('div', { class: 'cover' + (cover ? '' : ' default'), role: 'img', 'aria-label': 'Cover photo' }, h('button', { class: 'chg', onclick: () => menu(c.querySelector('.chg'), [{ label: 'Change cover', icon: 'paint', run: () => pick('cover') }, ...(cover ? [{ label: 'Reposition & resize', icon: 'expand', run: () => adjust(c, rec, 'cover') }] : []), { label: 'Remove cover', icon: 'trash', danger: true, run: () => { D.update(rec.id, { cover: null, coverThumb: null }); go(location.hash); } }]) }, 'Change cover'));
+    if (cover) showImage(c, rec, 'cover');
     c.style.backgroundPosition = D.val(rec, 'coverPos', '50% 50%'); if (D.val(rec, 'coverH')) c.style.setProperty('height', D.val(rec, 'coverH') + 'px', 'important');
     out.push(c);
   }
   const av = h('button', { class: 'avatar', 'aria-label': photo ? 'Change profile photo' : 'Add profile photo', onclick: () => menu(av, [
-    { label: photo ? 'Change photo' : 'Add photo', icon: 'person', run: () => pick('icon') }, ...(photo ? [{ label: 'Reposition & resize', icon: 'expand', run: () => adjust(av, rec, 'icon') }, { label: 'Remove photo', icon: 'trash', danger: true, run: () => { D.update(rec.id, { icon: null }); go(location.hash); } }] : []),
+    { label: photo ? 'Change photo' : 'Add photo', icon: 'person', run: () => pick('icon') }, ...(photo ? [{ label: 'Reposition & resize', icon: 'expand', run: () => adjust(av, rec, 'icon') }, { label: 'Remove photo', icon: 'trash', danger: true, run: () => { D.update(rec.id, { icon: null, iconThumb: null }); go(location.hash); } }] : []),
     ...(!cover ? [{ label: 'Add cover', icon: 'paint', run: () => pick('cover') }] : [])]) }, photo ? null : icon('person', 34));
-  if (photo) fileUrl(photo.id).then(u => { if (u) av.style.backgroundImage = `url("${u}")`; });
+  if (photo) showImage(av, rec, 'icon');
   av.style.backgroundPosition = D.val(rec, 'iconPos', '50% 50%');
   const sz = D.val(rec, 'iconSize'); if (sz) { av.style.setProperty('width', sz + 'px', 'important'); av.style.setProperty('height', sz + 'px', 'important'); }
   return { out, av, hasPhotoUi: !!(cover || photo) };

@@ -68,7 +68,8 @@ function ecparRecords(n) {
       status, rejected: rj, due, days: due ? Math.round((startOfDay(due) - t0) / 864e5) : null, rcat: g(e, 'rcat') || '', reason: g(e, 'reason', ''), correction: g(e, 'correction', ''), remarks: g(e, 'remarks', ''), priority: priOf(t.row) };
   });
 }
-const ECX_SHOW = s => E.ECX_ACTIVE.includes(s) ? s : s === 'Resubmitted' ? 'Resubmitted' : 'Closed';
+// the page shows the ECX card's own status: Closed only when the card says Closed; a rejected ECX that is Submitted again counts as Resubmitted
+const ECX_SHOW = s => E.ECX_ACTIVE.includes(s) ? s : s === 'Closed' ? 'Closed' : 'Resubmitted';
 function ecxRecords(n) {
   const dbr = DB.kpiDb(); if (!dbr) return [];
   const t0 = startOfDay(new Date(n)), out = [];
@@ -196,7 +197,7 @@ function tableCard(kind, def, S, base, rows, n) {
   C.gridOf(list, [26, ...lay.lead.map(c => ({ id: c.id, w: c.w, fixed: c.fixed }))], lay.shared, [...lay.tail.map(c => ({ id: c.id, w: c.w, fixed: c.fixed })), 30]);
   const pageHead = c => h('span', { class: 'cc', role: 'columnheader' }, h('button', { class: 'chd', type: 'button', 'aria-label': c.label + ' column options', onclick: e => { e.stopPropagation(); menu(e.currentTarget, [
     { label: 'Rename column', icon: 'pencil', run: async () => { const v = await promptBox('Column name', c.label); if (v == null) return; const k = C.cfg(dbr), t = v.replace(/\s+/g, ' ').trim().slice(0, 60); if (!t || t === c.def) delete k.names[c.id]; else k.names[c.id] = t; C.save(dbr, k); render(); } },
-    ...(c.fixed ? [] : [{ label: 'Hide on this page', icon: 'eye', run: () => { const k = C.cfg(dbr); k.page = { ...k.page, [kind]: [...new Set([...(k.page[kind] || []), c.id])] }; C.save(dbr, k); render(); } }])], { width: 220 }); } }, h('span', {}, c.label)));
+    ...(c.lock ? [] : [{ label: 'Hide on this page', icon: 'eye', run: () => { const k = C.cfg(dbr); k.page = { ...k.page, [kind]: [...new Set([...(k.page[kind] || []), c.id])] }; C.save(dbr, k); render(); } }])], { width: 220 }); } }, h('span', {}, c.label)));
   const allChk = h('input', { type: 'checkbox', class: 'hchk', 'aria-label': 'Select all', checked: shown.length && shown.every(r => S.sel.has(r.id)) ? true : null, onchange: e => { shown.forEach(r => e.target.checked ? S.sel.add(r.id) : S.sel.delete(r.id)); render(); } });
   list.append(...[h('div', { class: 'frow fhd', role: 'row' }, h('span', { class: 'fc-chk' }, allChk), lay.lead.map(pageHead),
       lay.shared.map(c => h('span', { class: 'cc', role: 'columnheader' }, C.headCell(dbr, c, { sort: S.col, onSort: c.p ? v => { S.col = v; render(); } : null, onFilter: addFilter }))), lay.tail.map(pageHead), h('span', { class: 'fc-act' })),

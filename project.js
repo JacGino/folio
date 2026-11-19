@@ -368,7 +368,11 @@ export function projectScreen(id, tab = 'overview') {
     h('section', { class: 'kstrip pstrip' },
       h('div', { class: 'kcell' }, h('div', {}, h('small', {}, 'Status'), propVal(row, 'Status'))),
       h('div', { class: 'kcell' }, h('div', {}, h('small', {}, 'Date Assigned'), propVal(row, 'Date Assigned'))),
-      h('div', { class: 'kcell' }, h('div', {}, h('small', {}, info.amend && info.due ? 'Resubmit by' : 'Due Date'), info.amend && info.due || info.kpiDue ? h('span', { class: 'val' }, formatDate(dueDate, 'DD/MM/YYYY')) : propVal(row, 'Due Date'))),
+      h('div', { class: 'kcell' }, h('div', {}, h('small', {}, info.amend && info.due ? 'Resubmit by' : 'Due Date'),
+        // Resubmit by = ECPAR Rejection Date + 1 day: tapping it edits the Rejection Date (the 1-day KPI stays)
+        info.amend && info.due ? h('button', { class: 'val fv', type: 'button', title: 'Change the ECPAR Rejection Date', 'aria-label': 'Resubmit by ' + formatDate(dueDate, 'DD/MM/YYYY') + ': change the ECPAR Rejection Date',
+            onclick: e => { e.stopPropagation(); const ep = E.ecpar(row); dateSheet('ECPAR Rejection Date (Resubmit by = +1 day)', g(D.getRec(ep.id), 'rejected') || toISODate(info.amendStart), v => { D.update(ep.id, { 'p:rejected': v }); render(); }); } }, h('span', {}, formatDate(dueDate, 'DD/MM/YYYY')))
+          : info.kpiDue ? h('span', { class: 'val' }, formatDate(dueDate, 'DD/MM/YYYY')) : propVal(row, 'Due Date'))),
       h('div', { class: 'kcell' }, h('div', {}, h('small', {}, info.amend && info.amendEnd ? 'Resubmitted' : 'Days Left'),
         info.finished || info.archived ? h('span', { class: 'muted' }, '—')
         : info.amend && info.amendEnd ? h('span', { class: 'dl amdone' + (info.amendDays <= 1 ? ' ok' : ' late'), title: 'Rejection Date to Resubmission Date (1 day allowed). Waiting for ECPAR approval.' }, `in ${info.amendDays} ${info.amendDays === 1 ? 'day' : 'days'}`)
@@ -583,7 +587,7 @@ function ecparTab(row, info, n) {
       kv('date', 'Rejection Date', ef('rejected', 'Rejection date', { type: 'date' })), kv('date', 'Resubmission Date', ef('resubmitted', 'Resubmission date', { type: 'date' })),
       kv('pencil', 'Required Correction', ef('correction', 'Required correction')),
     ),
-    h('p', { class: 'muted small note' }, 'The ECPAR budget is prepared in the company system; record its reference and amount here. Connection charges are estimated separately in the Connection Charge tab.'),
+    h('p', { class: 'muted small note' }, 'Budget Amount follows CDP to seek in the Long Text (once (b) Total cost of project is filled in there). Connection charges are estimated separately in the Connection Charge tab.'),
     historyBlock('Revision history', hist));
   var rejectBtn, resubBtn;
   // one button: Resubmit while it is rejected; Reject otherwise (ready for the next rejection)
