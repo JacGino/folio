@@ -2322,3 +2322,10 @@ html.kbup .gmodal-back { top: var(--vvt, 0px); bottom: auto; height: var(--vvh, 
   .ccxr > .d { grid-area: d; } .ccxr > .iconbtn { grid-area: x; align-self: end; } .ccxr > .c-r { grid-area: r; } .ccxr > .c-m { grid-area: m; } .ccxr > .c-q { grid-area: q; }
   .ccxr > .c-u { grid-area: u; } .ccxr > .c-g { grid-area: g; } .ccxr > .amt { grid-area: a; align-self: end; padding-bottom: 8px; }
 }
+
+/* opening animation, slower and calmer (like Notion): a gentle 1.1s fade-in, a short hold, a 0.9s fade-out */
+#splash .sp-logo.sp-icon { animation: spInSlow 1.1s cubic-bezier(.25,.1,.25,1) both; }
+@keyframes spInSlow { from { opacity: 0; transform: scale(.92); filter: blur(6px); } to { opacity: 1; transform: none; filter: blur(0); } }
+#splash { transition: opacity .9s ease, -webkit-backdrop-filter .9s ease, backdrop-filter .9s ease; }
+#splash.out .sp-stage { transform: scale(.96); filter: blur(4px); transition: transform .9s cubic-bezier(.4,0,.2,1), filter .9s ease; }
+body.arrive #app, body.arrive #lock { animation-duration: .9s; }
