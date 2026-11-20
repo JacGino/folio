@@ -322,7 +322,7 @@ async function completeSurveyFlow(r, n) {
   toast('Site survey completed. It moves to the project history.'); render();
 }
 async function findingsFlow(r) {
-  const v = await formModal({ title: 'Site survey findings · ' + r.cust, fields: [{ key: 'text', type: 'long', label: 'Findings', required: true }, ...(E.reportOnly(r.cats) ? [] : [{ key: 'loading', type: 'long', label: 'Transformer & feeder loading', value: g(E.workOf(r.row) || { f: {} }, 'loading', '') }])], ok: 'Save' });
+  const v = await formModal({ title: 'Site survey findings · ' + r.cust, fields: [{ key: 'text', type: 'long', label: 'Findings', required: true }], ok: 'Save' });
   if (!v) return; E.surveyFindings(r.row, v.text); if (v.loading != null && v.loading !== '') D.update(E.work(r.row).id, { 'p:loading': v.loading }); toast('Findings saved'); render();
 }
 function rowMenu(kind, r, anchor, n) {

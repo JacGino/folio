@@ -71,6 +71,11 @@ function singleCategory() {
   const d = DB.kpiDb(), p = d && DB.propByName(d, 'Project Category'); if (!p) return;
   for (const r of DB.rows(d.id)) { const v = D.val(r, 'p:' + p.id); if (Array.isArray(v) && v.length > 1) D.update(r.id, { ['p:' + p.id]: [v.find(x => DB.CATEGORIES.includes(x)) || v[0]] }); }
 }
+// 'Transformer & feeder loading' was removed from the Site Survey: text typed there moves once into 2) Substation (edit it there)
+function moveLoading() {
+  for (const w of D.all('work')) { const t = String(g(w, 'loading', '') || '').trim(); if (!t) continue;
+    D.update(w.id, g(w, 'tfSub') || g(w, 'tfFeeder') ? { 'p:loading': null, 'p:remark': [g(w, 'remark', ''), 'Transformer & feeder loading: ' + t].filter(Boolean).join('\n') } : { 'p:tfSub': t, 'p:loading': null }); }
+}
 function ensureStdTasks() {
   const d = DB.kpiDb(); if (!d) return; const n = Date.now();
   for (const r of DB.rows(d.id)) {
@@ -579,4 +584,5 @@ export function ensureAll() {
   try { migrateSupplyType(); } catch (e) { console.error(e); }
   try { singleCategory(); } catch (e) { console.error(e); }
   try { ensureStdTasks(); } catch (e) { console.error(e); }
+  try { moveLoading(); } catch (e) { console.error(e); }
   try { syncRefs(); } catch (e) { console.error(e); } }

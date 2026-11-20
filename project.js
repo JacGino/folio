@@ -678,13 +678,13 @@ function surveyTab(row, info, n) {
       kv('pin', 'Site address', h('span', {}, E.custAddress(row) || h('span', { class: 'muted' }, '—'))),
       kv('globe', 'Pin Location', pinField(row)),
       tfs ? null : kv('text', 'Wayleave (Private/Utilities)', propVal(row, DB.WAYLEAVE)),
-      rep ? null : kv('linechart', 'Transformer & feeder loading', wf('loading', 'Transformer & feeder loading')),
       // SAL100KW / UOS / TOS and NTK: Technical findings 1–10, keyed in by hand (not linked to the Long Text's Scheme of supply)
       ...(tfs ? [h('h4', { class: 'tfhead' }, icon('text', 16), 'Technical findings'),
-        ...E.FINDINGS.map(([k, label, ph], i) => kv('text', `${i + 1}) ${label}`, wf(k, label, { ph }))),
-        kv('text', `${E.FINDINGS.length + 1}) Wayleave (Private / Utility)`, propVal(row, DB.WAYLEAVE)),
-        h('div', { class: 'kv kvwide' }, h('span', { class: 'kl' }, icon('text', 16), `${E.FINDINGS.length + 2}) Remark`), h('div', { class: 'kvv' }, wf('remark', 'Remark'))),
-        g(E.workOf(row) || {}, 'findings', '') ? h('div', { class: 'kv kvwide' }, h('span', { class: 'kl' }, icon('text', 16), 'Earlier findings (notes)'), h('div', { class: 'kvv' }, wf('findings', 'Earlier findings'))) : null]
+        ...E.FINDINGS.map(([k, label, ph]) => kv('text', label, wf(k, label, { ph }))),
+        kv('text', 'Wayleave (Private / Utility)', propVal(row, DB.WAYLEAVE)),
+        h('div', { class: 'kv kvwide' }, h('span', { class: 'kl' }, icon('text', 16), 'Remark'), h('div', { class: 'kvv' }, wf('remark', 'Remark'))),
+        // Scheme of Supply: the same text as the Long Text's Scheme of supply (linked both ways); only for categories with an ECPAR (not SSE)
+        rep ? null : h('div', { class: 'kv kvwide' }, h('span', { class: 'kl' }, icon('text', 16), 'Scheme of Supply'), h('div', { class: 'kvv' }, wf('findings', 'Scheme of Supply')))]
       // other categories: one Technical findings box (it also fills the Long Text's Scheme of supply), then Remark
       : [h('div', { class: 'kv kvwide' }, h('span', { class: 'kl' }, icon('text', 16), 'Technical findings'), h('div', { class: 'kvv' }, wf('findings', 'Technical findings'))),
         h('div', { class: 'kv kvwide' }, h('span', { class: 'kl' }, icon('text', 16), 'Remark'), h('div', { class: 'kvv' }, wf('remark', 'Remark')))])));

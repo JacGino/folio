@@ -463,9 +463,11 @@ function longTextSheet(row, info, w) {
   if (w.inputs.scope === 'ltnew' && /^ryb$/i.test(String(f.feeder || '').trim())) f.feeder = ''; // new substation: no 'RYB' placeholder
   // Type of use ⇄ the Overview's Type of Use: the Overview wins when it has one; otherwise what was typed here fills it
   if (ltCust) { const u = E.g(ltCust, 'use'); if (u) f.use = u; else if (f.use) E.setCustomer(ltCust, 'use', f.use); }
-  // Scheme of supply ⇄ Site Survey's Technical findings (one text): the findings win when they have text; otherwise what was typed here fills them
-  // (not for SAL100KW / UOS / TOS / NTK: their findings are separate fields and Scheme of supply is typed here by hand)
-  if (!E.structuredFindings(info.category)) { const wk = E.workOf(row), tf = wk ? E.g(wk, 'findings', '') : ''; if (tf) f.scheme = tf; else if (f.scheme) D.update(E.work(row).id, { 'p:findings': f.scheme }); }
+  // Existing substation / Feeder ⇄ Site Survey's Substation / Feeder: the survey wins when it has a value; otherwise what was typed here fills it
+  { const wk = E.workOf(row);
+    for (const [k, tk] of [['source', 'tfSub'], ['feeder', 'tfFeeder']]) { const sv = wk ? E.g(wk, tk, '') : ''; if (sv) f[k] = sv; else if (f[k] && !(k === 'feeder' && /^ryb$/i.test(String(f[k]).trim()))) D.update(E.work(row).id, { ['p:' + tk]: f[k] }); } }
+  // Scheme of supply ⇄ Site Survey's Scheme of Supply (one text): the survey's text wins when it has some; otherwise what was typed here fills it
+  { const wk = E.workOf(row), tf = wk ? E.g(wk, 'findings', '') : ''; if (tf) f.scheme = tf; else if (f.scheme) D.update(E.work(row).id, { 'p:findings': f.scheme }); }
   if (single) { const s1 = E.splitNameIc(f.client); f.client = s1.name; const ov = E.custIc(ltCust); if (ov) f.ic = ov; else if (f.ic && ltCust) E.setCustomerIc(ltCust, f.ic); else if (s1.ic) f.ic = s1.ic; }
   const pre = h('textarea', { class: 'field ltpre', rows: 18, spellcheck: 'false', 'aria-label': 'Long text preview' });
   const warn = h('div', { class: 'ltwarn' }), sums = h('div', { class: 'ltsum' });
@@ -487,7 +489,7 @@ function longTextSheet(row, info, w) {
       if (cur === '' || cur == null || Math.abs(+cur - t.cdpSeek) > 0.004) D.update(ep.id, { 'p:budget': t.cdpSeek });
     }
   };
-  const set = (k, v) => { f[k] = v; if (['subsidyBV', 'cdpBV', 'submittedBy'].includes(k)) ltKeep(k, v); if (k === 'ic' && single && ltCust) E.setCustomerIc(ltCust, v); if (k === 'use' && ltCust) E.setCustomer(ltCust, 'use', v); if (k === 'scheme' && !E.structuredFindings(info.category)) D.update(E.work(row).id, { 'p:findings': v }); touch(w); edited = false; draw(); };
+  const set = (k, v) => { f[k] = v; if (['subsidyBV', 'cdpBV', 'submittedBy'].includes(k)) ltKeep(k, v); if (k === 'ic' && single && ltCust) E.setCustomerIc(ltCust, v); if (k === 'use' && ltCust) E.setCustomer(ltCust, 'use', v); if (k === 'scheme') D.update(E.work(row).id, { 'p:findings': v }); if (k === 'source' || k === 'feeder') D.update(E.work(row).id, { ['p:' + (k === 'source' ? 'tfSub' : 'tfFeeder')]: v }); touch(w); edited = false; draw(); };
   const inp = (k, label, o = {}) => h('label', { class: 'ltf' + (o.wide ? ' wide' : ''), 'data-k': k }, h('span', {}, label),
     o.area ? h('textarea', { class: 'field', rows: o.rows || 3, value: f[k] ?? '', oninput: e => set(k, e.target.value) }, f[k] ?? '')
       : o.opts ? h('select', { class: 'field', onchange: e => set(k, e.target.value) }, o.opts.map(([v, l]) => h('option', { value: v, selected: String(f[k]) === v ? true : null }, l)))
