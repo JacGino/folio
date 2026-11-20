@@ -24,12 +24,16 @@ export function renderSettings(sub) {
   const body = h('div'); wrap.append(body);
   (async () => {
     const cfg = await S.meta.get('gh'); const st = Sync.getStatus(); const ws = (await S.meta.get('ws-settings')) || {};
-    const hasKey = !!(await S.meta.get('fileKey')); const used = await Sync.totalBlobBytes();
+    const hasKey = !!(await S.meta.get('fileKey')); const used = await Sync.totalBlobBytes(); const waiting = await Sync.pendingUploads();
     body.replaceChildren(...[
       h('p', { class: 'ghead' }, 'Sync'),
       group(
         row({ icon: 'sync', label: cfg ? `GitHub: ${cfg.owner}/${cfg.repo}` : 'Connect GitHub', value: cfg ? (st.state === 'error' ? 'Problem' : st.state === 'syncing' ? 'Syncing…' : 'On') : 'Off', onclick: githubSheet }),
-        cfg ? row({ icon: 'sync', label: 'Sync now', chev: false, onclick: async () => { toast('Syncing…'); const ok = await Sync.run(); toast(ok ? 'Synced' : 'Sync problem: ' + Sync.getStatus().error, 5000); render(); } }) : null),
+        cfg ? row({ icon: 'sync', label: 'Sync now', chev: false, onclick: async () => { toast('Syncing…'); const ok = await Sync.run(); toast(ok ? 'Synced' : 'Sync problem: ' + Sync.getStatus().error, 5000); render(); } }) : null,
+        // attachments added on this device that are not in GitHub yet (other devices cannot open them until they are)
+        waiting ? row({ icon: 'clip', label: `Attachments waiting to upload: ${waiting}`, value: !hasKey ? 'Unlock first' : !cfg ? 'Connect GitHub' : 'Upload', onclick: async () => {
+          if (!hasKey) { cryptoSheet(); return; } if (!cfg) return; toast('Uploading…'); const ok = await Sync.run(); const left = await Sync.pendingUploads();
+          toast(left ? `${left} still waiting${ok ? '' : ': ' + Sync.getStatus().error}` : 'All attachments uploaded', 5000); render(); } }) : null),
       st.state === 'error' ? h('p', { class: 'muted pad', style: { color: 'var(--red)' } }, st.error) : null,
       h('p', { class: 'ghead' }, 'Privacy'),
       group(

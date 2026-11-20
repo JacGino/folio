@@ -18,7 +18,16 @@ export async function fileUrl(id) {
   const u = URL.createObjectURL(new Blob([b.bytes], { type: b.type || guessType(b.name) })); urls.set(id, u); return u;
 }
 const guessType = n => /\.pdf$/i.test(n || '') ? 'application/pdf' : /\.(png)$/i.test(n || '') ? 'image/png' : /\.(jpe?g)$/i.test(n || '') ? 'image/jpeg' : '';
-export async function openFile(f) { const u = await fileUrl(f.id); if (u) window.open(u, '_blank'); else toast(f.err || 'This file is not on this device yet. Connect GitHub and unlock your files in Settings.'); }
+const FILE_PROBLEM = {
+  locked: 'Attachments are locked on this device. Unlock them in Settings › Encrypted attachments.',
+  offline: 'GitHub is not connected on this device. Connect it in Settings to download this file.',
+  missing: 'This file has not been uploaded yet. Open Folio on the device you added it from (attachments unlocked, GitHub connected) and tap Sync now there.',
+  error: 'This file could not be downloaded right now. Check your connection and try again.',
+};
+export async function openFile(f) {
+  const u = await fileUrl(f.id); if (u) { window.open(u, '_blank'); return; }
+  toast(f.err || FILE_PROBLEM[await Sync.fileProblem(f.id)] || FILE_PROBLEM.error, 6000);
+}
 async function addFile(file) {
   try { const ref = await Sync.addFile(null, file); Sync.soon(); warnSize(); return ref; }
   catch (e) { toast(e.message, 4000); throw e; }

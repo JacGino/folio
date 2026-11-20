@@ -2343,3 +2343,7 @@ body.arrive #app, body.arrive #lock { animation-duration: .9s; }
    under the top bar (the card would clip it, cutting the greeting); Change cover stays at the bottom, away from the buttons */
 body[data-layout="rail"] #main .wrap .hero .cover, body[data-layout="rail"] #main .wrap .fhead .cover { margin-top: 0 !important; }
 body[data-layout="rail"] .hero .cover .chg, body[data-layout="rail"] .fhead .cover .chg { top: auto; bottom: 10px; }
+/* file names in a field (Documents → Files, etc.) wrap inside the card instead of running off the edge */
+.kvv .tag, .fv .tag { max-width: 100%; min-width: 0; white-space: normal; overflow-wrap: anywhere; text-align: left; height: auto; line-height: 1.3; }
+.kvv > span, .kvv > div { min-width: 0; max-width: 100%; }
+.kvv .tag > svg, .fv .tag > svg { flex: none; width: 13px; height: 13px; align-self: flex-start; margin-top: 2px; }

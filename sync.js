@@ -94,11 +94,30 @@ export const setFileKey = k => { fileKey = k; };
 async function uploadQueue() {
   let q = (await S.meta.get('upq')) || [];
   if (!q.length || !fileKey) return;
+  let lastErr = null;
   for (const id of [...q]) {
-    const b = await S.get('blobs', id);
-    if (b) { const enc = await encryptBlob(fileKey, b.bytes); await gh.put(P(`files/${id}.enc`), enc, undefined, 'Folio: attachment'); await new Promise(r => setTimeout(r, 1500)); }
-    q = q.filter(x => x !== id); await S.meta.set('upq', q);
+    // one file failing (too big, network) must not hold back the others; it stays in the queue for the next sync
+    try {
+      const b = await S.get('blobs', id);
+      if (b) {
+        const enc = await encryptBlob(fileKey, b.bytes);
+        try { await gh.put(P(`files/${id}.enc`), enc, undefined, 'Folio: attachment'); }
+        catch (e) { if (!(e.conflict && await gh.getBytes(P(`files/${id}.enc`)))) throw e; } // already in GitHub: done
+        await new Promise(r => setTimeout(r, 1500));
+      }
+      q = q.filter(x => x !== id); await S.meta.set('upq', q);
+    } catch (e) { lastErr = e; }
   }
+  if (lastErr) throw lastErr;
+}
+/** How many attachments added on this device are still waiting to go to GitHub. */
+export async function pendingUploads() { return ((await S.meta.get('upq')) || []).length; }
+/** Why a file cannot be opened here: 'locked' (no passphrase on this device), 'offline' (GitHub not connected),
+ *  'missing' (not in GitHub yet: still waiting on the device it was added on), or 'error'. */
+export async function fileProblem(id) {
+  if (!fileKey) return 'locked';
+  if (!gh) return 'offline';
+  try { const r = await gh.getBytes(P(`files/${id}.enc`)); return r ? 'error' : 'missing'; } catch (e) { return 'error'; }
 }
 /** Get a file's bytes: local copy first, otherwise download and decrypt. */
 export async function fileBytes(id) {
