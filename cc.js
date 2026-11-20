@@ -30,10 +30,28 @@ const blank = () => ({ inputs: { basis: 'practice', cat: '', method: 'normal', s
 function fromSaved(c) { const s = D.val(c, 'snap'); return { inputs: { ...s.inputs, basis: s.inputs && s.inputs.basisChosen ? s.inputs.basis : 'practice' }, lines: s.lines.filter(l => !l.auto).map(l => ({ id: l.id || uid(), comp: l.comp, code: l.code, qty: l.qty, override: l.override || null, note: l.note || '' })), notRequired: { ...(s.notRequired || {}) }, loadedId: c.id, dirty: false }; }
 function work(row) {
   let w = WORK.get(row.id);
-  if (!w) { const last = calcsOf(row.id)[0]; w = last ? fromSaved(last) : fromCustomer(row); WORK.set(row.id, w); }
+  if (!w) { const last = calcsOf(row.id)[0]; w = last ? fromSaved(last) : fromCustomer(row); WORK.set(row.id, w);
+    // the Applied Load on the Overview is the latest one (it follows every change in either place)
+    const c = E.customerOf(row), L = c && g(c, 'load');
+    if (last && L != null && L !== '' && String(w.inputs.applied) !== String(L)) { w.inputs.applied = L; if (w.inputs.upgrade) w.inputs.existing = L; touch(w); }
+    const U = c && g(c, 'units'); if (last && U != null && U !== '' && String(w.inputs.units) !== String(U)) { w.inputs.units = U; w.inputs.unitsAuto = false; touch(w); } }
   // additional items (not in the Guidelines) belong to the calculation; older ones were kept with the Long Text
   if (!w.inputs.extras) w.inputs.extras = (w.inputs.lt && w.inputs.lt.extras) || [];
   return w;
+}
+/** Applied Load (kVA), shared by the Overview (Metering Scheme) and the Connection Charge calculator */
+export function appliedOf(row) { const c = E.customerOf(row), v = c && g(c, 'load'); return v != null && v !== '' ? v : (calcsOf(row.id)[0] || WORK.get(row.id)) ? work(row).inputs.applied : ''; }
+export function setApplied(row, v) {
+  const c = E.customerOf(row); if (c) D.update(c.id, { 'p:load': v === '' || v == null ? null : v });
+  const w = WORK.get(row.id) || ((calcsOf(row.id)[0]) ? work(row) : null);
+  if (w) { w.inputs.applied = v; if (w.inputs.upgrade) w.inputs.existing = v; touch(w); }
+}
+/** Number of units, shared by the Overview (Load Summary) and the Connection Charge calculator */
+export function unitsOf(row) { const c = E.customerOf(row), v = c && g(c, 'units'); return v != null && v !== '' ? v : (calcsOf(row.id)[0] || WORK.get(row.id)) ? work(row).inputs.units : ''; }
+export function setUnits(row, v) {
+  const c = E.customerOf(row); if (c) D.update(c.id, { 'p:units': v === '' || v == null ? null : v });
+  const w = WORK.get(row.id) || ((calcsOf(row.id)[0]) ? work(row) : null);
+  if (w) { w.inputs.units = v === '' ? 1 : v; w.inputs.unitsAuto = false; touch(w); }
 }
 /** the additional items, worked out (rate × mark-up × qty), and their sum: added to the Total Connection Charge */
 const extrasRes = w => extrasOf({ extras: w.inputs.extras || [] });
@@ -42,8 +60,10 @@ const extrasSum = w => Math.round(extrasRes(w).reduce((a, x) => a + x.amount, 0)
 function fromCustomer(row) {
   const w = blank(), c = E.customerOf(row); if (!c) return w;
   const meter = g(c, 'meter'), prem = PREMISES.find(p => p.label === g(c, 'premise'));
-  if (meter) w.inputs.phase = meter === '1-Phase' ? 1 : 3;
+  if (meter) w.inputs.phase = meter === '1-Phase' ? 1 : 3; // LVCT is three-phase
   if (prem) w.inputs.premise = prem.key;
+  if (g(c, 'load') != null && g(c, 'load') !== '') w.inputs.applied = g(c, 'load'); // Applied Load keyed in on the Overview
+  if (g(c, 'units') != null && g(c, 'units') !== '') { w.inputs.units = g(c, 'units'); w.inputs.unitsAuto = false; } // No of Unit keyed in on the Overview
   return w;
 }
 const touch = w => { w.dirty = true; };
@@ -131,7 +151,7 @@ function left(row, info, w, res) {
     frow('Supply Phase', segs([[1, 'Single Phase'], [3, 'Three Phase']], I.phase, v => set('phase', v), 'Supply Phase')),
     frow('Premise Type', pickBtn('Premise Type', I.premise, PREMISES.map(p => [p.key, p.label + (p.mal ? ` — ${p.mal}kVA` : '')]), v => set('premise', v)), 'Table 5.1'),
     PREMISE[I.premise]?.fn ? h('p', { class: 'cchint' }, TABLE51_NOTES[PREMISE[I.premise].fn]) : null,
-    frow(I.premise === 'publight' ? 'Number of LED 70W units' : +I.cat === 2 ? 'Number of houses / units' : 'Number of premises / units', numBox(I.units, 'Number of units', v => { I.units = v; touch(w); refreshResults(row, info); })),
+    frow(I.premise === 'publight' ? 'Number of LED 70W units' : +I.cat === 2 ? 'Number of houses / units' : 'Number of premises / units', numBox(I.units, 'Number of units', v => { I.units = v; { const c = E.customerOf(row); if (c) D.update(c.id, { 'p:units': v === '' ? null : v }); } touch(w); refreshResults(row, info); })),
     has('perhouse') ? frow('House type', pickBtn('House type (Per House Fee)', I.houseType || '', houseTypes, v => set('houseType', v)), 'Table 4.2') : null,
     showDedicated ? frow('Dedicated new substation', tog(!!I.dedicated, v => set('dedicated', v), 'Dedicated new substation'), 'Footnote [1] · Section 3.1.3') : null,
     showZone ? frow('New HT line from Zone Substation', tog(!!I.fromZone, v => set('fromZone', v), 'New HT line from Zone Substation'), 'Footnote [2]') : null,
@@ -151,12 +171,12 @@ function loadSection(row, info, w, res) {
   const elig = contributionEligible(I);
   return h('section', { class: 'ccsec ccload' },
     h('h3', { class: 'ccsh' }, h('span', { class: 'ccn' }, icon('play', 13)), '2. Load / Capacity'),
-    I.premise === 'publight' ? null : frow('Applied Load', numBox(I.applied, 'Applied Load', v => { I.applied = v; if (I.upgrade) { I.existing = v; mirrorBox('Existing capacity', v); } touch(w); refreshResults(row, info); }, 'kVA'), p && p.listed ? 'Per unit. Charged at the Table 5.1 minimum, or the applied load if higher' : 'Maximum demand declared by the customer (per unit)'),
+    I.premise === 'publight' ? null : frow('Applied Load', numBox(I.applied, 'Applied Load', v => { I.applied = v; if (I.upgrade) { I.existing = v; mirrorBox('Existing capacity', v); } { const c = E.customerOf(row); if (c) D.update(c.id, { 'p:load': v === '' ? null : v }); } touch(w); refreshResults(row, info); }, 'kVA'), p && p.listed ? 'Per unit. Charged at the Table 5.1 minimum, or the applied load if higher' : 'Maximum demand declared by the customer (per unit)'),
     frow('Load basis', segs([['practice', 'Your rule'], ['guideline', 'Guideline 5.2']], I.basis === 'guideline' ? 'guideline' : 'practice', v => { I.basis = v; I.basisChosen = true; touch(w); render(); }, 'Load basis'),
       I.basis === 'guideline' ? 'Table 5.1 / Section 5.2 as written' : '1-phase min 5 kVA · 3-phase min 10 kVA · Table 5.1 for Longhouse & upgrading'),
     ...applicantLoads(I, p, w, row, info),
     frow('Supply upgrading (existing customer)', tog(!!I.upgrade, v => { I.upgrade = v; if (v) I.existing = I.applied ?? ''; touch(w); render(); }, 'Supply upgrading'), 'Section 5.2.3'), // on: Existing capacity starts as the Applied Load
-    I.upgrade && upgradeMin(I, p) == null ? frow('Existing capacity', numBox(I.existing, 'Existing capacity', v => { I.existing = v; I.applied = v; mirrorBox('Applied Load', v); touch(w); refreshResults(row, info); }, 'kVA'), 'No Table 5.1 minimum for this premise: charged on the difference') : null,
+    I.upgrade && upgradeMin(I, p) == null ? frow('Existing capacity', numBox(I.existing, 'Existing capacity', v => { I.existing = v; I.applied = v; mirrorBox('Applied Load', v); { const c = E.customerOf(row); if (c) D.update(c.id, { 'p:load': v === '' ? null : v }); } touch(w); refreshResults(row, info); }, 'kVA'), 'No Table 5.1 minimum for this premise: charged on the difference') : null,
     I.upgrade && upgradeMin(I, p) != null ? h('p', { class: 'muted small note' }, `Upgrading is charged on Applied Load − Minimum Assigned Load (${upgradeMin(I, p)} kVA per unit).`) : null,
     // special case (e.g. an upgrading customer): capacity charge RM 0.00 — not a waiver; only Temporary Supply is waived
     !I.tos && (needs || I.waiveCap) ? frow('Capacity charge RM 0.00', tog(!!I.waiveCap, v => { I.waiveCap = v; touch(w); render(); }, 'Capacity charge RM 0.00'), 'Special case, e.g. upgrading customer: Substation & Line Capacity Charge = RM 0.00') : null,
@@ -407,9 +427,9 @@ function ltDefaults(row, info, w, res) {
   const d = new Date(NOW());
   return { shortTitle: '', ref: DB.refParts(row).ecx || (ecx && g(ecx, 'number')) || '', projectRef: DB.refParts(row).wbs || (E.ecparOf(row) && g(E.ecparOf(row), 'ref')) || '', title: '', consultant: (c && g(c, 'pic')) || '', client: info.title, ic: '', contact: (c && g(c, 'phone')) || '',
     appType: tariff || 'Domestic', load: w.inputs.applied || '', target: String(d.getFullYear()), cat: w.inputs.cat || '', use: '', scheme: '', // typed in by hand (not drafted from the charge items)
-    ntkType: ntkTypeFor(info.title, tariff),
+    ntkType: D.val(row, 'ntkType') || ntkTypeFor(info.title, tariff), // the NTK type shown with the category on the Overview
     // SST: 6% for everyone except Residential (0%); an SST relief letter makes it 0% — same for NTK, SAL100KW, UOS and TOS
-    costOH: '', costNoOH: '', sst: (info.category || []).includes('Non Turnkey') ? NTK_TYPES[ntkTypeFor(info.title, tariff)].sst : isResidential(row) ? '0' : '6', subsidy: tariff === 'Commercial' || sub === 'No' ? 'none' : sub === 'Yes' && g(c, 'subsidyPct') ? (g(c, 'subsidyPct') === '70%' ? '70' : '100') : 'auto',
+    costOH: '', costNoOH: '', sst: (info.category || []).includes('Non Turnkey') ? (NTK_TYPES[D.val(row, 'ntkType')] || NTK_TYPES[ntkTypeFor(info.title, tariff)]).sst : isResidential(row) ? '0' : '6', subsidy: tariff === 'Commercial' || sub === 'No' ? 'none' : sub === 'Yes' && g(c, 'subsidyPct') ? (g(c, 'subsidyPct') === '70%' ? '70' : '100') : 'auto',
     subsidyBV: ltRemember('subsidyBV') || 'PLS-260221', cdpBV: ltRemember('cdpBV') || 'PLS-260205', source: '', feeder: 'RYB', r: '', y: '', b: '',
     submittedBy: ltRemember('submittedBy') || LBL('profile.name', ''), date: d.toLocaleString('en-GB', { month: 'long', year: 'numeric' }).toUpperCase(), remarks: '', desc: {},
     // layout by project category (TK2 / TOS / UOS / SAL100KW / NTK), and the fields only some layouts use
@@ -444,7 +464,8 @@ function longTextSheet(row, info, w) {
   // Type of use ⇄ the Overview's Type of Use: the Overview wins when it has one; otherwise what was typed here fills it
   if (ltCust) { const u = E.g(ltCust, 'use'); if (u) f.use = u; else if (f.use) E.setCustomer(ltCust, 'use', f.use); }
   // Scheme of supply ⇄ Site Survey's Technical findings (one text): the findings win when they have text; otherwise what was typed here fills them
-  { const wk = E.workOf(row), tf = wk ? E.g(wk, 'findings', '') : ''; if (tf) f.scheme = tf; else if (f.scheme) D.update(E.work(row).id, { 'p:findings': f.scheme }); }
+  // (not for SAL100KW / UOS / TOS / NTK: their findings are separate fields and Scheme of supply is typed here by hand)
+  if (!E.structuredFindings(info.category)) { const wk = E.workOf(row), tf = wk ? E.g(wk, 'findings', '') : ''; if (tf) f.scheme = tf; else if (f.scheme) D.update(E.work(row).id, { 'p:findings': f.scheme }); }
   if (single) { const s1 = E.splitNameIc(f.client); f.client = s1.name; const ov = E.custIc(ltCust); if (ov) f.ic = ov; else if (f.ic && ltCust) E.setCustomerIc(ltCust, f.ic); else if (s1.ic) f.ic = s1.ic; }
   const pre = h('textarea', { class: 'field ltpre', rows: 18, spellcheck: 'false', 'aria-label': 'Long text preview' });
   const warn = h('div', { class: 'ltwarn' }), sums = h('div', { class: 'ltsum' });
@@ -466,7 +487,7 @@ function longTextSheet(row, info, w) {
       if (cur === '' || cur == null || Math.abs(+cur - t.cdpSeek) > 0.004) D.update(ep.id, { 'p:budget': t.cdpSeek });
     }
   };
-  const set = (k, v) => { f[k] = v; if (['subsidyBV', 'cdpBV', 'submittedBy'].includes(k)) ltKeep(k, v); if (k === 'ic' && single && ltCust) E.setCustomerIc(ltCust, v); if (k === 'use' && ltCust) E.setCustomer(ltCust, 'use', v); if (k === 'scheme') D.update(E.work(row).id, { 'p:findings': v }); touch(w); edited = false; draw(); };
+  const set = (k, v) => { f[k] = v; if (['subsidyBV', 'cdpBV', 'submittedBy'].includes(k)) ltKeep(k, v); if (k === 'ic' && single && ltCust) E.setCustomerIc(ltCust, v); if (k === 'use' && ltCust) E.setCustomer(ltCust, 'use', v); if (k === 'scheme' && !E.structuredFindings(info.category)) D.update(E.work(row).id, { 'p:findings': v }); touch(w); edited = false; draw(); };
   const inp = (k, label, o = {}) => h('label', { class: 'ltf' + (o.wide ? ' wide' : ''), 'data-k': k }, h('span', {}, label),
     o.area ? h('textarea', { class: 'field', rows: o.rows || 3, value: f[k] ?? '', oninput: e => set(k, e.target.value) }, f[k] ?? '')
       : o.opts ? h('select', { class: 'field', onchange: e => set(k, e.target.value) }, o.opts.map(([v, l]) => h('option', { value: v, selected: String(f[k]) === v ? true : null }, l)))
@@ -485,7 +506,7 @@ function longTextSheet(row, info, w) {
       h('h4', {}, 'Project'), inp('shortTitle', 'Short title', { wide: true, ph: 'e.g. BTU-D-SF SL TO AISYAH AT KG PENAN MUSLIM' }), inp('ref', 'REF. NO (ECX)'), inp('projectRef', 'Project ref'),
       inp('title', 'Project title', { wide: true, area: true, rows: 2 }), inp('consultant', 'Consultant / contractor'), inp('client', 'Developer / client'), single ? inp('ic', 'IC / company no.') : null, inp('contact', 'Contact number'),
       ...only('ntk', h('label', { class: 'ltf wide' }, h('span', {}, 'NTK application type (who pays)'), h('select', { class: 'field', 'aria-label': 'NTK application type', onchange: e => {
-        const t = NTK_TYPES[e.target.value]; f.ntkType = e.target.value; f.appType = t.appType; f.sst = f.sstExempt && e.target.value !== 'residential' ? '0' : t.sst; touch(w); edited = false;
+        const t = NTK_TYPES[e.target.value]; f.ntkType = e.target.value; D.update(row.id, { ntkType: e.target.value, ntkSub: { bda: 'BDA', jkrs: 'JKR', jkrf: 'JKR', commercial: 'Commercial', mixed: 'Commercial & Residential', residential: 'Residential' }[e.target.value] }); // the NTK sub-category follows f.appType = t.appType; f.sst = f.sstExempt && e.target.value !== 'residential' ? '0' : t.sst; touch(w); edited = false;
         body.querySelectorAll('.ltform input').forEach(i => { const k = i.closest('label')?.dataset.k; if (k && f[k] != null) i.value = f[k]; }); draw(); } },
         Object.entries(NTK_TYPES).map(([k, t]) => h('option', { value: k, selected: (f.ntkType || 'commercial') === k ? true : null }, t.label))))),
       // a client with an SST relief letter pays 0% (Section 34 note); without one every type except Residential pays 6%

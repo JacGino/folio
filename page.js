@@ -249,8 +249,14 @@ export function propEditor(rec, p, dbr, { compact = false, dfmt } = {}) {
       const vals = Array.isArray(v) ? v : [];
       const btn = h('button', { class: 'val' + (vals.length ? '' : ' empty'), 'aria-label': p.name, onclick: () => {
         const opts = (DB.props(DB.db(dbr.id)).find(x => x.id === p.id).options || []);
-        menu(btn, [...opts.map(o => ({ label: o.name, checked: vals.includes(o.name), run: () => { set(vals.includes(o.name) ? vals.filter(x => x !== o.name) : [...vals, o.name]); refresh(btn); } })), '-',
-          { label: 'New option…', icon: 'plus', run: async () => { const n = await promptBox('New option'); if (n && n.trim()) { DB.addOption(DB.db(dbr.id), p, n.trim()); set([...vals, n.trim()]); refresh(btn); } } }]);
+        // Project Category takes one choice only: picking one replaces the other (Overview, Tasks and Connection Charge follow it)
+        const one = DB.SINGLE_CHOICE.includes(p.name), cat = p.name === 'Project Category';
+        // Project Category: UOS and TOS are SAL100KW sub-categories (chosen on the project), so they are not listed here
+        const salFam = x => ['SAL100KW', 'Upgrading of Supply', 'Temporary Supply'].includes(x);
+        // (old labels brought over from Notion, e.g. New Application / Resubmission / NEM, are not offered unless the project still has one)
+        const shownOpts = cat ? opts.filter(o => !['Upgrading of Supply', 'Temporary Supply'].includes(o.name) && (DB.CATEGORIES.includes(o.name) || vals.includes(o.name))) : opts;
+        menu(btn, [...shownOpts.map(o => ({ label: o.name, checked: vals.includes(o.name) || (cat && o.name === 'SAL100KW' && vals.some(salFam)), run: () => { if (cat && o.name === 'SAL100KW' && vals.some(salFam)) return; set(one ? (vals.length === 1 && vals[0] === o.name ? vals : [o.name]) : vals.includes(o.name) ? vals.filter(x => x !== o.name) : [...vals, o.name]); refresh(btn); } })), '-',
+          { label: 'New option…', icon: 'plus', run: async () => { const n = await promptBox('New option'); if (n && n.trim()) { DB.addOption(DB.db(dbr.id), p, n.trim()); set(one ? [n.trim()] : [...vals, n.trim()]); refresh(btn); } } }]);
       } }, vals.length ? vals.map(x => chip(p, x)) : 'Empty');
       return btn;
     }

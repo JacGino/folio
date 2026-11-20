@@ -87,7 +87,7 @@ export async function addFile(key, file) {
   const id = M.uid('f'); const bytes = new Uint8Array(await file.arrayBuffer());
   await S.put('blobs', { bytes, type: file.type, name: file.name }, id);
   const q = (await S.meta.get('upq')) || []; q.push(id); await S.meta.set('upq', q);
-  if (!fileKey && needKey) setTimeout(needKey, 400); // locked here: it would wait on this device, so ask to unlock now
+  if (!fileKey && needKey && gh) setTimeout(needKey, 400); // locked here: it would wait on this device, so ask to unlock now
   return { id, name: file.name, size: file.size, type: file.type };
 }
 let fileKey = null, needKey = null;

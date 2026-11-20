@@ -45,37 +45,32 @@ export function elabel(key, def, tag = 'span', attrs = {}) {
   return el;
 }
 
-// ---------- no pinch-zoom: it fought with editing (page jumping, lag). ⋯ → Zoom is the way to make everything bigger ----------
+// ---------- no pinch-zoom: it fought with editing (page jumping, lag). ⋯ → Text size is the way to make text bigger ----------
 for (const ev of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(ev, e => e.preventDefault(), { passive: false }); // iPhone / iPad Safari
 document.addEventListener('touchmove', e => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false }); // two-finger pinch anywhere else
 // double-tap zoom is stopped by touch-action in the CSS (blocking it here would swallow quick taps)
-// ---------- zoom (per device, ⋯ → Zoom) ----------
-let zoomPct = 100;
-try { zoomPct = Math.max(70, Math.min(200, +localStorage.getItem('folio-zoom') || 100)); } catch {}
-export const zoomFactor = () => zoomPct / 100;
-function applyZoom() { document.documentElement.style.setProperty('--zoom', String(zoomPct / 100)); document.documentElement.classList.toggle('zoomed', zoomPct !== 100); } // zoom only costs anything when it is not 100%
-applyZoom();
-function setZoom(p) { zoomPct = Math.max(70, Math.min(200, Math.round(p / 10) * 10)); try { localStorage.setItem('folio-zoom', zoomPct); } catch {} applyZoom(); }
-// ---------- contrast (per device, ⋯ → Contrast slider under Zoom) ----------
-let contrastPct = 100;
-try { contrastPct = Math.max(60, Math.min(160, +localStorage.getItem('folio-contrast') || 100)); } catch {}
-function applyContrast() { const r = document.documentElement; r.style.setProperty('--contrast', String(contrastPct / 100)); r.classList.toggle('contrasted', contrastPct !== 100); } // costs nothing at 100%
-applyContrast();
-function setContrast(p) { contrastPct = Math.max(60, Math.min(160, Math.round(p / 5) * 5)); try { localStorage.setItem('folio-contrast', contrastPct); } catch {} applyContrast(); }
-function contrastRow() {
-  const pct = h('b', { class: 'zpct' }, contrastPct + '%');
-  const slider = h('input', { type: 'range', class: 'cslider', min: 60, max: 160, step: 5, value: contrastPct, 'aria-label': 'Contrast',
-    oninput: e => { setContrast(+e.target.value); pct.textContent = contrastPct + '%'; }, onclick: e => e.stopPropagation() });
-  return h('div', { class: 'zoomrow crow' }, icon('paint', 16), h('span', {}, 'Contrast'), slider, pct,
-    h('button', { class: 'zb zr', 'aria-label': 'Reset contrast', onclick: e => { e.stopPropagation(); setContrast(100); slider.value = 100; pct.textContent = '100%'; } }, '↺'));
-}
-function zoomRow() {
-  const pct = h('b', { class: 'zpct' }, zoomPct + '%');
-  const step = d => e => { e.stopPropagation(); setZoom(zoomPct + d); pct.textContent = zoomPct + '%'; };
-  return h('div', { class: 'zoomrow' }, icon('search', 16), h('span', {}, 'Zoom'),
-    h('button', { class: 'zb', 'aria-label': 'Zoom out', onclick: step(-10) }, '−'), pct,
-    h('button', { class: 'zb', 'aria-label': 'Zoom in', onclick: step(10) }, '+'),
-    h('button', { class: 'zb zr', 'aria-label': 'Reset zoom', onclick: e => { e.stopPropagation(); setZoom(100); pct.textContent = '100%'; } }, '↺'));
+// ---------- text size (per device, ⋯ → Text size) ----------
+// Text Size replaced Zoom: zooming the whole page made scrolling jumpy on iPhone / iPad; growing only the letters keeps it smooth.
+// (100%–140%: smaller would make typing boxes under 16px, which iPhone zooms into)
+let textPct = 100;
+try {
+  const z = +localStorage.getItem('folio-zoom') || 100, t = +localStorage.getItem('folio-text');
+  textPct = Math.max(100, Math.min(140, t || (z > 100 ? Math.round(z / 10) * 10 : 100))); // an earlier Zoom above 100% carries over as text size
+  localStorage.removeItem('folio-zoom');
+} catch {}
+export const zoomFactor = () => 1;
+function applyText() { document.documentElement.style.setProperty('--ts', String(textPct / 100)); }
+applyText();
+function setText(p) { textPct = Math.max(100, Math.min(140, Math.round(p / 10) * 10)); try { localStorage.setItem('folio-text', textPct); } catch {} applyText(); }
+// (Contrast was removed from ⋯: any earlier setting is cleared)
+try { localStorage.removeItem('folio-contrast'); } catch {}
+function textRow() {
+  const pct = h('b', { class: 'zpct' }, textPct + '%');
+  const step = d => e => { e.stopPropagation(); setText(textPct + d); pct.textContent = textPct + '%'; };
+  return h('div', { class: 'zoomrow' }, icon('text', 16), h('span', {}, 'Text size'),
+    h('button', { class: 'zb', 'aria-label': 'Smaller text', onclick: step(-10) }, 'A−'), pct,
+    h('button', { class: 'zb', 'aria-label': 'Bigger text', onclick: step(10) }, 'A+'),
+    h('button', { class: 'zb zr', 'aria-label': 'Reset text size', onclick: e => { e.stopPropagation(); setText(100); pct.textContent = '100%'; } }, '↺'));
 }
 
 // ---------- app-wide font (synced with the workspace settings) ----------
@@ -121,7 +116,7 @@ export function moreMenu(anchor, { extra = [], rec = null, onTrash = null } = {}
   const photo = (field, label) => () => pickImage(async f => { const ref = await Sync.addFile(null, f); Sync.soon(); D.update(rec.id, { [field]: ref }); render(); }, { max: field === 'cover' ? 2000 : 800 });
   const body = h('div', { class: 'actions' },
     h('div', { class: 'agrp fonts' }, fontCard('default', 'Default', '-apple-system, sans-serif'), fontCard('serif', 'Serif', 'var(--serif)'), fontCard('mono', 'Mono', 'var(--mono)')),
-    h('div', { class: 'agrp' }, zoomRow(), contrastRow()),
+    h('div', { class: 'agrp' }, textRow()),
     extra.length ? grp(extra.map(e => act(e.icon || 'chevr', e.label, e.run))) : null,
     grp(rec ? act('star', fav ? 'Remove from Favourites' : 'Add to Favourites', () => { D.update(rec.id, { fav: !fav }); toast(fav ? 'Removed from Favourites' : 'Added to Favourites'); render(); }) : null,
       act('export', 'Share', () => ctx.export ? ctx.export(anchor) : window.print()),
@@ -688,6 +683,10 @@ export async function boot() {
   const editing = () => { const a = document.activeElement; return !!(a && a !== document.body && (a.matches('input, textarea, select, [contenteditable="true"]'))) || !!document.querySelector('.cellpop, .sheet, .menu, .gmodal'); };
   let syncPending = false;
   const flushSync = () => { if (!syncPending) return; if (editing()) return setTimeout(flushSync, 1500); syncPending = false; render(); };
+  // a project's category changed here: its standard tasks follow straight away
+  // (only for a Project Category change: other edits must not run the full check, which copies linked dates back onto the project)
+  let catT = 0; D.onChange(info => { if (info.type !== 'update' || !info.fields || D.getRec(info.id)?.k !== 'row') return; const d = DB.kpiDb(), cp = d && DB.propByName(d, 'Project Category');
+    if (cp && info.fields.includes('p:' + cp.id)) { clearTimeout(catT); catT = setTimeout(() => E.ensureAll(), 300); } });
   D.onChange(info => { if (info.type === 'sync') { E.ensureAll(); if (editing()) { syncPending = true; setTimeout(flushSync, 1500); return; } }
     if (info.type === 'sync' || info.type === 'create' || info.type === 'delete' || info.type === 'wipe') render(); if (info.type !== 'sync') Sync.soon(); });
   Sync.onStatus(() => { renderSide(); loadFont(); });

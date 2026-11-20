@@ -53,7 +53,7 @@ export function columns(dbr, { computed = true, skip = [] } = {}) {
   return c.order.filter(id => !hid.has(id) && (computed || id.startsWith('p:'))).map(id => {
     const p = id.startsWith('p:') ? ps.find(q => 'p:' + q.id === id) : null, x = COMPUTED.find(k => k.id === id);
     return { id, p, label: c.names[id] || (p ? p.name : x.label), w: c.widths[id] || (p ? propW(p) : x.w), fixed: !!c.widths[id] };
-  }).filter(col => !skip.includes(col.p?.name));
+  }).filter(col => !skip.includes(col.p?.name) && !skip.includes(col.id));
 }
 /** grid columns: each column has a minimum width and grows with the space left over; the table scrolls sideways when it does not fit */
 export function gridOf(list, lead, cols, tail) {
@@ -270,7 +270,8 @@ async function deleteProperty(dbr, p) {
 
 // ---------- Property visibility (one list for every linked table) ----------
 /** pageCols: columns that exist only on this page (Focus pages): [{ id, label }]; they can be hidden on this page */
-export function visibilitySheet(dbr, { page = null, pageTitle = '', pageCols = [], after = render } = {}) {
+// skip: project columns that do not apply on this page (left out of the table and of this list), as names or column ids
+export function visibilitySheet(dbr, { page = null, pageTitle = '', pageCols = [], skip = [], after = render } = {}) {
   let c = cfg(dbr), q = '';
   const t = titleOf(dbr), tid = t ? 'p:' + t.id : null, ps = DB.props(dbr);
   const nameOf = id => c.names[id] || defLabel(dbr, id);
@@ -354,7 +355,8 @@ export function visibilitySheet(dbr, { page = null, pageTitle = '', pageCols = [
   const group = (title, act, rows) => [h('div', { class: 'pvhd' }, h('span', {}, title), act), h('div', { class: 'pvlist' }, rows)];
   const paint = () => {
     const hid = new Set(c.hidden), ok = id => !q || nameOf(id).toLowerCase().includes(q) || defLabel(dbr, id).toLowerCase().includes(q);
-    const shown = c.order.filter(id => !hid.has(id)), hidden = c.order.filter(id => hid.has(id));
+    const off = id => skip.includes(id) || skip.includes(nameOf(id)) || skip.includes(defLabel(dbr, id));
+    const shown = c.order.filter(id => !hid.has(id) && !off(id)), hidden = c.order.filter(id => hid.has(id) && !off(id));
     const rows1 = shown.filter(ok).map(id => item(id, true, { drag: !q, noHide: id === tid })), rows2 = hidden.filter(ok).map(id => item(id, false));
     const pg = page ? (c.page[page] || []) : [];
     body.replaceChildren(search,

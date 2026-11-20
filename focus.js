@@ -209,7 +209,7 @@ function tableCard(kind, def, S, base, rows, n) {
     h('div', { class: 'fbar' }, h('div', { class: 'dchips' }, tabEls),
       h('div', { class: 'ftools' }, h('label', { class: 'hsearch glass fsearch' }, icon('search', 16), search),
         h('button', { class: 'hbtn sm glass' + (S.cat || S.pri || S.status || S.date || S.pf.length ? ' on' : ''), 'aria-label': 'Filters and sorting', onclick: e => filterMenu(e.currentTarget) }, icon('filter', 17)),
-        h('button', { class: 'hbtn sm glass', 'aria-label': 'Properties', title: 'Properties: show, hide and arrange columns', onclick: () => C.visibilitySheet(dbr, { page: kind, pageTitle: def.title, pageCols: [...lay.allLead, ...lay.allTail] }) }, icon('sliders', 17)))),
+        h('button', { class: 'hbtn sm glass', 'aria-label': 'Properties', title: 'Properties: show, hide and arrange columns', onclick: () => C.visibilitySheet(dbr, { page: kind, pageTitle: def.title, pageCols: [...lay.allLead, ...lay.allTail], skip: lay.skip }) }, icon('sliders', 17)))),
     active.length ? h('div', { class: 'hchips' }, active.map(([l, c]) => h('button', { class: 'hchip', onclick: () => { c(); render(); } }, l, icon('close', 13))), h('button', { class: 'link sm', onclick: () => clearFilters(S) }, 'Clear filters')) : null,
     S.sel.size ? bulkBar(kind, S, rows, n) : null,
     list,
@@ -240,12 +240,13 @@ function bulkBar(kind, S, rows, n) {
 
 // ---------- columns of each page: its own working columns around the shared tracker properties ----------
 const muted = t => h('span', { class: 'muted' }, t);
-const dueCell = r => r.days == null ? muted('—') : h('span', { class: 'fdue' + (r.days < 0 ? ' late' : r.days === 0 ? ' today' : '') }, icon('date', 13), r.days === 0 ? 'Today' : formatDate(r.due, 'DD/MM/YYYY'));
+// Due Date columns show the date (DD/MM/YYYY), red when late and amber when due today; Days Left shows the count
+const dueCell = r => r.days == null ? muted('—') : h('span', { class: 'fdue' + (r.days < 0 ? ' late' : r.days === 0 ? ' today' : '') }, icon('date', 13), formatDate(r.due || dateAdd(startOfDay(new Date(NOW())), r.days, 'day'), 'DD/MM/YYYY'));
 const PAGE_COLS = {
   // the status column already says what is due (Site Survey, Estimation, Rejected…), so only the number is shown; a task you named keeps its name
   // no eCX & WBS No column here (it is a project property: show it from Properties if you want it)
   today: { lead: [],
-    tail: [{ k: 'pri', def: 'Priority', w: 96, cell: r => priPill(r.priority) }, { k: 'due', def: 'Due Date', w: 104, cell: r => dueBadge(r.days) },
+    tail: [{ k: 'pri', def: 'Priority', w: 96, cell: r => priPill(r.priority) }, { k: 'due', def: 'Due Date', w: 112, cell: dueCell },
       { k: 'status', def: 'Status', w: 132, cell: r => h('span', { class: 'fstat' }, badge(r.status, { Pending: 'blue', 'In Progress': 'yellow', 'On Hold': 'orange', Completed: 'green' }[r.status]),
         r.kind === 'task' ? h('small', { class: 'ftask' }, linkedField(r.task, { key: 'name', label: 'Task' })) : null) }] },
   survey: { lead: [],
@@ -270,7 +271,9 @@ function layout(kind, dbr) {
   return { allLead, allTail, lead: allLead.filter(c => !hid.has(c.id)), tail: allTail.filter(c => !hid.has(c.id)),
     // every property switched on in Property visibility shows here (Days Left, ECPAR, … too); only a project column the page
     // already has under the same name (its own Status / Due Date / Priority) is left out, so it is not there twice
-    shared: C.columns(dbr, { computed: true, skip: SKIP_SHARED.filter(n => [...pc.lead, ...pc.tail].some(c => c.def === n)) }) };
+    // Rejected ECX is never due or overdue: no Due Date / Days Left there
+    skip: [...SKIP_SHARED.filter(n => [...pc.lead, ...pc.tail].some(c => c.def === n)), ...(kind === 'ecx' ? ['Due Date', 'x:days'] : [])],
+    get shared() { return C.columns(dbr, { computed: true, skip: this.skip }); } };
 }
 
 // the columns Folio works out (Site Survey, ECPAR, ECX, Days Left), drawn as in the Projects table

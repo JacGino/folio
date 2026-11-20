@@ -8,8 +8,8 @@ import { formatDate, toISODate, parseDate, dateAdd, startOfDay } from './dates.j
 import { state, now as NOW, render, go, moreMenu, elabel, longPress, rowActions, browserUrl, exportList } from './app.js';
 import { popEdit } from './popedit.js';
 import { propEditor } from './page.js';
-import { ccTab, ccEligible } from './cc.js';
-import { applicantsOf } from './longtext.js';
+import { ccTab, ccEligible, appliedOf, setApplied, unitsOf, setUnits } from './cc.js';
+import { applicantsOf, NTK_TYPES } from './longtext.js';
 import * as C from './cols.js';
 import { viewTabs, head as coverHead } from './views.js';
 import { heroNav } from './home.js';
@@ -304,7 +304,11 @@ export function newProjectSheet({ cat: preCat = '' } = {}) {
   const names = [...new Set(E.customers().map(c => g(c, 'name')).filter(Boolean))].sort();
   const dl = h('datalist', { id: 'custlist' }, names.map(n => h('option', { value: n })));
   const cust = h('input', { class: 'field', list: 'custlist', placeholder: 'Customer name', 'aria-label': 'Customer name', autocomplete: 'off' });
-  const cat = h('select', { class: 'field', 'aria-label': 'Category' }, h('option', { value: '' }, 'Category'), (P('Project Category')?.options || []).map(o => h('option', { value: o.name, selected: o.name === preCat ? true : null }, o.name)));
+  const cat = h('select', { class: 'field', 'aria-label': 'Category' }, h('option', { value: '' }, 'Category'), (P('Project Category')?.options || []).filter(o => DB.CATEGORIES.includes(o.name) && !['Upgrading of Supply', 'Temporary Supply'].includes(o.name) /* UOS / TOS are SAL100KW sub-categories */).map(o => h('option', { value: o.name, selected: o.name === preCat ? true : null }, o.name)));
+  // SAL100KW / NTK: the sub-category is chosen here too (otherwise the project asks for it when opened)
+  const sub = h('select', { class: 'field', 'aria-label': 'Sub-category' }), subLab = h('label', { class: 'flabel', hidden: true }, h('span', {}, 'Sub-category'), sub);
+  const subFill = () => { const o = E.subOptions(cat.value ? [cat.value] : []); subLab.hidden = !o; sub.replaceChildren(h('option', { value: '' }, 'Choose…'), ...(o || []).map(x => h('option', { value: x }, x))); };
+  cat.addEventListener('change', subFill); subFill();
   const da = h('input', { type: 'date', class: 'field', value: today(), 'aria-label': 'Date assigned' });
   const dd = h('input', { type: 'date', class: 'field', value: toISODate(dateAdd(new Date(NOW()), 7, 'days')), 'aria-label': 'Due date' });
   const ref = h('input', { class: 'field mono', placeholder: 'e.g. ECX_202607_2457 (optional)', 'aria-label': DB.REF_ECX });
@@ -314,9 +318,9 @@ export function newProjectSheet({ cat: preCat = '' } = {}) {
     e.preventDefault(); const name = cust.value.trim(); if (!name) { cust.focus(); return; }
     const vals = { [DB.titleProp(dbr).name]: name, 'Date Assigned': da.value || null, 'Due Date': dd.value || null, Status: 'Site Survey', [DB.REF_ECX]: ref.value.trim() || null, [DB.REF_ECPAR]: pref.value.trim() || null };
     if (cat.value) vals['Project Category'] = [cat.value];
-    const r = DB.newRow(dbr, vals); E.ensureAll(); s.close(); go('#/project/' + r.id);
+    const r = DB.newRow(dbr, vals); if (sub.value && !subLab.hidden) E.setSub(r, sub.value); E.ensureAll(); s.close(); go('#/project/' + r.id);
   } }, dl, lab('Customer', cust), h('p', { class: 'muted small' }, names.length ? 'Pick an existing customer to link this project to them, or type a new name.' : 'Type the customer name.'),
-    lab('Category', cat), h('div', { class: 'f2' }, lab('Date assigned', da), lab('Due date', dd)), lab(DB.REF_ECX, ref), lab(DB.REF_ECPAR, pref),
+    lab('Category', cat), subLab, h('div', { class: 'f2' }, lab('Date assigned', da), lab('Due date', dd)), lab(DB.REF_ECX, ref), lab(DB.REF_ECPAR, pref),
     h('button', { class: 'btn primary block', type: 'submit' }, 'Create project')), { done: 'Cancel' });
   setTimeout(() => cust.focus(), 80);
 }
@@ -345,7 +349,7 @@ export function projectScreen(id, tab = 'overview') {
   // To Amend counts down to the ECPAR resubmission (Rejection Date + 1 day)
   const dueDate = info.amend && info.due ? info.due : info.kpiDue || DB.value(row, P('Due Date')), dueDays = dueDate ? Math.round((startOfDay(dueDate) - startOfDay(new Date(n))) / 864e5) : null;
   const tasks = E.tasksOf(row.id), xs = E.ecxOf(row.id), pct = E.progress(row, info), kd = E.kpiDays(info, n);
-  const TABS = [['overview', 'Overview', 'home'], ['tasks', 'Tasks', 'listcheck', tasks.filter(E.taskOpen).length], ['survey', 'Site Survey', 'target'],
+  const TABS = [['overview', 'Overview', 'home'], ['tasks', 'Tasks', 'listcheck', tasks.filter(E.taskOpen).length], ...(E.needsSurvey(info.category) ? [['survey', 'Site Survey', 'target']] : []),
     ...(rep ? [] : [['ecpar', 'ECPAR', 'ecpar']]), ...(ccEligible(info.category) ? [['cc', 'Connection Charge', 'table']] : []), ...(rep ? [] : [['ecx', 'ECX', 'filex', xs.length]]), ['docs', 'Documents', 'clip'], ['log', 'Activity Log', 'history']];
   if (!TABS.some(t => t[0] === tab)) tab = 'overview';
   state.ctx = { export: a => exportList('today', a), more: a => projectMenu(a, row) };
@@ -381,7 +385,7 @@ export function projectScreen(id, tab = 'overview') {
         h('small', { class: 'kd' + (kd != null && kd > 7 ? ' late' : '') }, kd == null ? 'Set Date Assigned for KPI' : (info.completed ? 'Done in ' : 'Day ') + kd + (info.completed ? ' days' : ' of 7') + (kd > 7 ? ' · over KPI' : ' · within KPI'))))),
     keepTabScroll(id, h('div', { class: 'ptabs htabs', role: 'tablist' }, TABS.map(([k, l, ic, c]) => h('a', { class: 'htab' + (tab === k ? ' on' : ''), role: 'tab', 'aria-selected': tab === k ? 'true' : 'false', href: `#/project/${id}/${k}`, onclick: e => { e.preventDefault(); go(`#/project/${id}/${k}`, { replace: true }); } },
       icon(ic, 16), h('span', {}, l), c ? h('span', { class: 'hcount' }, c) : null)))),
-    h('div', { class: 'pbody' }, ({ overview, tasks: tasksTab, survey: surveyTab, ecpar: ecparTab, cc: (r, i) => ccTab(r, i), ecx: ecxTab, docs: docsTab, log: logTab })[tab](row, info, n)));
+    h('div', { class: 'pbody' }, E.subOf(row, info.category) === '' && ['overview', 'tasks', 'survey', 'cc'].includes(tab) ? subGate(row, info) : ({ overview, tasks: tasksTab, survey: surveyTab, ecpar: ecparTab, cc: (r, i) => ccTab(r, i), ecx: ecxTab, docs: docsTab, log: logTab })[tab](row, info, n)));
   return wrap;
 }
 
@@ -425,17 +429,25 @@ function applicantList(c, info) {
 }
 const addApplicantBtn = (c, info) => c ? h('button', { class: 'iconbtn sm apladd', type: 'button', 'aria-label': 'Add applicant', onclick: async e => { e.stopPropagation();
   const list = applicantList(c, info), a = await applicantSheet('Add applicant ' + (list.length + 1)); if (!a) return; saveApplicants(c, [...list, a]); toast('Applicant added'); } }, icon('plus', 16)) : null;
-function applicantsBlock(row, info, c) {
+function applicantsBlock(row, info, c, L = { name: 'Customer', id: 'Applicant ID' }) {
   if (!c) return null;
   const ap = applicantList(c, info); // one customer too: its Applicant ID (IC No) is keyed in beside the name
   const edit = i => async e => { e.stopPropagation(); const a = await applicantSheet(ap.length > 1 ? 'Applicant ' + (i + 1) : 'Customer', ap[i]); if (!a) return; const list = ap.slice(); list[i] = a; saveApplicants(c, list); };
   return h('div', { class: 'kv kvwide aplwrap' },
-    h('div', { class: 'aplhead' }, h('span', { class: 'kl' }, icon('building', 16), 'Customer'), h('span', { class: 'kl aplid' }, 'Applicant ID'), addApplicantBtn(c, info)),
+    h('div', { class: 'aplhead' }, h('span', { class: 'kl' }, icon('building', 16), L.name), h('span', { class: 'kl aplid' }, L.id), addApplicantBtn(c, info)),
     h('div', { class: 'apl' }, ap.map((a, i) => h('div', { class: 'aplr' }, h('span', { class: 'apln' }, ap.length > 1 ? (i + 1) + ')' : ''),
       h('button', { class: 'val fv aplname', type: 'button', 'aria-label': `Customer ${i + 1}: ${a.name}`, onclick: edit(i) }, h('span', {}, a.name)),
       h('button', { class: 'val fv mono' + (a.ic ? '' : ' empty'), type: 'button', 'aria-label': `Applicant ID ${i + 1}: ${a.ic || 'Empty'}`, onclick: edit(i) }, h('span', {}, a.ic || 'Empty')),
       ap.length > 1 ? h('button', { class: 'iconbtn sm', type: 'button', 'aria-label': `Remove applicant ${i + 1}`, onclick: async e => { e.stopPropagation();
         if (!await confirmBox('Remove ' + a.name + ' from the customer list?', 'Remove')) return; saveApplicants(c, ap.filter((_, k) => k !== i)); } }, icon('close', 15)) : h('span')))));
+}
+// SAL100KW / Non Turnkey without a sub-category: choose it first (it decides the Overview, Tasks, Site Survey, Connection Charge and Long Text)
+function subGate(row, info) {
+  const cats = [].concat(info.category || []), opts = E.subOptions(cats), name = cats.includes('Non Turnkey') ? 'Non Turnkey' : 'SAL100KW';
+  return h('section', { class: 'hcard pcard subgate' },
+    h('h3', { class: 'ph' }, icon('layers', 17), `Choose the ${name} sub-category`),
+    h('p', { class: 'muted' }, 'It sets up the Overview, Tasks, Site Survey, Connection Charge and Long Text for this project.'),
+    h('div', { class: 'subopts' }, opts.map(o => h('button', { class: 'btn', type: 'button', onclick: () => { E.setSub(row, o); E.ensureAll(); render(); } }, o))));
 }
 function overview(row, info, n) {
   const c = E.customerOf(row);
@@ -448,6 +460,127 @@ function overview(row, info, n) {
   const dups = mine ? all.filter(r => ecxNo(r) === mine) : [], others = all.filter(r => !dups.includes(r));
   const year = r => { const i = DB.kpiInfo(r, DB.kpiDb(), n); return (i.assigned || new Date(D.val(r, 'created', n))).getFullYear(); };
   const ms = E.milestones(row, info), kd = E.kpiDays(info, n);
+  const cats = [].concat(info.category || []);
+  // Sub-category picker (SAL100KW: Subsidy 70% / 100%, NP, UOS, TOS · NTK: BDA, JKR, Commercial, Commercial & Residential, Residential)
+  const subPick = (label, opts, cur, set) => h('button', { class: 'val fv', type: 'button', 'aria-label': label + ': ' + (cur || 'Empty'), onclick: e => pick(e.currentTarget, opts, cur, v => { set(v); render(); }) }, h('span', {}, cur || 'Empty'));
+  const subs = E.subOptions(cats);
+  const subType = [subs ? kv('layers', 'Sub-category', subPick('Sub-category', subs, E.subOf(row, cats), v => { E.setSub(row, v); E.ensureAll(); })) : null];
+  const relatedCards = () => [
+      dups.length ? h('section', { class: 'hcard pcard dupcard' },
+        h('h3', { class: 'ph' }, icon('info', 17), 'Same ECX No', h('span', { class: 'hcount' }, dups.length)),
+        h('p', { class: 'muted small' }, `${dups.length > 1 ? 'These records have' : 'This record has'} the same ECX No (${mine}) — an earlier or later round of this application (e.g. before a RETRIGGER), or a copy. Keep it if it is a real round: it counts in your KPI.`),
+        h('ul', { class: 'rel' }, dups.map(r => { const i = DB.kpiInfo(r, DB.kpiDb(), n);
+          return h('li', { class: 'dupli' }, h('button', { onclick: () => go('#/project/' + r.id) }, h('span', { class: 'relc' }, catPills(i.category)), h('span', { class: 'rely' }, year(r)), i.archived ? badge('Archived', 'gray') : i.status ? optPill('Status', i.status, true) : h('span'), icon('chevr', 14, 'kgo')),
+            h('button', { class: 'btn danger sm', onclick: async () => { if (await confirmBox('Move this duplicate record of ' + mine + ' to Trash? You can restore it from Trash.', 'Move to Trash')) { D.trash(r.id); toast('Moved to Trash. Restore it from Trash.'); render(); } } }, icon('trash', 14), 'Move to Trash')); }))) : null,
+      others.length ? h('section', { class: 'hcard pcard' },
+        h('h3', { class: 'ph' }, icon('folder', 17), 'Related Projects', others.length ? h('span', { class: 'hcount' }, others.length) : null),
+        others.length ? h('ul', { class: 'rel' }, others.map(r => { const i = DB.kpiInfo(r, DB.kpiDb(), n);
+          return h('li', {}, h('button', { onclick: () => go('#/project/' + r.id) }, h('span', { class: 'relc' }, catPills(i.category)), h('span', { class: 'rely' }, year(r)), i.archived ? badge('Archived', 'gray') : i.status ? optPill('Status', i.status, true) : h('span'), icon('chevr', 14, 'kgo'))); }))
+          : null) : null];
+  const progress = () => h('div', { class: 'pside' },
+      h('section', { class: 'hcard pcard' },
+        h('h3', { class: 'ph' }, icon('target', 17), 'Project Progress'),
+        h('ul', { class: 'mlist' }, ms.map(m => h('li', { class: m.done ? 'done' : '' },
+          m.toggle ? h('button', { class: 'mchk', 'aria-pressed': m.done ? 'true' : 'false', 'aria-label': m.label, onclick: () => { const wk = E.work(row); D.update(wk.id, { ['p:' + m.key]: !m.done }); if (!m.done) E.log(row, m.key === 'docs' ? 'Document check' : 'Report', m.label + '.'); render(); } }, icon(m.done ? 'okcircle' : 'today', 18))
+            : h('span', { class: 'mchk' }, icon(m.done ? 'okcircle' : 'today', 18)), h('span', {}, m.label),
+          m.key === 'survey' && !m.done ? h('button', { class: 'link sm', onclick: () => go(`#/project/${row.id}/survey`) }, 'Open') : null))),
+        h('div', { class: 'kvs' }, kv('hourglass', 'KPI (within 7 days)', kd == null ? h('span', { class: 'muted' }, 'Needs Date Assigned') : h('span', { class: kd > 7 ? 'late' : '' }, (info.completed ? 'Done in ' + kd + ' days' : 'Day ' + kd + ' of 7') + (kd > 7 ? ', over KPI' : ''))))),
+      ...relatedCards());
+  const projInfo = () => h('section', { class: 'hcard pcard' },
+    h('h3', { class: 'ph' }, icon('info', 17), 'Project Information'),
+    h('div', { class: 'kvs' }, kv('layers', 'Project Category', propVal(row, 'Project Category')), ...subType,
+      kv('text', 'Reference No (ECX)', propVal(row, DB.REF_ECX)), kv('text', 'Project Reference No (ECPAR)', E.reportOnly(info.category) ? h('span', { class: 'muted' }, 'Not applicable') : propVal(row, DB.REF_ECPAR)), kv('pin', 'Station', propVal(row, 'Station')),
+      kv('date', 'Date Assigned', propVal(row, 'Date Assigned')), kv('date', 'Due Date', propVal(row, 'Due Date'))));
+  // NEM Solar: Applications Detail, Metering Scheme (panels, inverters, kWac / kWp), Project Information, Project Progress
+  if (cats.includes('NEM Solar')) {
+    const multi = c && applicantList(c, info).length > 1;
+    const icBtn = c ? h('button', { class: 'val fv mono' + (E.custIc(c) ? '' : ' empty'), type: 'button', 'aria-label': 'IC No / Company No: ' + (E.custIc(c) || 'Empty'), onclick: async () => {
+      const v = await promptBox('IC No / Company No', E.custIc(c) || '', 'e.g. 720308-13-5434'); if (v == null) return; E.setCustomerIc(c, v); render(); } }, h('span', {}, E.custIc(c) || 'Empty')) : '—';
+    const cnum = (key, label) => c ? h('button', { class: 'val fv' + (g(c, key, '') === '' ? ' empty' : ''), type: 'button', 'aria-label': label + ': ' + (g(c, key, '') === '' ? 'Empty' : g(c, key)), onclick: async () => {
+      const x = await promptBox(label, String(g(c, key, ''))); if (x == null) return; const t = x.trim(); if (t !== '' && !(+t >= 0)) { toast('Type a number, e.g. 20'); return; }
+      D.update(c.id, { ['p:' + key]: t === '' ? null : +t }); render(); } }, h('span', {}, g(c, key, '') === '' ? 'Empty' : String(g(c, key)))) : '—';
+    return h('div', { class: 'pdgrid' },
+      h('div', { class: 'tabstack' },
+        h('section', { class: 'hcard pcard' },
+          h('h3', { class: 'ph' }, icon('users', 17), 'Applications Detail'),
+          h('div', { class: 'kvs' }, multi ? applicantsBlock(row, info, c, { name: 'Customer / Client Name', id: 'IC No / Company No' }) : kv('building', 'Customer / Client Name', custName),
+            cf('person', 'Consultant / Contractor', 'pic'),
+            multi ? null : kv('text', 'IC No / Company No', icBtn),
+            kv('pin', 'Address', c ? field(c, { key: 'address', label: 'Address', onSet: v => E.setCustomer(c, 'address', v), ph: E.custAddress(row, c) || 'Empty' }) : '—'),
+            kv('globe', 'Pin Location', c ? field(c, { key: 'map', label: 'Pin Location', type: 'url', onSet: v => E.setCustomer(c, 'map', v) }) : '—'),
+            cf('home', 'Premise Type', 'use', { ph: 'e.g. DWELLING' }))),
+        h('section', { class: 'hcard pcard' },
+          h('h3', { class: 'ph' }, icon('barchart', 17), 'Metering Scheme'),
+          h('div', { class: 'kvs' }, cf('today', 'Meter Type', 'meter', { type: 'select', options: E.NEM_METER_TYPES }),
+            cf('status', 'Proposed Tariff', 'tariff', { type: 'select', options: E.TARIFFS }),
+            kv('layers', 'No of Solar Panels', cnum('panels', 'No of Solar Panels')),
+            kv('layers', 'No of Inverter', cnum('inverters', 'No of Inverter')),
+            cf('formula', 'Total Applied Load (kWac / kWp)', 'nemLoad', { ph: 'e.g. 10 kWac / 12.3 kWp' }))),
+        projInfo()),
+      progress());
+  }
+  // SAL100KW (Normal Project / CCGFA), Upgrading of Supply and Temporary Supply: Applications Detail, Metering Scheme, Project Information
+  if (['SAL100KW', 'Upgrading of Supply', 'Temporary Supply'].some(k => cats.includes(k))) {
+    const load = appliedOf(row);
+    const loadBtn = h('button', { class: 'val fv' + (load === '' || load == null ? ' empty' : ''), type: 'button', 'aria-label': 'Applied Load (kVA): ' + (load || 'Empty'), onclick: async () => {
+      const v = await promptBox('Applied Load (kVA)', load == null ? '' : String(load), 'e.g. 15'); if (v == null) return; const t = v.trim().replace(/kva$/i, '').trim();
+      if (t !== '' && !(+t >= 0)) { toast('Type the load as a number of kVA, e.g. 15'); return; } setApplied(row, t === '' ? '' : +t); render(); } }, h('span', {}, load === '' || load == null ? 'Empty' : load + ' kVA'));
+    return h('div', { class: 'pdgrid' },
+      h('div', { class: 'tabstack' },
+        h('section', { class: 'hcard pcard' },
+          h('h3', { class: 'ph' }, icon('users', 17), 'Applications Detail'),
+          h('div', { class: 'kvs' }, applicantsBlock(row, info, c, { name: 'Customer / Client Name', id: 'IC No / Company No' }) || kv('building', 'Customer / Client Name', custName),
+            kv('pin', 'Address', c ? field(c, { key: 'address', label: 'Address', onSet: v => E.setCustomer(c, 'address', v), ph: E.custAddress(row, c) || 'Empty' }) : '—'),
+            cf('phone', 'Contact No', 'phone', { tel: 'tel' }), cf('mail', 'Email', 'email', { tel: 'mail' }),
+            cf('home', 'Premise Type', 'use', { ph: 'e.g. DWELLING' }), // the Long Text's Type of use (linked both ways); Table 5.1 premise stays in Connection Charge
+            cf('person', 'Contractor / Consultant', 'pic'),
+            kv('globe', 'Pin Location', c ? field(c, { key: 'map', label: 'Pin Location', type: 'url', onSet: v => E.setCustomer(c, 'map', v) }) : '—'))),
+        h('section', { class: 'hcard pcard' },
+          h('h3', { class: 'ph' }, icon('barchart', 17), 'Metering Scheme'),
+          h('div', { class: 'kvs' }, cf('layers', 'Type of Supply', 'apptype', { type: 'select', options: E.APP_TYPES }),
+            cf('today', 'Meter Type', 'meter', { type: 'select', options: E.METER_TYPES }),
+            cf('status', 'Proposed Tariff', 'tariff', { type: 'select', options: E.TARIFFS }),
+            kv('number', 'Applied Load (kVA)', c ? loadBtn : '—'))),
+        h('section', { class: 'hcard pcard' },
+          h('h3', { class: 'ph' }, icon('info', 17), 'Project Information'),
+          h('div', { class: 'kvs' }, kv('layers', 'Project Category', propVal(row, 'Project Category')), ...subType,
+            kv('text', 'Reference No (ECX)', propVal(row, DB.REF_ECX)), kv('text', 'Project Reference No (ECPAR)', propVal(row, DB.REF_ECPAR)), kv('pin', 'Station', propVal(row, 'Station')),
+            kv('date', 'Date Assigned', propVal(row, 'Date Assigned')), kv('date', 'Due Date', propVal(row, 'Due Date'))))),
+      progress());
+  }
+  // Substation Site Enquiry, Turnkey Stage 1 / 2 and Non Turnkey: Applications Detail, Application Agent, Load Summary, Developer / Owner
+  if (['Substation Site Enquiry', 'Turnkey Stage 1', 'Turnkey Stage 2', 'Non Turnkey'].some(k => cats.includes(k))) {
+    const num = (label, get, set, unit = '') => { const v = get(); return h('button', { class: 'val fv' + (v === '' || v == null ? ' empty' : ''), type: 'button', 'aria-label': label + ': ' + (v === '' || v == null ? 'Empty' : v), onclick: async () => {
+      const x = await promptBox(label, v == null ? '' : String(v)); if (x == null) return; const t = x.trim().replace(/kva$/i, '').trim();
+      if (t !== '' && !(+t >= 0)) { toast('Type a number, e.g. 20'); return; } set(t === '' ? '' : +t); render(); } }, h('span', {}, v === '' || v == null ? 'Empty' : v + unit)); };
+    const cnum = (key, label, unit) => c ? num(label, () => g(c, key, ''), v => D.update(c.id, { ['p:' + key]: v === '' ? null : v }), unit) : '—';
+    return h('div', { class: 'pdgrid' },
+      h('div', { class: 'tabstack' },
+        h('section', { class: 'hcard pcard' },
+          h('h3', { class: 'ph' }, icon('page', 17), 'Applications Detail'),
+          h('div', { class: 'kvs' }, cf('text', 'Application Title', 'appTitle', { ph: 'e.g. PROPOSED 20 UNITS DOUBLE STOREY TERRACE' }),
+            kv('pin', 'Address', c ? field(c, { key: 'address', label: 'Address', onSet: v => E.setCustomer(c, 'address', v), ph: E.custAddress(row, c) || 'Empty' }) : '—'),
+            kv('globe', 'Pin Location', c ? field(c, { key: 'map', label: 'Pin Location', type: 'url', onSet: v => E.setCustomer(c, 'map', v) }) : '—'))),
+        h('section', { class: 'hcard pcard' },
+          h('h3', { class: 'ph' }, icon('person', 17), 'Application Agent'),
+          h('div', { class: 'kvs' }, cf('building', 'Company Name', 'pic'), cf('person', 'Agent Name', 'agent'), cf('phone', 'Contact No', 'agentPhone', { tel: 'tel' }))),
+        h('section', { class: 'hcard pcard' },
+          h('h3', { class: 'ph' }, icon('barchart', 17), 'Load Summary'),
+          h('div', { class: 'kvs' }, cf('text', 'Description', 'loadDesc', { ph: 'e.g. 20 units double storey terrace house' }),
+            cf('today', 'Metering Scheme', 'meter', { type: 'select', options: E.METER_TYPES }),
+            kv('layers', 'No of Unit', c ? num('No of Unit', () => unitsOf(row), v => setUnits(row, v)) : '—'),
+            kv('formula', 'Max Demand After Diversity Factor (kVA)', cnum('maxDemand', 'Max Demand After Diversity Factor (kVA)', ' kVA')),
+            kv('formula', 'Total Development Loading (kVA)', cnum('devLoad', 'Total Development Loading (kVA)', ' kVA')))),
+        h('section', { class: 'hcard pcard' },
+          h('h3', { class: 'ph' }, icon('users', 17), 'Developer / Owner'),
+          h('div', { class: 'kvs' }, kv('building', 'Developer / Owner Name', custName))),
+        h('section', { class: 'hcard pcard' },
+          h('h3', { class: 'ph' }, icon('info', 17), 'Project Information'),
+          h('div', { class: 'kvs' }, kv('layers', 'Project Category', propVal(row, 'Project Category')), ...subType,
+            kv('text', 'Reference No (ECX)', propVal(row, DB.REF_ECX)), kv('text', 'Project Reference No (ECPAR)', E.reportOnly(info.category) ? h('span', { class: 'muted' }, 'Not applicable') : propVal(row, DB.REF_ECPAR)), kv('pin', 'Station', propVal(row, 'Station')),
+            kv('date', 'Date Assigned', propVal(row, 'Date Assigned')), kv('date', 'Due Date', propVal(row, 'Due Date'))))),
+      progress());
+  }
   return h('div', { class: 'pdgrid' },
     h('section', { class: 'hcard pcard' },
       h('h3', { class: 'ph' }, icon('users', 17), 'Customer Information'),
@@ -463,27 +596,9 @@ function overview(row, info, n) {
         cf('building', 'Premise Type', 'premise', { type: 'select', options: E.PREMISE_TYPES }),
         cf('home', 'Type of Use', 'use', { ph: 'e.g. DWELLING' })), // the Long Text's Type of use (linked both ways)
       h('h3', { class: 'ph' }, icon('info', 17), 'Project Information'),
-      h('div', { class: 'kvs' }, kv('layers', 'Category', propVal(row, 'Project Category')), kv('text', 'Reference No (ECX No)', propVal(row, DB.REF_ECX)), kv('text', 'Project Reference (ECPAR No)', E.reportOnly(info.category) ? h('span', { class: 'muted' }, 'Not applicable') : propVal(row, DB.REF_ECPAR)), kv('pin', 'Station', propVal(row, 'Station')),
+      h('div', { class: 'kvs' }, kv('layers', 'Category', propVal(row, 'Project Category')), ...subType, kv('text', 'Reference No (ECX No)', propVal(row, DB.REF_ECX)), kv('text', 'Project Reference (ECPAR No)', E.reportOnly(info.category) ? h('span', { class: 'muted' }, 'Not applicable') : propVal(row, DB.REF_ECPAR)), kv('pin', 'Station', propVal(row, 'Station')),
         kv('date', 'Date Assigned', propVal(row, 'Date Assigned')), kv('date', 'Due Date', propVal(row, 'Due Date')))),
-    h('div', { class: 'pside' },
-      h('section', { class: 'hcard pcard' },
-        h('h3', { class: 'ph' }, icon('target', 17), 'Project Progress'),
-        h('ul', { class: 'mlist' }, ms.map(m => h('li', { class: m.done ? 'done' : '' },
-          m.toggle ? h('button', { class: 'mchk', 'aria-pressed': m.done ? 'true' : 'false', 'aria-label': m.label, onclick: () => { const wk = E.work(row); D.update(wk.id, { ['p:' + m.key]: !m.done }); if (!m.done) E.log(row, m.key === 'docs' ? 'Document check' : 'Report', m.label + '.'); render(); } }, icon(m.done ? 'okcircle' : 'today', 18))
-            : h('span', { class: 'mchk' }, icon(m.done ? 'okcircle' : 'today', 18)), h('span', {}, m.label),
-          m.key === 'survey' && !m.done ? h('button', { class: 'link sm', onclick: () => go(`#/project/${row.id}/survey`) }, 'Open') : null))),
-        h('div', { class: 'kvs' }, kv('hourglass', 'KPI (within 7 days)', kd == null ? h('span', { class: 'muted' }, 'Needs Date Assigned') : h('span', { class: kd > 7 ? 'late' : '' }, (info.completed ? 'Done in ' + kd + ' days' : 'Day ' + kd + ' of 7') + (kd > 7 ? ', over KPI' : ''))))),
-      dups.length ? h('section', { class: 'hcard pcard dupcard' },
-        h('h3', { class: 'ph' }, icon('info', 17), 'Same ECX No', h('span', { class: 'hcount' }, dups.length)),
-        h('p', { class: 'muted small' }, `${dups.length > 1 ? 'These records have' : 'This record has'} the same ECX No (${mine}) — an earlier or later round of this application (e.g. before a RETRIGGER), or a copy. Keep it if it is a real round: it counts in your KPI.`),
-        h('ul', { class: 'rel' }, dups.map(r => { const i = DB.kpiInfo(r, DB.kpiDb(), n);
-          return h('li', { class: 'dupli' }, h('button', { onclick: () => go('#/project/' + r.id) }, h('span', { class: 'relc' }, catPills(i.category)), h('span', { class: 'rely' }, year(r)), i.archived ? badge('Archived', 'gray') : i.status ? optPill('Status', i.status, true) : h('span'), icon('chevr', 14, 'kgo')),
-            h('button', { class: 'btn danger sm', onclick: async () => { if (await confirmBox('Move this duplicate record of ' + mine + ' to Trash? You can restore it from Trash.', 'Move to Trash')) { D.trash(r.id); toast('Moved to Trash. Restore it from Trash.'); render(); } } }, icon('trash', 14), 'Move to Trash')); }))) : null,
-      others.length ? h('section', { class: 'hcard pcard' },
-        h('h3', { class: 'ph' }, icon('folder', 17), 'Related Projects', others.length ? h('span', { class: 'hcount' }, others.length) : null),
-        others.length ? h('ul', { class: 'rel' }, others.map(r => { const i = DB.kpiInfo(r, DB.kpiDb(), n);
-          return h('li', {}, h('button', { onclick: () => go('#/project/' + r.id) }, h('span', { class: 'relc' }, catPills(i.category)), h('span', { class: 'rely' }, year(r)), i.archived ? badge('Archived', 'gray') : i.status ? optPill('Status', i.status, true) : h('span'), icon('chevr', 14, 'kgo'))); }))
-          : null) : null));
+    progress());
 }
 
 // ---------- Tasks ----------
@@ -549,6 +664,7 @@ function pinField(row) {
 function surveyTab(row, info, n) {
   const rep = E.reportOnly(info.category), st = E.surveyState(row, info), w = E.workOf(row) || { id: 'wk' + row.id, f: {} };
   const wf = (key, label, extra = {}) => field(E.workOf(row) || E.work(row), { key, label, ...extra });
+  const tfs = E.structuredFindings(info.category);
   const toggle = (key, label) => h('button', { class: 'tgl', 'aria-pressed': g(w, key) ? 'true' : 'false', onclick: () => { const wk = E.work(row); D.update(wk.id, { ['p:' + key]: !g(wk, key) }); if (!g(w, key)) E.log(row, key === 'docs' ? 'Document check' : 'Report', label + '.'); render(); } },
     icon(g(w, key) ? 'okcircle' : 'today', 18), g(w, key) ? 'Yes' : 'Not yet');
   return h('section', { class: 'hcard pcard' },
@@ -561,12 +677,17 @@ function surveyTab(row, info, n) {
 
       kv('pin', 'Site address', h('span', {}, E.custAddress(row) || h('span', { class: 'muted' }, '—'))),
       kv('globe', 'Pin Location', pinField(row)),
-      kv('text', 'Wayleave (Private/Utilities)', propVal(row, DB.WAYLEAVE)),
+      tfs ? null : kv('text', 'Wayleave (Private/Utilities)', propVal(row, DB.WAYLEAVE)),
       rep ? null : kv('linechart', 'Transformer & feeder loading', wf('loading', 'Transformer & feeder loading')),
-      // full width at the bottom, with a taller box to type in
-      h('div', { class: 'kv kvwide' }, h('span', { class: 'kl' }, icon('text', 16), 'Technical findings'), h('div', { class: 'kvv' }, wf('findings', 'Technical findings'))),
-      // site notes kept apart from the Technical findings (which also fill the Long Text's Scheme of supply)
-      h('div', { class: 'kv kvwide' }, h('span', { class: 'kl' }, icon('text', 16), 'Remark'), h('div', { class: 'kvv' }, wf('remark', 'Remark')))));
+      // SAL100KW / UOS / TOS and NTK: Technical findings 1–10, keyed in by hand (not linked to the Long Text's Scheme of supply)
+      ...(tfs ? [h('h4', { class: 'tfhead' }, icon('text', 16), 'Technical findings'),
+        ...E.FINDINGS.map(([k, label, ph], i) => kv('text', `${i + 1}) ${label}`, wf(k, label, { ph }))),
+        kv('text', `${E.FINDINGS.length + 1}) Wayleave (Private / Utility)`, propVal(row, DB.WAYLEAVE)),
+        h('div', { class: 'kv kvwide' }, h('span', { class: 'kl' }, icon('text', 16), `${E.FINDINGS.length + 2}) Remark`), h('div', { class: 'kvv' }, wf('remark', 'Remark'))),
+        g(E.workOf(row) || {}, 'findings', '') ? h('div', { class: 'kv kvwide' }, h('span', { class: 'kl' }, icon('text', 16), 'Earlier findings (notes)'), h('div', { class: 'kvv' }, wf('findings', 'Earlier findings'))) : null]
+      // other categories: one Technical findings box (it also fills the Long Text's Scheme of supply), then Remark
+      : [h('div', { class: 'kv kvwide' }, h('span', { class: 'kl' }, icon('text', 16), 'Technical findings'), h('div', { class: 'kvv' }, wf('findings', 'Technical findings'))),
+        h('div', { class: 'kv kvwide' }, h('span', { class: 'kl' }, icon('text', 16), 'Remark'), h('div', { class: 'kvv' }, wf('remark', 'Remark')))])));
 }
 
 // ---------- ECPAR ----------

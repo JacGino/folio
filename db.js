@@ -109,6 +109,8 @@ const commentsText = id => D.all('cmt', c => D.val(c, 'parent') === id).map(c =>
 // ---- schema editing ----
 export function saveProps(dbr, list) { D.update(dbr.id, { props: list }); }
 export function saveViews(dbr, list) { D.update(dbr.id, { views: list }); }
+// multi-select columns that take one choice only
+export const SINGLE_CHOICE = ['Project Category'];
 export function addOption(dbr, p, name) {
   const list = props(dbr).map(x => x.id === p.id ? { ...x, options: [...(x.options || []), { name, color: COLOR_NAMES[(x.options || []).length % COLOR_NAMES.length] }] } : x);
   saveProps(dbr, list); return list.find(x => x.id === p.id);
@@ -278,7 +280,7 @@ export function todayGroups(now) {
   return { overdue: overdue.sort(byDays), today: soon.sort(byDays) };
 }
 export function surveyGroups(now) {
-  const t = kpiTasks(now).filter(x => x.status === 'Site Survey');
+  const t = kpiTasks(now).filter(x => x.status === 'Site Survey' && !x.category.some(c => c === 'Turnkey Stage 1' || c === 'Turnkey Stage 2')); // TK1 / TK2: no site survey
   return { overdue: t.filter(x => x.days != null && x.days < 0).sort(byDays), today: t.filter(x => x.days != null && x.days >= 0 && x.days <= 2).sort(byDays), upcoming: t.filter(x => x.days == null || x.days > 2).sort(byDays) };
 }
 // Rejected ECX: has an ECX Rejected date and is still open; due the day after it was rejected (same rule as ECPAR)

@@ -21,8 +21,74 @@ export const ECPAR_REASONS = ['Technical data issues', 'Drawing / layout issues'
 export const ECX_REASONS = ['Incomplete documents', 'Drawing not compliant', 'Additional information required', 'Revised documents required', 'Other'];
 // customer supply details (Customer Information)
 export const TARIFFS = ['Domestic', 'Commercial'];
-export const APP_TYPES = ['Service Line', 'Underground'];
-export const METER_TYPES = ['1-Phase', '3-Phase'];
+// Type of Supply (shown in Metering Scheme); 'Underground' from before is a Service Cable
+export const APP_TYPES = ['Service Line', 'Service Cable'];
+export const METER_TYPES = ['1-Phase', '3-Phase', 'LVCT'];
+export const NEM_METER_TYPES = ['1-Phase', '3-Phase', 'PV Meter'];
+// SAL100KW sub-type (shown with the category in Project Information); Government Subsidy is the customer's subsidy (Long Text uses it)
+export const SAL_TYPES = ['Normal Project', 'Government Subsidy (70%)', 'Government Subsidy (100%)'];
+// SAL100KW / UOS / TOS and Non Turnkey: Technical findings is a set of fields keyed in by hand (not linked to the Long Text)
+export const FINDINGS = [['tfHtLt', 'HT / LT', 'e.g. LT'], ['tfSub', 'Substation', 'e.g. DS1234 TAMAN KEMENA'], ['tfFeeder', 'Feeder', 'e.g. FEEDER 2'], ['tfTx', 'Transformer Size (kVA)', 'e.g. 500'], ['tfSpan', 'HT / LT (p/span)', 'e.g. 4 p/span LT'],
+  ['tfUg', 'HV / LV Underground Cable (m)', 'e.g. 25'], ['tfSlSc', 'SL (span) / SC (m)', 'e.g. 1 span SL'], ['tfPl', 'Public Light (ea)', 'e.g. 2'],
+  ['tfBox', 'St. light Control Box (ea)', 'e.g. 1'], ['tfHdd', 'HDD / Road Reinstatement (m)', 'e.g. 12']];
+export const structuredFindings = cats => [].concat(cats || []).some(c => ['SAL100KW', 'Upgrading of Supply', 'Temporary Supply', 'Non Turnkey', 'Substation Site Enquiry'].includes(c));
+// Turnkey Stage 1 / 2 have no site survey: only the task checklist (document review)
+export const needsSurvey = cats => !([].concat(cats || []).some(c => ['Turnkey Stage 1', 'Turnkey Stage 2'].includes(c)));
+// Sub-categories: SAL100KW → Subsidy 70% / 100%, NP, UOS, TOS (UOS and TOS are kept as their own category underneath);
+// Non Turnkey → BDA, JKR (Sarawak or Federal is picked in the Long Text), Commercial, Commercial & Residential, Residential
+export const SAL_SUBS = ['Subsidy (70%)', 'Subsidy (100%)', 'Normal Project (NP)', 'Upgrading of Supply (UOS)', 'Temporary Supply (TOS)'];
+export const NTK_SUBS = ['BDA', 'JKR', 'Commercial', 'Commercial & Residential', 'Residential'];
+const NTK_KEY = { BDA: 'bda', JKR: 'jkrs', Commercial: 'commercial', 'Commercial & Residential': 'mixed', Residential: 'residential' };
+/** the project's sub-category: '' when it still has to be chosen, null when its category has none */
+export function subOf(row, cats = categories(row)) {
+  cats = [].concat(cats || []);
+  if (cats.includes('Upgrading of Supply')) return 'Upgrading of Supply (UOS)';
+  if (cats.includes('Temporary Supply')) return 'Temporary Supply (TOS)';
+  const auto = typeof window !== 'undefined' && (window.FOLIO_AUTOSUB ?? (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('folio-autosub') === '1')); // older automated tests only: skip the choose-first step
+  if (cats.includes('SAL100KW')) return D.val(row, 'salSub') || (auto ? 'Normal Project (NP)' : '');
+  if (cats.includes('Non Turnkey')) return D.val(row, 'ntkSub') || (auto ? 'Commercial' : '');
+  return null;
+}
+export const subOptions = cats => { cats = [].concat(cats || []); return cats.some(c => ['SAL100KW', 'Upgrading of Supply', 'Temporary Supply'].includes(c)) ? SAL_SUBS : cats.includes('Non Turnkey') ? NTK_SUBS : null; };
+export function setSub(row, v) {
+  const d = DB.kpiDb(), cp = DB.propByName(d, 'Project Category'), cats = categories(row);
+  if (NTK_SUBS.includes(v)) { const k = NTK_KEY[v], cur = D.val(row, 'ntkType'); D.update(row.id, { ntkSub: v, ntkType: v === 'JKR' && /^jkr/.test(cur || '') ? cur : k }); return; }
+  const cat = v === 'Upgrading of Supply (UOS)' ? 'Upgrading of Supply' : v === 'Temporary Supply (TOS)' ? 'Temporary Supply' : 'SAL100KW';
+  D.update(row.id, { ['p:' + cp.id]: [cat], salSub: cat === 'SAL100KW' ? v : null });
+  const c = customerOf(row), pct = (/\((\d+%)\)/.exec(v) || [])[1];
+  if (c && cat === 'SAL100KW') { if (/^Subsidy/.test(v)) { setCustomer(c, 'tariff', 'Domestic'); setCustomer(c, 'subsidy', 'Yes'); setCustomer(c, 'subsidyPct', pct); } else setCustomer(c, 'subsidy', 'No'); }
+}
+// standard tasks, added once to every open project; deleting one does not bring it back
+//   with an ECPAR: ECPAR Estimation, Draft Locality Plan, RPC Report · SSE & Turnkey Stage 1: RPC Report · NEM: NEM Report
+export const STD_TASKS = ['ECPAR Estimation', 'Draft Locality Plan', 'RPC Report'];
+export function stdTasksFor(cats) {
+  cats = [].concat(cats || []); if (!cats.length) return [];
+  if (!reportOnly(cats)) return STD_TASKS;
+  return [...new Set(cats.flatMap(c => c === 'NEM Solar' ? ['NEM Report'] : ['Substation Site Enquiry', 'Turnkey Stage 1'].includes(c) ? ['RPC Report'] : []))];
+}
+// Project Category is one choice: a project with several keeps one (a work category first, e.g. SAL100KW over 'New Application')
+function singleCategory() {
+  const d = DB.kpiDb(), p = d && DB.propByName(d, 'Project Category'); if (!p) return;
+  for (const r of DB.rows(d.id)) { const v = D.val(r, 'p:' + p.id); if (Array.isArray(v) && v.length > 1) D.update(r.id, { ['p:' + p.id]: [v.find(x => DB.CATEGORIES.includes(x)) || v[0]] }); }
+}
+function ensureStdTasks() {
+  const d = DB.kpiDb(); if (!d) return; const n = Date.now();
+  for (const r of DB.rows(d.id)) {
+    const i = DB.kpiInfo(r, d, n), key = [].concat(i.category || []).join('|'), was = D.val(r, 'stdTasks');
+    if (was === key) continue;
+    if (was === 1) { D.update(r.id, { stdTasks: key }); continue; } // added before (old marker): leave as is
+    const want = stdTasksFor(i.category);
+    if (i.archived || i.finished || i.status === 'Done') continue;
+    // category changed: a standard task of the old category that was never touched (Not Started, no due date) goes to Trash
+    if (was) { const all = ['ECPAR Estimation', 'Draft Locality Plan', 'RPC Report', 'NEM Report'];
+      for (const t of tasksOf(r.id)) { const nm = String(g(t, 'name', '')).trim(); if (all.includes(nm) && !want.includes(nm) && g(t, 'status', 'Not Started') === 'Not Started' && !g(t, 'due')) D.trash(t.id); } }
+    if (!want.length) { D.update(r.id, { stdTasks: key }); continue; }
+    const have = new Set(tasksOf(r.id).map(t => String(g(t, 'name', '')).trim().toLowerCase()));
+    for (const name of want) if (!have.has(name.toLowerCase())) D.create('task', r.sh, { project: r.id, created: n, 'p:name': name, 'p:status': 'Not Started', 'p:priority': 'Medium' });
+    D.update(r.id, { stdTasks: key });
+  }
+}
+function migrateSupplyType() { for (const c of D.all('cust')) if (g(c, 'apptype') === 'Underground') D.update(c.id, { 'p:apptype': 'Service Cable' }); }
 export { PREMISE_TYPES } from './ccrates.js';
 export const TASK_TYPES = ['ECX', 'ECPAR', 'Site Survey', 'Report', 'Other'];
 const OLD_STATUS = { ecpar: { Rejected: 'Pending Revision' }, ecx: { 'Pending Action': 'Rejected', 'In Review': 'Rejected', 'In Revision': 'Rejected', 'Ready to Resubmit': 'Rejected' } }; // older ECX statuses → Rejected
@@ -131,6 +197,7 @@ export const nextTask = rowId => tasksOf(rowId).find(taskOpen) || null;
 export const workOf = row => D.live('wk' + row.id) || null;
 export const work = row => ensure('work', 'wk' + row.id, { project: row.id });
 export function surveyState(row, info = DB.kpiInfo(row, DB.kpiDb())) {
+  if (!needsSurvey(info.category)) return 'none'; // Turnkey Stage 1 / 2: no site survey
   const w = workOf(row);
   if (w && g(w, 'survey')) return 'done';
   if (info.status === 'Site Survey') return 'pending';
@@ -372,7 +439,7 @@ export function milestones(row, info = DB.kpiInfo(row, DB.kpiDb())) {
   const cats = info.category, rep = reportOnly(cats), w = workOf(row), done = info.finished || info.archived;
   const list = [];
   if (!rep && cats.length) list.push({ key: 'docs', label: 'Documents checked', done: !!(w && g(w, 'docs')), toggle: true });
-  list.push({ key: 'survey', label: 'Site survey', done: surveyState(row, info) === 'done' });
+  if (needsSurvey(cats)) list.push({ key: 'survey', label: 'Site survey', done: surveyState(row, info) === 'done' });
   if (rep) list.push({ key: 'report', label: 'Report prepared', done: !!(w && g(w, 'report')), toggle: true });
   else {
     const e = ecparStatus(row, info); if (e) list.push({ key: 'ecpar', label: 'ECPAR submitted', done: !!g(ecparOf(row), 'submitted') || ['Submitted', 'Resubmitted', 'Approved'].includes(e) });
@@ -509,4 +576,7 @@ export function ensureAll() {
   try { syncRejectedStatus(); } catch (e) { console.error(e); }
   try { migrateEcparStatus(); } catch (e) { console.error(e); }
   try { splitCustomerIcs(); } catch (e) { console.error(e); }
+  try { migrateSupplyType(); } catch (e) { console.error(e); }
+  try { singleCategory(); } catch (e) { console.error(e); }
+  try { ensureStdTasks(); } catch (e) { console.error(e); }
   try { syncRefs(); } catch (e) { console.error(e); } }
