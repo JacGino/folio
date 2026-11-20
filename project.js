@@ -686,8 +686,13 @@ function surveyTab(row, info, n) {
         // Scheme of Supply: the same text as the Long Text's Scheme of supply (linked both ways); only for categories with an ECPAR (not SSE)
         rep ? null : h('div', { class: 'kv kvwide' }, h('span', { class: 'kl' }, icon('text', 16), 'Scheme of Supply'), h('div', { class: 'kvv' }, wf('findings', 'Scheme of Supply')))]
       // other categories: one Technical findings box (it also fills the Long Text's Scheme of supply), then Remark
-      : [h('div', { class: 'kv kvwide' }, h('span', { class: 'kl' }, icon('text', 16), 'Technical findings'), h('div', { class: 'kvv' }, wf('findings', 'Technical findings'))),
-        h('div', { class: 'kv kvwide' }, h('span', { class: 'kl' }, icon('text', 16), 'Remark'), h('div', { class: 'kvv' }, wf('remark', 'Remark')))])));
+      // NEM: Technical findings = Date & Time, Substation, Feeder (earlier free text / remark still shown if they have any)
+      : [h('h4', { class: 'tfhead' }, icon('text', 16), 'Technical findings'),
+        kv('date', 'Date & Time', wf('tfWhen', 'Date & Time', { ph: 'e.g. 21/11/2026 11:30 AM' })),
+        kv('text', 'Substation', wf('tfSub', 'Substation', { ph: 'e.g. DS1234 TAMAN KEMENA' })),
+        kv('text', 'Feeder', wf('tfFeeder', 'Feeder', { ph: 'e.g. FEEDER 2' })),
+        g(E.workOf(row) || {}, 'findings', '') ? h('div', { class: 'kv kvwide' }, h('span', { class: 'kl' }, icon('text', 16), 'Earlier notes'), h('div', { class: 'kvv' }, wf('findings', 'Earlier notes'))) : null,
+        g(E.workOf(row) || {}, 'remark', '') ? h('div', { class: 'kv kvwide' }, h('span', { class: 'kl' }, icon('text', 16), 'Remark'), h('div', { class: 'kvv' }, wf('remark', 'Remark'))) : null])));
 }
 
 // ---------- ECPAR ----------
