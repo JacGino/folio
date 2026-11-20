@@ -21,7 +21,7 @@ const guessType = n => /\.pdf$/i.test(n || '') ? 'application/pdf' : /\.(png)$/i
 const FILE_PROBLEM = {
   locked: 'Attachments are locked on this device. Unlock them in Settings › Encrypted attachments.',
   offline: 'GitHub is not connected on this device. Connect it in Settings to download this file.',
-  missing: 'This file has not been uploaded yet. Open Folio on the device you added it from (attachments unlocked, GitHub connected) and tap Sync now there.',
+  missing: 'This file has not been uploaded yet. Open Folio on the device you added it from: it uploads by itself once attachments are unlocked there.',
   error: 'This file could not be downloaded right now. Check your connection and try again.',
 };
 export async function openFile(f) {

@@ -14,7 +14,15 @@ import { enableNotifications } from './notify.js';
 export async function startupSync() {
   const cfg = await S.meta.get('gh'); await Sync.configure(cfg);
   const key = await S.meta.get('fileKey'); if (key) Sync.setFileKey(key);
-  if (cfg) { Sync.run().then(() => render()); setInterval(() => { if (document.visibilityState === 'visible') Sync.run(); }, 5 * 60 * 1000); }
+  // automatic sync: a few seconds after any change, when the app comes back, when the network returns, and every 2 minutes while open
+  D.onChange(info => { if (!info || (info.type !== 'sync' && info.type !== 'wipe')) Sync.soon(4000); });
+  window.addEventListener('online', () => Sync.soon(500));
+  // an attachment added while this device is locked cannot be uploaded: ask for the passphrase straight away
+  Sync.onNeedKey(() => cryptoSheet('Unlock so this file can upload to your other devices.'));
+  if (cfg) {
+    Sync.run().then(async () => { render(); if (await Sync.pendingUploads() && !(await S.meta.get('fileKey'))) cryptoSheet('Attachments added on this device are waiting to upload. Unlock to send them to your other devices.'); });
+    setInterval(() => { if (document.visibilityState === 'visible') Sync.run(); }, 2 * 60 * 1000);
+  }
 }
 
 export function renderSettings(sub) {
@@ -91,7 +99,7 @@ function githubSheet() {
   S.meta.get('gh').then(c => { if (c) { s.panel.querySelector('#gh-o').value = c.owner; s.panel.querySelector('#gh-r').value = c.repo; s.panel.querySelector('#gh-t').value = c.token; } else { s.panel.querySelector('#gh-o').value = 'JacGino'; s.panel.querySelector('#gh-r').value = 'folio-data'; } });
 }
 
-async function cryptoSheet() {
+async function cryptoSheet(note) {
   const ws = (await S.meta.get('ws-settings')) || {};
   const hasKey = !!(await S.meta.get('fileKey'));
   const pass = h('input', { class: 'field', type: 'password', placeholder: ws.crypto ? 'Passphrase or recovery code' : 'New passphrase (at least 10 characters)', autocomplete: ws.crypto ? 'current-password' : 'new-password' });
@@ -108,6 +116,7 @@ async function cryptoSheet() {
       }
     } catch (err) { msg.textContent = err.message; }
   } },
+    note ? h('p', { class: 'ccinfo amber' }, note) : null,
     h('p', { class: 'muted' }, ws.crypto ? (hasKey ? 'Attachments are unlocked on this device. You can change the passphrase below.' : 'Enter your passphrase (or recovery code) to open PDFs and photos on this device.')
       : 'PDFs and photos are encrypted on this device before they go to GitHub. Choose a passphrase you will remember. Your task list itself is not encrypted, so the widget and notifications can read it.'),
     pass, h('button', { class: 'btn primary block', type: 'submit' }, ws.crypto ? 'Unlock' : 'Turn on encryption'), msg,
