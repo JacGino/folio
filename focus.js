@@ -268,9 +268,20 @@ function layout(kind, dbr) {
   const W = C.cfg(dbr).widths, mk = c => { const id = 'f:' + kind + ':' + c.k; return { ...c, id, label: C.pageLabel(dbr, id, c.def), w: W[id] || c.w, fixed: !!W[id] }; };
   const allLead = pc.lead.map(mk), allTail = pc.tail.map(mk);
   return { allLead, allTail, lead: allLead.filter(c => !hid.has(c.id)), tail: allTail.filter(c => !hid.has(c.id)),
-    shared: C.columns(dbr, { computed: false, skip: SKIP_SHARED }) };
+    // every property switched on in Property visibility shows here (Days Left, ECPAR, … too); only a project column the page
+    // already has under the same name (its own Status / Due Date / Priority) is left out, so it is not there twice
+    shared: C.columns(dbr, { computed: true, skip: SKIP_SHARED.filter(n => [...pc.lead, ...pc.tail].some(c => c.def === n)) }) };
 }
 
+// the columns Folio works out (Site Survey, ECPAR, ECX, Days Left), drawn as in the Projects table
+function computedCell(id, row, dbr, n) {
+  const t = DB.kpiInfo(row, dbr, n), rep = E.reportOnly(t.category), none = () => h('span', { class: 'muted' }, '—');
+  if (id === 'x:survey') { const ss = E.surveyState(row, t); return ss === 'done' ? icon('check', 18, 'ok') : ss === 'pending' ? h('span', { class: 'muted sm' }, 'Pending') : none(); }
+  if (id === 'x:ecpar') { const ep = rep ? '' : E.ecparStatus(row, t); return ep === 'Approved' ? icon('check', 18, 'ok') : ep ? badge(ep, undefined, false) : none(); }
+  if (id === 'x:ecx') { const xs = rep ? [] : E.ecxOf(t.id); return xs.length ? String(xs.length) : none(); }
+  if (id === 'x:days') return t.closed || t.finished || t.archived ? none() : dueBadge(t.days);
+  return none();
+}
 // ---------- one row per page ----------
 function recordRow(kind, r, S, n, lay) {
   const chk = h('input', { type: 'checkbox', class: 'hchk', 'aria-label': 'Select ' + r.cust, checked: S.sel.has(r.id) ? true : null, onclick: e => e.stopPropagation(), onchange: e => { e.target.checked ? S.sel.add(r.id) : S.sel.delete(r.id); render(); } });
@@ -279,7 +290,7 @@ function recordRow(kind, r, S, n, lay) {
   const more = h('button', { class: 'c-act ebtn fc-act', 'aria-label': 'Actions for ' + r.cust, onclick: e => { e.stopPropagation(); rowMenu(kind, r, e.currentTarget, n); } }, icon('more', 18));
   const dbr = DB.kpiDb();
   const pageCell = c => h('span', { class: 'cc fc fpc-' + c.k, 'data-col': c.id }, c.cell(r));
-  const shared = c => { const el = C.cell(dbr, c, r.row); if (C.isRefCol(c.p) || (c.p.type === 'title' && !lay.shared.some(k => C.isRefCol(k.p)))) el.append(h('button', { class: 'copen', type: 'button', 'aria-label': 'Open ' + r.cust, title: 'Open', onclick: e => { e.stopPropagation(); open(); } }, 'Open')); return el; };
+  const shared = c => { if (!c.p) return h('span', { class: 'cc cx', 'data-col': c.id, title: c.label }, computedCell(c.id, r.row, dbr, n)); const el = C.cell(dbr, c, r.row); if (C.isRefCol(c.p) || (c.p.type === 'title' && !lay.shared.some(k => C.isRefCol(k.p)))) el.append(h('button', { class: 'copen', type: 'button', 'aria-label': 'Open ' + r.cust, title: 'Open', onclick: e => { e.stopPropagation(); open(); } }, 'Open')); return el; };
   const el = h('div', { class: 'frow' + (S.sel.has(r.id) ? ' sel' : ''), role: 'row', 'data-rid': r.row.id, tabindex: '0', onclick: open, onkeydown: e => { if (e.key === 'Enter' && e.target === el) open(); } },
     h('span', { class: 'fc-chk' }, chk), ...lay.lead.map(pageCell), ...lay.shared.map(shared), ...lay.tail.map(pageCell), more);
   longPress(el, () => rowMenu(kind, r, el, n));
