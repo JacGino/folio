@@ -11,13 +11,26 @@ import { renderDbBlock } from './table.js';
 import { popEdit } from './popedit.js';
 
 let editor = null; // only one main editor at a time
-const urls = new Map();
-export async function fileUrl(id) {
+const urls = new Map(), blobs = new Map();
+export async function fileUrl(id, hint) { // hint: the file entry ({ name, type }) when known
   if (!id) return null; if (urls.has(id)) return urls.get(id);
   const b = await Sync.fileBytes(id); if (!b) return null;
-  const u = URL.createObjectURL(new Blob([b.bytes], { type: b.type || guessType(b.name) })); urls.set(id, u); return u;
+  const blob = new Blob([b.bytes], { type: b.type || hint?.type || guessType(b.name) || guessType(hint?.name) || sniffType(b.bytes) || 'application/octet-stream' });
+  const u = URL.createObjectURL(blob); urls.set(id, u); blobs.set(id, blob); return u;
 }
-const guessType = n => /\.pdf$/i.test(n || '') ? 'application/pdf' : /\.(png)$/i.test(n || '') ? 'image/png' : /\.(jpe?g)$/i.test(n || '') ? 'image/jpeg' : '';
+// a file downloaded from GitHub has no name or type with it: tell PDF / images apart by their first bytes, so the browser opens them properly
+export function sniffType(bytes) {
+  const u = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || []), at = (o, ...v) => v.every((x, i) => u[o + i] === x), txt = (o, t) => [...t].every((c, i) => u[o + i] === c.charCodeAt(0));
+  if (txt(0, '%PDF')) return 'application/pdf';
+  if (at(0, 0x89, 0x50, 0x4E, 0x47)) return 'image/png';
+  if (at(0, 0xFF, 0xD8, 0xFF)) return 'image/jpeg';
+  if (txt(0, 'GIF8')) return 'image/gif';
+  if (txt(0, 'RIFF') && txt(8, 'WEBP')) return 'image/webp';
+  if (txt(4, 'ftyp') && /^(heic|heix|hevc|mif1|msf1)/.test(String.fromCharCode(...u.slice(8, 12)))) return 'image/heic';
+  if (txt(0, 'PK')) return 'application/zip';
+  return '';
+}
+const guessType = n => { const x = (/\.([a-z0-9]+)$/i.exec(n || '') || [])[1]?.toLowerCase(); return { pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', heic: 'image/heic', gif: 'image/gif', webp: 'image/webp', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', doc: 'application/msword', xls: 'application/vnd.ms-excel', csv: 'text/csv', txt: 'text/plain', dwg: 'application/acad' }[x] || ''; };
 const FILE_PROBLEM = {
   locked: 'Attachments are locked on this device. Unlock them in Settings › Encrypted attachments.',
   offline: 'GitHub is not connected on this device. Connect it in Settings to download this file.',
@@ -25,10 +38,27 @@ const FILE_PROBLEM = {
   error: 'This file could not be downloaded right now. Check your connection and try again.',
 };
 export async function openFile(f) {
-  const u = await fileUrl(f.id); if (u) { window.open(u, '_blank'); return; }
-  toast(f.err || FILE_PROBLEM[await Sync.fileProblem(f.id)] || FILE_PROBLEM.error, 6000);
+  const u = await fileUrl(f.id, f);
+  if (!u) { toast(f.err || FILE_PROBLEM[await Sync.fileProblem(f.id)] || FILE_PROBLEM.error, 6000); return; }
+  fileViewer(f, u, blobs.get(f.id));
 }
-async function addFile(file) {
+// Files open inside Folio on every device (iPhone, iPhone Duo, iPad, Mac, laptop): Home Screen apps on iPhone / iPad cannot
+// open a file in a new tab, so photos and PDFs show here, with Share (Open in… / Save to Files) and Download as the way out
+const isIOS = () => /iP(hone|ad|od)/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1); // iPad reports itself as a Mac with a touch screen
+function fileViewer(f, u, blob) {
+  const type = blob?.type || '', name = f.name || 'File' + (type === 'application/pdf' ? '.pdf' : '');
+  const file = blob ? new File([blob], name, { type }) : null;
+  const canShare = !!(file && navigator.canShare && navigator.canShare({ files: [file] }));
+  const save = () => { const a = h('a', { href: u, download: name }); document.body.append(a); a.click(); a.remove(); };
+  const view = type.startsWith('image/') && type !== 'image/heic' ? h('img', { class: 'fview-img', src: u, alt: name })
+    : type === 'application/pdf' ? h('iframe', { class: 'fview-pdf', src: u, title: name })
+    : h('div', { class: 'fview-none' }, icon('clip', 28), h('p', {}, 'This file type cannot be shown here.'), h('p', { class: 'muted' }, isIOS() ? 'Tap Share to open it in another app or save it to Files.' : 'Tap Download to open it with an app on this computer.'));
+  sheet(name, h('div', { class: 'fview' }, view,
+    h('div', { class: 'fview-bar' },
+      canShare ? h('button', { class: 'btn', type: 'button', onclick: () => navigator.share({ files: [file], title: name }).catch(() => {}) }, icon('export', 16), isIOS() ? 'Share / Open in…' : 'Share') : null,
+      !isIOS() ? h('button', { class: 'btn', type: 'button', onclick: () => window.open(u, '_blank') }, icon('expand', 16), 'Open in new tab') : null,
+      h('button', { class: 'btn', type: 'button', onclick: save }, icon('import', 16), isIOS() ? 'Save' : 'Download'))), { wide: true });
+}async function addFile(file) {
   try { const ref = await Sync.addFile(null, file); Sync.soon(); warnSize(); return ref; }
   catch (e) { toast(e.message, 4000); throw e; }
 }

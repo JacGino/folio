@@ -126,7 +126,7 @@ export async function fileBytes(id) {
   const b = await S.get('blobs', id); if (b) return b;
   if (!gh || !fileKey) return null;
   const enc = await gh.getBytes(P(`files/${id}.enc`)); if (!enc) return null;
-  const bytes = await decryptBlob(fileKey, enc); const rec = { bytes, type: '', name: id };
+  const bytes = await decryptBlob(fileKey, enc); const rec = { bytes, type: '', name: id }; // type is worked out from the bytes when opened
   await S.put('blobs', rec, id); return rec;
 }
 /** Start over: erase everything on every device and in the GitHub copy (the old files stay in the repo, unread).
