@@ -80,6 +80,12 @@ export const CHECKLISTS = {
       { id: 'nm8', text: "Planning Engineer to update loading's file & to issue approval letter for scheme/design (CC bill for PV meter will be issued by Retail)" },
     ],
   },
+  // Streetlighting is a Public Light job under Non Turnkey (NTK): shown on NTK projects
+  'Streetlighting': {
+    label: 'Streetlighting (Public Light · NTK)', items: [
+      { id: 'sl1', text: 'If by consultant/contractor must have approved engineering plan for streetlighting' },
+    ],
+  },
   'Temporary Supply': {
     label: 'Temporary Supply', items: [
       { id: 'ts1', text: 'Must have Appendix B - Undertaking of Temporary Supply (Declaration form for non-commercial purposes)' },
@@ -98,7 +104,7 @@ export function checklistsFor(categories, side = 'residential') {
   const cats = like.length && !categories.includes('SAL100KW') ? [...categories, 'SAL100KW'] : categories;
   const ntkOnly = cats !== categories, aliasLabel = like.map(c => SAME[c]).join(' / ');
   for (const [cat, def] of Object.entries(CHECKLISTS)) {
-    if (!cats.includes(cat)) continue;
+    if (!cats.includes(cat) && !(cat === 'Streetlighting' && categories.includes('Non Turnkey'))) continue;
     if (def.sides) { const s = def.sides[side] || def.sides.residential; out.push({ cat, label: (ntkOnly && cat === 'SAL100KW' ? aliasLabel : def.label) + ' · ' + s.label, items: s.items, sides: def.sides, side }); }
     else out.push({ cat, label: def.label, items: def.items });
   }
