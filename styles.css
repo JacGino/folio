@@ -2364,3 +2364,6 @@ body[data-layout="rail"] .hero .cover .chg, body[data-layout="rail"] .fhead .cov
 @container (max-width: 700px) { .alog li { grid-template-columns: calc(74px * var(--ts, 1)) minmax(0, 1fr); } }
 .vstate { max-width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .ccr .cci { min-width: 0; overflow-wrap: anywhere; }
+/* By Project Category: open count, with the KPI % beside "open" once there are completed projects */
+.ctile .ckpi { font-style: normal; font-size: calc(11px * var(--ts, 1)); color: var(--ink3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.ctile.none b { color: var(--ink); } .ctile.zero b { color: var(--ink3); }

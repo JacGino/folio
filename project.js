@@ -677,7 +677,9 @@ function surveyTab(row, info, n) {
 
       kv('pin', 'Site address', h('span', {}, E.custAddress(row) || h('span', { class: 'muted' }, '—'))),
       kv('globe', 'Pin Location', pinField(row)),
-      tfs ? null : kv('text', 'Wayleave (Private/Utilities)', propVal(row, DB.WAYLEAVE)),
+      tfs ? null : [].concat(info.category || []).includes('NEM Solar')
+        ? h('div', { class: 'kv kvwide' }, h('span', { class: 'kl' }, icon('text', 16), 'Remark'), h('div', { class: 'kvv' }, wf('remark', 'Remark'))) // NEM: Remark in place of Wayleave
+        : kv('text', 'Wayleave (Private/Utilities)', propVal(row, DB.WAYLEAVE)),
       // SAL100KW / UOS / TOS and NTK: Technical findings 1–10, keyed in by hand (not linked to the Long Text's Scheme of supply)
       ...(tfs ? [h('h4', { class: 'tfhead' }, icon('text', 16), 'Technical findings'),
         ...E.FINDINGS.map(([k, label, ph]) => kv('text', label, wf(k, label, { ph }))),
@@ -692,7 +694,7 @@ function surveyTab(row, info, n) {
         kv('text', 'Substation', wf('tfSub', 'Substation', { ph: 'e.g. DS1234 TAMAN KEMENA' })),
         kv('text', 'Feeder', wf('tfFeeder', 'Feeder', { ph: 'e.g. FEEDER 2' })),
         g(E.workOf(row) || {}, 'findings', '') ? h('div', { class: 'kv kvwide' }, h('span', { class: 'kl' }, icon('text', 16), 'Earlier notes'), h('div', { class: 'kvv' }, wf('findings', 'Earlier notes'))) : null,
-        g(E.workOf(row) || {}, 'remark', '') ? h('div', { class: 'kv kvwide' }, h('span', { class: 'kl' }, icon('text', 16), 'Remark'), h('div', { class: 'kvv' }, wf('remark', 'Remark'))) : null])));
+        !([].concat(info.category || []).includes('NEM Solar')) && g(E.workOf(row) || {}, 'remark', '') ? h('div', { class: 'kv kvwide' }, h('span', { class: 'kl' }, icon('text', 16), 'Remark'), h('div', { class: 'kvv' }, wf('remark', 'Remark'))) : null])));
 }
 
 // ---------- ECPAR ----------

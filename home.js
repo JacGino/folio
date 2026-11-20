@@ -269,12 +269,13 @@ function trendCard(all, n) {
 
 // ---------- By Project Category ----------
 function categoryCard(all) {
-  const done = all.filter(t => t.archived || t.finished);
+  // big number: open projects in the category (tap to see them); under it: KPI % within 7 days once some are completed
+  const done = all.filter(t => t.archived || t.finished), open = all.filter(t => !t.archived && !t.finished);
   return h('section', { class: 'hcard ccard c-cat' },
     h('div', { class: 'chead' }, icon('layers', 18), h('h2', {}, 'By Project Category'), h('a', { class: 'hall', href: '#/kpi' }, 'View KPI', icon('chevr', 13))),
-    h('div', { class: 'ctiles' }, DB.CATEGORIES.map(c => { const v = kpiPct(done.filter(t => t.category.includes(c)));
-      return h('button', { class: 'ctile ' + (v == null ? 'none' : v >= 95 ? 'good' : v >= 80 ? 'mid' : 'low'), title: c + (v == null ? ': no completed projects yet' : ': ' + v + '% within 7 days'), onclick: () => { setProjectFilter({ cat: c }); go('#/projects'); } },
-        h('small', {}, short(c)), h('b', {}, v == null ? '—' : v + '%')); })));
+    h('div', { class: 'ctiles' }, DB.CATEGORIES.map(c => { const v = kpiPct(done.filter(t => t.category.includes(c))), n = open.filter(t => t.category.includes(c)).length;
+      return h('button', { class: 'ctile ' + (v == null ? 'none' : v >= 95 ? 'good' : v >= 80 ? 'mid' : 'low') + (n ? '' : ' zero'), title: `${c}: ${n} open` + (v == null ? ', no completed projects yet' : `, ${v}% done within 7 days`), onclick: () => { setProjectFilter({ cat: c }); go('#/projects'); } },
+        h('small', {}, short(c)), h('b', {}, String(n)), h('em', { class: 'ckpi' }, n === 1 ? 'open' : 'open', v == null ? '' : ` · KPI ${v}%`)); })));
 }
 
 // ---------- Quick Actions ----------
