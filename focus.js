@@ -23,7 +23,6 @@ const catPill = cats => cats.length ? optPill('Project Category', short(cats[0])
 const priOf = row => (P('Priority') && DB.value(row, P('Priority'))) || '';
 const PRI_ICON = { High: '↑', Medium: '=', Low: '✓' };
 const priPill = p => p ? badge((PRI_ICON[p] || '') + ' ' + p, { High: 'red', Medium: 'orange', Low: 'green' }[p], false) : h('span', { class: 'muted' }, '—');
-const dueBadge = days => days == null ? h('span', { class: 'muted' }, '—') : h('span', { class: 'fdue' + (days < 0 ? ' late' : days === 0 ? ' today' : '') }, icon('date', 13), days === 0 ? 'Today' : days === 1 ? 'Tomorrow' : days < 0 ? Math.abs(days) + (days === -1 ? ' day late' : ' days late') : 'In ' + days + ' days');
 const setRowProp = (row, name, v) => { const p = P(name); if (p) D.update(row.id, { ['p:' + p.id]: v }); };
 
 // ---------- per-page state (filters stay while you move around) ----------
@@ -89,11 +88,12 @@ function ecxRecords(n) {
 // Page definitions
 // =====================================================================================
 const PAGES = {
-  today: { title: 'Due Today', icon: 'date', desc: 'Projects and tasks due today that require your action.', records: dueRecords, unit: 'Tasks',
+  // only what is due TODAY (overdue and coming-up items are not listed here)
+  today: { title: 'Due Today', icon: 'date', desc: 'Projects and tasks due today that require your action.', records: n => dueRecords(n).filter(r => r.days === 0), unit: 'Tasks',
     tabs: [['all', 'All', null, () => true], ['survey', 'Site Survey', 'target', r => r.type === 'Site Survey'], ['rejected', 'Rejected Queue', 'xcircle', r => r.kind === 'ecpar' || r.kind === 'ecx']],
-    metrics: rs => [['date', 'Total Due Today', rs.length, null, 'blue'], ['okcircle', 'On Track', rs.filter(r => r.risk === 'track').length, 'green'], ['today', 'At Risk', rs.filter(r => r.risk === 'risk').length, 'orange'], ['info', 'Overdue', rs.filter(r => r.risk === 'overdue').length, 'red']],
+    metrics: rs => [['date', 'Total Due Today', rs.length, null, 'blue'], ['target', 'Site Survey', rs.filter(r => r.type === 'Site Survey').length, 'green'], ['listcheck', 'Tasks', rs.filter(r => r.kind === 'task').length, 'orange'], ['xcircle', 'Rejected Queue', rs.filter(r => r.kind === 'ecpar' || r.kind === 'ecx').length, 'red']],
     statuses: ['Pending', 'In Progress', 'On Hold'], search: r => [r.no, r.cust, r.title, r.cats.join(' ')],
-    dates: [['overdue', 'Overdue', r => r.days < 0], ['today', 'Due today', r => r.days === 0], ['soon', 'Next 2 days', r => r.days > 0]],
+    dates: [['today', 'Due today', r => r.days === 0]],
     donut: { title: 'Due Today by Type', key: r => r.type, order: ['ECX', 'ECPAR', 'Site Survey', 'Report', 'Other'], colors: { ECX: '#3B82F6', ECPAR: '#E5484D', 'Site Survey': '#3FA45B', Report: '#A78BFA', Other: '#B4B2AD' } },
     bars: { title: 'Priority Breakdown', icon: 'barchart', key: r => r.priority || 'Not set', order: ['High', 'Medium', 'Low', 'Not set'], colors: { High: '#E5484D', Medium: '#E5A50A', Low: '#3FA45B', 'Not set': '#B4B2AD' } },
     cols: ['eCX & WBS No', 'Customer', 'Project Type', 'Priority', 'Due Date', 'Status'] },
@@ -281,8 +281,8 @@ function computedCell(id, row, dbr, n) {
   const t = DB.kpiInfo(row, dbr, n), rep = E.reportOnly(t.category), none = () => h('span', { class: 'muted' }, '—');
   if (id === 'x:survey') { const ss = E.surveyState(row, t); return ss === 'done' ? icon('check', 18, 'ok') : ss === 'pending' ? h('span', { class: 'muted sm' }, 'Pending') : none(); }
   if (id === 'x:ecpar') { const ep = rep ? '' : E.ecparStatus(row, t); return ep === 'Approved' ? icon('check', 18, 'ok') : ep ? badge(ep, undefined, false) : none(); }
-  if (id === 'x:ecx') { const xs = rep ? [] : E.ecxOf(t.id); return xs.length ? String(xs.length) : none(); }
-  if (id === 'x:days') return t.closed || t.finished || t.archived ? none() : dueBadge(t.days);
+  if (id === 'x:ecx') { const xs = E.ecxOf(t.id); return xs.length ? String(xs.length) : none(); }
+  if (id === 'x:days') { const l = DB.daysLeftLabel(t, t.days, n); return l ? h('span', { class: 'dlt ' + l.tone }, l.text) : none(); }
   return none();
 }
 // ---------- one row per page ----------

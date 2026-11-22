@@ -229,6 +229,21 @@ export function ecxKpi(rowId, assigned) {
   const ends = ['p:submitted', 'p:rejected'].map(day).filter(d => d && (!from || d >= from)).sort((a, b) => a - b);
   return { start, end: ends[0] || null };
 }
+/** Days Left counter (same rule as the Notion formula): Rejected / Done / To Amend (ECPAR Rejected + 1 day) / Due Date.
+ *  days = days from today to the Due Date (null = no Due Date). Returns { text, tone } or null when there is nothing to show. */
+export function daysLeftLabel(t, days, now = Date.now()) {
+  const st = String(t.status || '').trim();
+  if (st === 'Rejected') return { text: '\u274C REJECTED', tone: 'rej' };
+  if (st === 'Done') return { text: '\u2705 COMPLETED', tone: 'done' };
+  if (st === 'To Amend') {
+    if (!t.amendStart) return null;
+    const d = dateBetween(dateAdd(startOfDay(t.amendStart), 1, 'days'), startOfDay(new Date(now)), 'days');
+    return d < 0 ? { text: '\uD83D\uDEA8 AMENDMENT OVERDUE', tone: 'late' } : { text: '\uD83D\uDFE0 AMENDMENT DUE (' + d + (d === 1 ? ' day left)' : ' days left)'), tone: 'soon' };
+  }
+  if (days == null) return null;
+  if (days < 0) return { text: '\uD83D\uDD34 OVERDUE (' + Math.abs(days) + (days === -1 ? ' day)' : ' days)'), tone: 'late' };
+  return days <= 2 ? { text: '\uD83D\uDFE0 ' + days + (days === 1 ? ' day left' : ' days left'), tone: 'soon' } : { text: '\uD83D\uDD35 ' + days + ' days left', tone: 'ok' };
+}
 export function kpiInfo(row, dbr, now = Date.now()) {
   const P = n => propByName(dbr, n), today = startOfDay(new Date(now));
   const status = value(row, P('Status')) || '';

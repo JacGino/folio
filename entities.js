@@ -448,8 +448,9 @@ export function milestones(row, info = DB.kpiInfo(row, DB.kpiDb())) {
   if (rep) list.push({ key: 'report', label: 'Report prepared', done: !!(w && g(w, 'report')), toggle: true });
   else {
     const e = ecparStatus(row, info); if (e) list.push({ key: 'ecpar', label: 'ECPAR submitted', done: !!g(ecparOf(row), 'submitted') || ['Submitted', 'Resubmitted', 'Approved'].includes(e) });
-    const xs = ecxOf(row.id); if (xs.length) list.push({ key: 'ecx', label: 'ECX submitted', done: xs.every(x => !!g(x, 'submitted') || ['Submitted', 'Resubmitted', 'Closed'].includes(g(x, 'status'))) });
   }
+  // ECX: every category (applications come in through ECX)
+  const xs = ecxOf(row.id); if (xs.length) list.push({ key: 'ecx', label: 'ECX submitted', done: xs.every(x => !!g(x, 'submitted') || ['Submitted', 'Resubmitted', 'Closed'].includes(g(x, 'status'))) });
   list.push({ key: 'done', label: 'Completed', done });
   return list;
 }

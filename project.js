@@ -36,8 +36,7 @@ export function optPill(propName, name, dot = false) {
 }
 const SHORT = { 'Turnkey Stage 1': 'Turnkey S1', 'Turnkey Stage 2': 'Turnkey S2', 'Substation Site Enquiry': 'Substation', 'Upgrading of Supply': 'Upgrading', 'Temporary Supply': 'Temporary' };
 const catPills = (cats, short = true) => cats.length ? cats.map(c => optPill('Project Category', short ? (SHORT[c] || c) : c)).map((el, i) => (el.title = cats[i], el)) : h('span', { class: 'muted' }, '—');
-const daysBadge = days => days == null ? h('span', { class: 'muted' }, '—')
-  : h('span', { class: 'dl' + (days < 0 ? ' late' : days <= 2 ? ' soon' : days <= 4 ? ' near' : '') }, days < 0 ? String(days) : String(days));
+const daysText = (t, days, n) => { const l = DB.daysLeftLabel(t, days, n); return l ? h('span', { class: 'dlt ' + l.tone }, l.text) : h('span', { class: 'muted' }, '\u2014'); };
 const pick = (anchor, options, cur, set, { clear = false } = {}) => menu(anchor, [...options.map(o => ({ label: o, checked: o === cur, run: () => set(o) })), ...(clear && cur ? ['-', { label: 'Clear', icon: 'close', run: () => set(null) }] : [])]);
 
 /** one editable value of a linked record (customer, task, ECPAR, ECX, work): tap to change it */
@@ -235,13 +234,13 @@ export function projectsScreen() {
   const head = () => h('div', { class: 'hrow hhd prow', role: 'row' }, h('span', { class: 'c-chk' }),
     cols.map(c => h('span', { class: 'cc', role: 'columnheader' }, C.headCell(dbr, c, { sort: pcol, onSort: c.p || c.id === 'x:days' ? v => { pcol = v; keepSort(); render(); } : null, onFilter: addFilter }))), h('span', { class: 'c-act' }));
   function projectRow(t, n) {
-    const row = t.row, rep = E.reportOnly(t.category), ss = E.surveyState(row, t), ep = rep ? '' : E.ecparStatus(row, t), xs = rep ? [] : E.ecxOf(t.id);
+    const row = t.row, rep = E.reportOnly(t.category), ss = E.surveyState(row, t), ep = rep ? '' : E.ecparStatus(row, t), xs = E.ecxOf(t.id); // ECX for every category (applications come in through ECX)
     const chk = h('input', { type: 'checkbox', class: 'hchk', 'aria-label': 'Select ' + t.title, checked: sel.has(t.id) ? true : null, onclick: e => e.stopPropagation(), onchange: e => { e.target.checked ? sel.add(t.id) : sel.delete(t.id); draw(); } });
     const computed = {
       'x:survey': () => ss === 'done' ? icon('check', 18, 'ok') : ss === 'pending' ? h('span', { class: 'muted sm' }, 'Pending') : h('span', { class: 'muted' }, '—'),
       'x:ecpar': () => ep === 'Approved' ? icon('check', 18, 'ok') : ep ? badge(ep, undefined, false) : h('span', { class: 'muted' }, '—'),
       'x:ecx': () => xs.length ? String(xs.length) : h('span', { class: 'muted' }, '—'),
-      'x:days': () => bucket(t) === 'progress' ? daysBadge(t.dueDays) : h('span', { class: 'muted' }, '—') };
+      'x:days': () => daysText(t, t.dueDays, n) };
     const cellOf = c => {
       if (!c.p) return h('span', { class: 'cc cx', 'data-col': c.id, title: c.label }, computed[c.id]());
       const el = C.cell(dbr, c, row);
@@ -350,7 +349,7 @@ export function projectScreen(id, tab = 'overview') {
   const dueDate = info.amend && info.due ? info.due : info.kpiDue || DB.value(row, P('Due Date')), dueDays = dueDate ? Math.round((startOfDay(dueDate) - startOfDay(new Date(n))) / 864e5) : null;
   const tasks = E.tasksOf(row.id), xs = E.ecxOf(row.id), pct = E.progress(row, info), kd = E.kpiDays(info, n);
   const TABS = [['overview', 'Overview', 'home'], ['tasks', 'Tasks', 'listcheck', tasks.filter(E.taskOpen).length], ...(E.needsSurvey(info.category) ? [['survey', 'Site Survey', 'target']] : []),
-    ...(rep ? [] : [['ecpar', 'ECPAR', 'ecpar']]), ...(ccEligible(info.category) ? [['cc', 'Connection Charge', 'table']] : []), ...(rep ? [] : [['ecx', 'ECX', 'filex', xs.length]]), ['docs', 'Documents', 'clip'], ['log', 'Activity Log', 'history']];
+    ...(rep ? [] : [['ecpar', 'ECPAR', 'ecpar']]), ...(ccEligible(info.category) ? [['cc', 'Connection Charge', 'table']] : []), ['ecx', 'ECX', 'filex', xs.length], ['docs', 'Documents', 'clip'], ['log', 'Activity Log', 'history']];
   if (!TABS.some(t => t[0] === tab)) tab = 'overview';
   state.ctx = { export: a => exportList('today', a), more: a => projectMenu(a, row) };
   const ref = DB.projectRef(row);
@@ -378,9 +377,8 @@ export function projectScreen(id, tab = 'overview') {
             onclick: e => { e.stopPropagation(); const ep = E.ecpar(row); dateSheet('ECPAR Rejection Date (Resubmit by = +1 day)', g(D.getRec(ep.id), 'rejected') || toISODate(info.amendStart), v => { D.update(ep.id, { 'p:rejected': v }); render(); }); } }, h('span', {}, formatDate(dueDate, 'DD/MM/YYYY')))
           : info.kpiDue ? h('span', { class: 'val' }, formatDate(dueDate, 'DD/MM/YYYY')) : propVal(row, 'Due Date'))),
       h('div', { class: 'kcell' }, h('div', {}, h('small', {}, info.amend && info.amendEnd ? 'Resubmitted' : 'Days Left'),
-        info.finished || info.archived ? h('span', { class: 'muted' }, '—')
-        : info.amend && info.amendEnd ? h('span', { class: 'dl amdone' + (info.amendDays <= 1 ? ' ok' : ' late'), title: 'Rejection Date to Resubmission Date (1 day allowed). Waiting for ECPAR approval.' }, `in ${info.amendDays} ${info.amendDays === 1 ? 'day' : 'days'}`)
-        : daysBadge(dueDays))),
+        info.amend && info.amendEnd ? h('span', { class: 'dl amdone' + (info.amendDays <= 1 ? ' ok' : ' late'), title: 'Rejection Date to Resubmission Date (1 day allowed). Waiting for ECPAR approval.' }, `in ${info.amendDays} ${info.amendDays === 1 ? 'day' : 'days'}`)
+        : daysText(info, dueDays, n))),
       h('div', { class: 'kcell kprog' }, h('div', {}, h('small', {}, 'KPI Progress'), h('div', { class: 'pbar' }, h('b', {}, pct + '%'), h('span', { class: 'bar' }, h('i', { style: { width: pct + '%' } }))),
         h('small', { class: 'kd' + (kd != null && kd > 7 ? ' late' : '') }, kd == null ? 'Set Date Assigned for KPI' : (info.completed ? 'Done in ' : 'Day ') + kd + (info.completed ? ' days' : ' of 7') + (kd > 7 ? ' · over KPI' : ' · within KPI'))))),
     keepTabScroll(id, h('div', { class: 'ptabs htabs', role: 'tablist' }, TABS.map(([k, l, ic, c]) => h('a', { class: 'htab' + (tab === k ? ' on' : ''), role: 'tab', 'aria-selected': tab === k ? 'true' : 'false', href: `#/project/${id}/${k}`, onclick: e => { e.preventDefault(); go(`#/project/${id}/${k}`, { replace: true }); } },
@@ -667,7 +665,8 @@ function surveyTab(row, info, n) {
   const tfs = E.structuredFindings(info.category);
   const toggle = (key, label) => h('button', { class: 'tgl', 'aria-pressed': g(w, key) ? 'true' : 'false', onclick: () => { const wk = E.work(row); D.update(wk.id, { ['p:' + key]: !g(wk, key) }); if (!g(w, key)) E.log(row, key === 'docs' ? 'Document check' : 'Report', label + '.'); render(); } },
     icon(g(w, key) ? 'okcircle' : 'today', 18), g(w, key) ? 'Yes' : 'Not yet');
-  return h('section', { class: 'hcard pcard' },
+  // two cards: Site Survey (date, documents / report, address, pin…) and Technical findings
+  return h('div', { class: 'tabstack' }, h('section', { class: 'hcard pcard' },
     h('div', { class: 'phbar' }, h('h3', { class: 'ph' }, icon('target', 17), 'Site Survey', st === 'done' ? badge('Completed') : st === 'pending' ? badge('Pending') : null),
       st !== 'done' ? h('button', { class: 'hnew sm', onclick: async () => { const r = await glassModal({ title: 'Site survey completed', dateLabel: 'Survey date', textLabel: 'Findings (optional)', ok: 'Mark completed' }); if (!r) return;
         E.completeSurvey(row, r.date, n); if (r.text) { const wk = E.work(row); D.update(wk.id, { 'p:findings': [g(wk, 'findings'), r.text].filter(Boolean).join('\n') }); } render(); } }, icon('check', 15), h('span', {}, 'Mark completed')) : null),
@@ -681,7 +680,9 @@ function surveyTab(row, info, n) {
         ? h('div', { class: 'kv kvwide' }, h('span', { class: 'kl' }, icon('text', 16), 'Remark'), h('div', { class: 'kvv' }, wf('remark', 'Remark'))) // NEM: Remark in place of Wayleave
         : kv('text', 'Wayleave (Private/Utilities)', propVal(row, DB.WAYLEAVE)),
       // SAL100KW / UOS / TOS and NTK: Technical findings 1–10, keyed in by hand (not linked to the Long Text's Scheme of supply)
-      ...(tfs ? [h('h4', { class: 'tfhead' }, icon('text', 16), 'Technical findings'),
+    )),
+    h('section', { class: 'hcard pcard' }, h('h3', { class: 'ph' }, icon('text', 17), 'Technical findings'), h('div', { class: 'kvs two' },
+      ...(tfs ? [
         ...E.FINDINGS.map(([k, label, ph]) => kv('text', label, wf(k, label, { ph }))),
         kv('text', 'Wayleave (Private / Utility)', propVal(row, DB.WAYLEAVE)),
         h('div', { class: 'kv kvwide' }, h('span', { class: 'kl' }, icon('text', 16), 'Remark'), h('div', { class: 'kvv' }, wf('remark', 'Remark'))),
@@ -689,12 +690,12 @@ function surveyTab(row, info, n) {
         rep ? null : h('div', { class: 'kv kvwide' }, h('span', { class: 'kl' }, icon('text', 16), 'Scheme of Supply'), h('div', { class: 'kvv' }, wf('findings', 'Scheme of Supply')))]
       // other categories: one Technical findings box (it also fills the Long Text's Scheme of supply), then Remark
       // NEM: Technical findings = Date & Time, Substation, Feeder (earlier free text / remark still shown if they have any)
-      : [h('h4', { class: 'tfhead' }, icon('text', 16), 'Technical findings'),
+      : [
         kv('date', 'Date & Time', wf('tfWhen', 'Date & Time', { ph: 'e.g. 21/11/2026 11:30 AM' })),
         kv('text', 'Substation', wf('tfSub', 'Substation', { ph: 'e.g. DS1234 TAMAN KEMENA' })),
         kv('text', 'Feeder', wf('tfFeeder', 'Feeder', { ph: 'e.g. FEEDER 2' })),
         g(E.workOf(row) || {}, 'findings', '') ? h('div', { class: 'kv kvwide' }, h('span', { class: 'kl' }, icon('text', 16), 'Earlier notes'), h('div', { class: 'kvv' }, wf('findings', 'Earlier notes'))) : null,
-        !([].concat(info.category || []).includes('NEM Solar')) && g(E.workOf(row) || {}, 'remark', '') ? h('div', { class: 'kv kvwide' }, h('span', { class: 'kl' }, icon('text', 16), 'Remark'), h('div', { class: 'kvv' }, wf('remark', 'Remark'))) : null])));
+        !([].concat(info.category || []).includes('NEM Solar')) && g(E.workOf(row) || {}, 'remark', '') ? h('div', { class: 'kv kvwide' }, h('span', { class: 'kl' }, icon('text', 16), 'Remark'), h('div', { class: 'kvv' }, wf('remark', 'Remark'))) : null]))));
 }
 
 // ---------- ECPAR ----------
@@ -800,8 +801,7 @@ function docsTab(row, info) {
         { label: 'Remove', icon: 'trash', danger: true, run: async () => { if (await confirmBox('Remove this link?', 'Remove')) { D.trash(d.id); render(); } } }]) }, icon('more', 18)))))
       : h('p', { class: 'hempty' }, 'No documents yet. Add links to files in iCloud Drive, Google Drive or the company system.'),
     h('div', { class: 'kvs' }, kv('clip', 'Files', propEditor(row, { id: 'docs', name: 'Files', type: 'files' }, DB.kpiDb())),
-      // ECX Link lives at the bottom of the ECX tab; report-only projects have no ECX tab, so it stays here for them
-      info && E.reportOnly(info.category) ? kv('link', 'ECX Link', propVal(row, 'ECX Link')) : null));
+      /* ECX Link lives at the bottom of the ECX tab (every category has one) */ null));
 }
 
 // ---------- Activity Log ----------

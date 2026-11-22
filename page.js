@@ -270,7 +270,12 @@ export function propEditor(rec, p, dbr, { compact = false, dfmt } = {}) {
     }
     case 'files': {
       const list = Array.isArray(v) ? v : [];
-      return h('span', { style: { display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' } }, list.map(f => h('button', { class: 'tag', style: { background: 'var(--bg2)', border: 0 }, onclick: () => openFile(f) }, icon('clip', 12), ' ', f.name)),
+      return h('span', { style: { display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' } }, list.map((f, i) => h('span', { class: 'fchip' }, h('button', { class: 'tag', style: { background: 'var(--bg2)', border: 0 }, onclick: () => openFile(f) }, icon('clip', 12), ' ', f.name),
+        // remove a file uploaded by mistake (asks first)
+        h('button', { class: 'fdel', type: 'button', 'aria-label': 'Remove ' + f.name, title: 'Remove file', onclick: async e => { e.stopPropagation(); const host = e.currentTarget.closest('.fchip').parentElement;
+          if (!await confirmBox(`Remove "${f.name}" from ${p.name}?`, 'Remove')) return;
+          const cur = D.val(D.getRec(rec.id) || rec, 'p:' + p.id), arr = Array.isArray(cur) ? cur.slice() : [];
+          const k = arr.findIndex(x => x === f || (x && f && x.id && x.id === f.id)); arr.splice(k >= 0 ? k : i, 1); set(arr.length ? arr : null); toast('Removed ' + f.name); if (host && host.isConnected) refresh(host); } }, icon('close', 12)))),
         h('button', { class: 'iconbtn', 'aria-label': 'Add file', onclick: e => { const host = e.currentTarget.parentElement; pickFile(async f => { const ref = await addFile(f); const cur = D.val(D.getRec(rec.id) || rec, 'p:' + p.id); set([...(Array.isArray(cur) ? cur : []), ref]); toast('Added ' + f.name); if (host && host.isConnected) refresh(host); }); } }, icon('plus', 16)));
     }
     case 'formula': {

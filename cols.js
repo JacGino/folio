@@ -16,7 +16,7 @@ export const COMPUTED = [
   { id: 'x:survey', label: 'Site Survey', w: 96 },
   { id: 'x:ecpar', label: 'ECPAR', w: 132 },
   { id: 'x:ecx', label: 'ECX', w: 64 },
-  { id: 'x:days', label: 'Days Left', w: 88 }];
+  { id: 'x:days', label: 'Days Left', w: 172 }];
 // what the Projects table showed before this setting existed: used once, on first use
 const FIRST_SHOWN = ['Project Category', 'x:survey', 'x:ecpar', 'x:ecx', 'Date Assigned', 'Due Date', 'x:days', 'Status'];
 const W = { title: 196, text: 166, number: 100, select: 132, status: 132, multi: 146, date: 112, checkbox: 72, url: 170, files: 150, formula: 190, created: 120 };
