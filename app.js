@@ -704,3 +704,13 @@ export async function boot() {
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') Sync.soon(500); else D.flush(); });
 }
+
+// Tap anywhere on a card row (label or blank space) to edit that field, not only on the text itself.
+// Rows with a Yes / Not yet toggle are left alone, so a stray tap never flips them.
+document.addEventListener('click', e => {
+  const kv = e.target.closest('.pcard .kv, .hcard .kv'); if (!kv || kv.classList.contains('aplwrap')) return;
+  if (e.target.closest('button, a, input, textarea, select, [contenteditable="true"], .cellpop, .menu, .sheet')) return;
+  const t = kv.querySelector('.kvv button.val, .kvv .props button.val, .kvv button.fv, .kvv .props .val[role="button"]');
+  if (!t || t.classList.contains('tgl') || t.disabled) return;
+  t.click();
+});

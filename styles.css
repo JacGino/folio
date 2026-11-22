@@ -2412,3 +2412,8 @@ input[type="date"]::-webkit-date-and-time-value, input[type="datetime-local"]::-
 /* IC No / Company No: same size and typeface as the other values in the card (e.g. Address) */
 .val.fv.icv, .aplr > .val.mono.icv { white-space: normal !important; overflow-wrap: anywhere; font-family: inherit !important; font-size: var(--valsize, calc(14.5px * var(--ts, 1))) !important; color: var(--ink) !important; }
 .val.fv.icv.empty { color: transparent !important; }
+/* the whole value area of a card row is tappable (empty or not), not just the text */
+.pcard .kvv > .val.fv, .hcard .kvv > .val.fv, .pcard .kvv .props .val, .hcard .kvv .props .val { width: calc(100% + 6px); min-height: 34px; justify-content: flex-start; box-sizing: border-box; }
+.pcard .kvv > .fvwrap, .hcard .kvv > .fvwrap { display: flex; width: 100%; } .pcard .kvv > .fvwrap > .val.fv, .hcard .kvv > .fvwrap > .val.fv { flex: 1; min-width: 0; }
+.pcard .kv, .hcard .kv { cursor: pointer; }
+.pcard .kvv .props, .hcard .kvv .props { width: 100%; }
