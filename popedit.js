@@ -16,7 +16,8 @@ export function popEdit(anchor, rec, p, after) {
   const single = p.single === true || num || p.type === 'url' || p.type === 'title' || /\b(ecx|wbs|ref|reference|id|phone|contact|tel|email|e-mail|number|no)\b/i.test(p.name || '');
   const inp = textbox({ cls: 'popin', multiline: true, label: p.name, attrs: { inputmode: num ? 'decimal' : p.type === 'url' ? 'url' : null, autocapitalize: p.type === 'url' ? 'off' : null, spellcheck: p.type === 'text' || p.type === 'title' ? null : 'false' } });
   if (/^ecx/i.test(p.name)) inp.style.fontFamily = 'var(--mono)';
-  inp.value = DB.raw(rec, p) ?? '';
+  inp.value = 'value' in p ? (p.value ?? '') : (DB.raw(rec, p) ?? '');
+  if (p.ph) { inp.placeholder = p.ph; inp.setAttribute('aria-label', p.ph); }
   const box = h('div', { class: 'cellpop' }, inp);
   // room below the page while editing, so a field near the bottom (Wayleave, Technical findings…) can still scroll up above the keyboard
   const spacer = h('div', { class: 'popspace', 'aria-hidden': 'true', style: `height:${Math.round(innerHeight * 0.7)}px` });
@@ -54,13 +55,14 @@ export function popEdit(anchor, rec, p, after) {
   const vvOn = () => setTimeout(() => { grow(); reveal(); }, 30);
   const close = save => {
     if (done) return; done = true;
-    if (save) {
+    if (save && p.save) p.save(inp.value.replace(/\n+$/, '')); // custom fields (numbers with units, IC No, ECX / ECPAR No…) save themselves
+    else if (save) {
       let val = inp.value.replace(/\n+$/, '');
       if (num) val = val.trim() === '' ? null : +val; else if (p.type === 'url') val = val.trim();
       const cur = D.getRec(rec.id);
       if (cur && val !== (DB.raw(cur, p) ?? (num ? null : ''))) { D.update(rec.id, { ['p:' + p.id]: val }); document.dispatchEvent(new CustomEvent('folio-row', { detail: rec.id })); }
     }
-    if (save && anchor.isConnected && anchor.childElementCount === 0 && inp.value.trim()) anchor.textContent = inp.value.replace(/\n+$/, ''); // show the new text right away
+    if (save && !p.save && anchor.isConnected && anchor.childElementCount === 0 && inp.value.trim()) anchor.textContent = inp.value.replace(/\n+$/, ''); // show the new text right away
     box.remove(); anchor.classList.remove('editing');
     { const st = host.scrollTop; spacer.remove(); host.scrollTop = Math.min(st, host.scrollHeight - host.clientHeight); }
     if (window.visualViewport) { visualViewport.removeEventListener('resize', vvOn); visualViewport.removeEventListener('scroll', vvOn); }
@@ -76,4 +78,10 @@ export function popEdit(anchor, rec, p, after) {
   if (window.visualViewport) { visualViewport.addEventListener('resize', vvOn); visualViewport.addEventListener('scroll', vvOn); }
   setTimeout(reveal, 60); setTimeout(reveal, 400); setTimeout(reveal, 800); // the keyboard takes a moment to slide up
   return box;
+}
+
+/** type straight into the field (same card as every other field) instead of a sheet.
+ *  onSave gets the typed text when you tap ✓, press Done or tap outside; Esc cancels. */
+export function editInline(anchor, label, value, onSave, { num = false, single = true, ph = '' } = {}) {
+  return popEdit(anchor, null, { id: 'inline', name: label, type: num ? 'number' : 'text', single, ph, value: value == null ? '' : String(value), save: v => { if (v !== (value == null ? '' : String(value))) onSave(v); } });
 }

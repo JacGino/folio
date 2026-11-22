@@ -10,6 +10,7 @@ import { render, now as NOW } from './app.js';
 import { editProp, drag } from './table.js';
 import { zoomNow } from './ui.js';
 import * as E from './entities.js';
+import { editInline } from './popedit.js';
 
 /** columns worked out from linked records (not tracker properties): shown in Projects and Focus tables, never in the raw tracker table */
 export const COMPUTED = [
@@ -111,7 +112,7 @@ export function refCards(row, { big = false } = {}) {
   const card = (p, label, ph, top) => {
     const v = val(p);
     const b = rep && !top ? h('span', { class: 'refv muted' }, 'Not applicable') : h('button', { class: 'refv mono' + (v ? '' : ' empty'), type: 'button', 'aria-label': label + ': ' + (v || 'Empty'), onclick: async e => { e.stopPropagation(); if (Date.now() - (window.__colResizeAt || 0) < 700) return;
-      const nv = await promptBox(label, v, ph); if (nv == null || !p) return; D.update(rec.id, { ['p:' + p.id]: nv.trim() || null }); render(); } },
+      if (!p) return; editInline(e.currentTarget, label, v, nv => { D.update(rec.id, { ['p:' + p.id]: nv.trim() || null }); render(); }); } },
       top && big ? h('h1', {}, v || 'ECX No') : h('span', {}, v || (top ? 'ECX No' : 'ECPAR No')));
     // minimalist: only the number (the label is kept for screen readers); an empty card shows a faint 'ECX No' / 'ECPAR No'
     return h('span', { class: 'refcard', title: label }, b);

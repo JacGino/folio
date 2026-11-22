@@ -6,7 +6,7 @@ import * as E from './entities.js';
 import { h, icon, menu, sheet, toast, confirmBox, promptBox, textbox } from './ui.js';
 import { formatDate, toISODate, parseDate, dateAdd, startOfDay } from './dates.js';
 import { state, now as NOW, render, go, moreMenu, elabel, longPress, rowActions, browserUrl, exportList } from './app.js';
-import { popEdit } from './popedit.js';
+import { popEdit, editInline } from './popedit.js';
 import { propEditor } from './page.js';
 import { ccTab, ccEligible, appliedOf, setApplied, unitsOf, setUnits } from './cc.js';
 import { applicantsOf, NTK_TYPES } from './longtext.js';
@@ -45,7 +45,7 @@ function field(rec, f) {
   const set = val => { if (f.onSet) f.onSet(val); else D.update(rec.id, { ['p:' + f.key]: val }); render(); };
   const empty = v == null || v === '';
   const shown = empty ? (f.ph || 'Empty') : f.type === 'date' ? dmy(v) : f.type === 'money' ? 'RM ' + Number(v).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : f.type === 'select' ? badge(v) : String(v);
-  const btn = h('button', { class: 'val fv' + (empty ? ' empty' : '') + (f.mono ? ' mono' : ''), type: 'button', 'aria-label': f.label + ': ' + (empty ? 'Empty' : (f.type === 'date' ? dmy(v) : v)) });
+  const btn = h('button', { class: 'val fv' + (empty ? (f.ph && f.key === 'address' && f.ph !== 'Empty' ? ' fallback' : ' empty') : '') + (f.mono ? ' mono' : ''), type: 'button', 'aria-label': f.label + ': ' + (empty ? 'Empty' : (f.type === 'date' ? dmy(v) : v)) });
   btn.append(typeof shown === 'string' ? h('span', {}, shown) : shown);
   btn.addEventListener('click', e => {
     e.stopPropagation();
@@ -99,10 +99,10 @@ export function formModal({ title, fields, ok = 'Save', danger = false }) {
     const key = e => { if (e.key === 'Escape') done(null); };
     const body = fields.map(f => {
       let el;
-      if (f.type === 'date') el = h('input', { type: 'date', class: 'field', value: f.value ?? today(), 'aria-label': f.label });
+      if (f.type === 'date') { el = h('input', { type: 'date', class: 'field', value: f.value ?? today(), 'aria-label': f.label }); }
       else if (f.type === 'select') el = h('select', { class: 'field', 'aria-label': f.label }, h('option', { value: '' }, f.placeholder || 'Choose…'), f.options.map(o => h('option', { value: o, selected: o === f.value ? true : null }, o)));
-      else { el = textbox({ multiline: f.type === 'long', cls: 'field' + (f.type === 'long' ? ' gtext' : ''), label: f.label, placeholder: f.placeholder || f.label }); el.value = f.value || ''; }
-      els[f.key] = el; return [h('label', { class: 'glabel' }, f.label + (f.required ? '' : f.type === 'date' ? '' : ' (optional)')), el];
+      else { el = textbox({ multiline: f.type === 'long', cls: 'field' + (f.type === 'long' ? ' gtext' : ''), label: f.label, placeholder: f.placeholder || '' }); el.value = f.value || ''; }
+      els[f.key] = el; return [h('label', { class: 'glabel' }, f.label + (f.required ? '' : f.type === 'date' ? '' : ' (optional)')), f.type === 'date' ? h('div', { class: 'gdate' }, el) : el];
     });
     const okBtn = h('button', { class: 'gbtn ' + (danger ? 'danger' : 'primary'), onclick: () => {
       const out = {}; for (const f of fields) { const v = String(els[f.key].value || '').trim(); if (f.required && !v) { els[f.key].focus(); toast('Please fill in ' + f.label.toLowerCase() + '.'); return; } out[f.key] = v; }
@@ -132,11 +132,11 @@ export async function approveEcparFlow(row) {
   E.approveEcpar(row, r.date); return true;
 }
 export async function rejectEcxFlow(row, x) {
-  // filled in from the ECX card (Rejection Date, Reason Category, Rejection Reason), so nothing is typed twice
+  // a new rejection starts blank (today's date, no category, no remarks); earlier ones stay in the Rejection history
   const r = await formModal({ title: 'Reject ' + (g(x, 'number') || 'ECX application'), fields: [
-    { key: 'date', type: 'date', label: 'Rejection date', value: g(x, 'rejected') || today(), required: true },
-    { key: 'cat', type: 'select', label: 'Reason category', options: E.ECX_REASONS, value: g(x, 'rcat') || '', placeholder: 'Choose a category' },
-    { key: 'reason', type: 'long', label: 'Rejection reason / remarks', value: g(x, 'reason', '') }], ok: 'Confirm Reject', danger: true }); if (!r) return false;
+    { key: 'date', type: 'date', label: 'Rejection date', value: today(), required: true },
+    { key: 'cat', type: 'select', label: 'Reason category', options: E.ECX_REASONS, value: '', placeholder: 'Choose a category' },
+    { key: 'reason', type: 'long', label: 'Rejection reason / remarks', value: '' }], ok: 'Confirm Reject', danger: true }); if (!r) return false;
   E.rejectEcx(row, x, r.date, r.reason, { cat: r.cat }); toast('ECX rejected. It is now in Rejected ECX.'); return true;
 }
 export async function resubmitEcxFlow(row, x) {
@@ -492,11 +492,11 @@ function overview(row, info, n) {
   // NEM Solar: Applications Detail, Metering Scheme (panels, inverters, kWac / kWp), Project Information, Project Progress
   if (cats.includes('NEM Solar')) {
     const multi = c && applicantList(c, info).length > 1;
-    const icBtn = c ? h('button', { class: 'val fv mono' + (E.custIc(c) ? '' : ' empty'), type: 'button', 'aria-label': 'IC No / Company No: ' + (E.custIc(c) || 'Empty'), onclick: async () => {
-      const v = await promptBox('IC No / Company No', E.custIc(c) || '', 'e.g. 720308-13-5434'); if (v == null) return; E.setCustomerIc(c, v); render(); } }, h('span', {}, E.custIc(c) || 'Empty')) : '—';
-    const cnum = (key, label) => c ? h('button', { class: 'val fv' + (g(c, key, '') === '' ? ' empty' : ''), type: 'button', 'aria-label': label + ': ' + (g(c, key, '') === '' ? 'Empty' : g(c, key)), onclick: async () => {
-      const x = await promptBox(label, String(g(c, key, ''))); if (x == null) return; const t = x.trim(); if (t !== '' && !(+t >= 0)) { toast('Type a number, e.g. 20'); return; }
-      D.update(c.id, { ['p:' + key]: t === '' ? null : +t }); render(); } }, h('span', {}, g(c, key, '') === '' ? 'Empty' : String(g(c, key)))) : '—';
+    const icBtn = c ? h('button', { class: 'val fv mono' + (E.custIc(c) ? '' : ' empty'), type: 'button', 'aria-label': 'IC No / Company No: ' + (E.custIc(c) || 'Empty'), onclick: e => { e.stopPropagation();
+      editInline(e.currentTarget, 'IC No / Company No', E.custIc(c) || '', v => { E.setCustomerIc(c, v); render(); }); } }, h('span', {}, E.custIc(c) || 'Empty')) : '—';
+    const cnum = (key, label) => c ? h('button', { class: 'val fv' + (g(c, key, '') === '' ? ' empty' : ''), type: 'button', 'aria-label': label + ': ' + (g(c, key, '') === '' ? 'Empty' : g(c, key)), onclick: e => { e.stopPropagation();
+      editInline(e.currentTarget, label, g(c, key, ''), x => { const t = x.trim(); if (t !== '' && !(+t >= 0)) { toast('Type a number, e.g. 20'); return render(); }
+      D.update(c.id, { ['p:' + key]: t === '' ? null : +t }); render(); }, { num: true }); } }, h('span', {}, g(c, key, '') === '' ? 'Empty' : String(g(c, key)))) : '—';
     return h('div', { class: 'pdgrid' },
       h('div', { class: 'tabstack' },
         h('section', { class: 'hcard pcard' },
@@ -520,9 +520,9 @@ function overview(row, info, n) {
   // SAL100KW (Normal Project / CCGFA), Upgrading of Supply and Temporary Supply: Applications Detail, Metering Scheme, Project Information
   if (['SAL100KW', 'Upgrading of Supply', 'Temporary Supply'].some(k => cats.includes(k))) {
     const load = appliedOf(row);
-    const loadBtn = h('button', { class: 'val fv' + (load === '' || load == null ? ' empty' : ''), type: 'button', 'aria-label': 'Applied Load (kVA): ' + (load || 'Empty'), onclick: async () => {
-      const v = await promptBox('Applied Load (kVA)', load == null ? '' : String(load), 'e.g. 15'); if (v == null) return; const t = v.trim().replace(/kva$/i, '').trim();
-      if (t !== '' && !(+t >= 0)) { toast('Type the load as a number of kVA, e.g. 15'); return; } setApplied(row, t === '' ? '' : +t); render(); } }, h('span', {}, load === '' || load == null ? 'Empty' : load + ' kVA'));
+    const loadBtn = h('button', { class: 'val fv' + (load === '' || load == null ? ' empty' : ''), type: 'button', 'aria-label': 'Applied Load (kVA): ' + (load || 'Empty'), onclick: e => { e.stopPropagation();
+      editInline(e.currentTarget, 'Applied Load (kVA)', load, v => { const t = v.trim().replace(/kva$/i, '').trim();
+      if (t !== '' && !(+t >= 0)) { toast('Type the load as a number of kVA, e.g. 15'); return render(); } setApplied(row, t === '' ? '' : +t); render(); }, { num: true }); } }, h('span', {}, load === '' || load == null ? 'Empty' : load + ' kVA'));
     return h('div', { class: 'pdgrid' },
       h('div', { class: 'tabstack' },
         h('section', { class: 'hcard pcard' },
@@ -548,9 +548,9 @@ function overview(row, info, n) {
   }
   // Substation Site Enquiry, Turnkey Stage 1 / 2 and Non Turnkey: Applications Detail, Application Agent, Load Summary, Developer / Owner
   if (['Substation Site Enquiry', 'Turnkey Stage 1', 'Turnkey Stage 2', 'Non Turnkey'].some(k => cats.includes(k))) {
-    const num = (label, get, set, unit = '') => { const v = get(); return h('button', { class: 'val fv' + (v === '' || v == null ? ' empty' : ''), type: 'button', 'aria-label': label + ': ' + (v === '' || v == null ? 'Empty' : v), onclick: async () => {
-      const x = await promptBox(label, v == null ? '' : String(v)); if (x == null) return; const t = x.trim().replace(/kva$/i, '').trim();
-      if (t !== '' && !(+t >= 0)) { toast('Type a number, e.g. 20'); return; } set(t === '' ? '' : +t); render(); } }, h('span', {}, v === '' || v == null ? 'Empty' : v + unit)); };
+    const num = (label, get, set, unit = '') => { const v = get(); return h('button', { class: 'val fv' + (v === '' || v == null ? ' empty' : ''), type: 'button', 'aria-label': label + ': ' + (v === '' || v == null ? 'Empty' : v), onclick: e => { e.stopPropagation();
+      editInline(e.currentTarget, label, v, x => { const t = x.trim().replace(/kva$/i, '').trim();
+      if (t !== '' && !(+t >= 0)) { toast('Type a number, e.g. 20'); return render(); } set(t === '' ? '' : +t); render(); }, { num: true }); } }, h('span', {}, v === '' || v == null ? 'Empty' : v + unit)); };
     const cnum = (key, label, unit) => c ? num(label, () => g(c, key, ''), v => D.update(c.id, { ['p:' + key]: v === '' ? null : v }), unit) : '—';
     return h('div', { class: 'pdgrid' },
       h('div', { class: 'tabstack' },
@@ -648,7 +648,7 @@ function taskRow(t, row, n) {
     h('span', {}, h('button', { class: 'val fv', 'aria-label': 'Status: ' + g(t, 'status', ''), onclick: e => pick(e.currentTarget, E.TASK_STATUS, g(t, 'status'), s => { if (s === 'Completed') E.completeTask(t, true, n); else D.update(t.id, { 'p:status': s, 'p:done': null }); render(); }) }, badge(g(t, 'status') || 'Not Started'))),
     h('button', { class: 'c-act ebtn', 'aria-label': 'More for ' + g(t, 'name', 'task'), onclick: e => menu(e.currentTarget, [
       { label: 'Edit task name', icon: 'pencil', run: () => name.click() },
-      { label: g(t, 'remarks') ? 'Edit remarks' : 'Add remarks', icon: 'text', run: async () => { const v = await promptBox('Remarks', g(t, 'remarks', '')); if (v != null) { D.update(t.id, { 'p:remarks': v.trim() }); render(); } } },
+      { label: g(t, 'remarks') ? 'Edit remarks' : 'Add remarks', icon: 'text', run: () => { const at = e.target.closest('li, .trow, .ctask') || e.target; editInline(at, 'Remarks', g(t, 'remarks', ''), v => { D.update(t.id, { 'p:remarks': v.trim() }); render(); }, { single: false, ph: 'Remarks' }); } },
       { label: 'Set due date', icon: 'date', run: () => dueEl.click() }, '-',
       { label: 'Delete task', icon: 'trash', danger: true, run: async () => { if (await confirmBox('Delete the task "' + g(t, 'name', '') + '"?', 'Delete task')) { D.trash(t.id); E.log(row, 'Task', 'Task deleted: ' + g(t, 'name', '')); render(); } } }]) }, icon('more', 18)));
 }
@@ -797,7 +797,7 @@ function docsTab(row, info) {
   return h('section', { class: 'hcard pcard' },
     h('div', { class: 'phbar' }, h('h3', { class: 'ph' }, icon('clip', 17), 'Documents', h('span', { class: 'hcount' }, docs.length)), h('button', { class: 'hnew sm', onclick: add }, icon('plus', 15), h('span', {}, 'Add link'))),
     docs.length ? h('ul', { class: 'dlist' }, docs.map(d => h('li', {}, h('a', { href: browserUrl(g(d, 'url', '')), target: '_blank', rel: 'noopener' }, icon('link', 16), h('span', {}, g(d, 'name', 'Link')), h('small', { class: 'muted' }, hostOf(g(d, 'url', '')))),
-      h('button', { class: 'c-act ebtn', 'aria-label': 'More for ' + g(d, 'name', 'link'), onclick: e => menu(e.currentTarget, [{ label: 'Rename', icon: 'pencil', run: async () => { const v = await promptBox('Name', g(d, 'name', '')); if (v != null && v.trim()) { D.update(d.id, { 'p:name': v.trim() }); render(); } } },
+      h('button', { class: 'c-act ebtn', 'aria-label': 'More for ' + g(d, 'name', 'link'), onclick: e => menu(e.currentTarget, [{ label: 'Rename', icon: 'pencil', run: () => { const at = e.target.closest('li') || e.target; editInline(at, 'Name', g(d, 'name', ''), v => { if (v.trim()) { D.update(d.id, { 'p:name': v.trim() }); render(); } }, { ph: 'Name of the document' }); } },
         { label: 'Remove', icon: 'trash', danger: true, run: async () => { if (await confirmBox('Remove this link?', 'Remove')) { D.trash(d.id); render(); } } }]) }, icon('more', 18)))))
       : h('p', { class: 'hempty' }, 'No documents yet. Add links to files in iCloud Drive, Google Drive or the company system.'),
     h('div', { class: 'kvs' }, kv('clip', 'Files', propEditor(row, { id: 'docs', name: 'Files', type: 'files' }, DB.kpiDb())),

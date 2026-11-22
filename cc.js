@@ -5,6 +5,7 @@ import * as D from './data.js';
 import * as DB from './db.js';
 import * as E from './entities.js';
 import { h, icon, menu, sheet, toast, confirmBox, promptBox, textbox } from './ui.js';
+import { popEdit, editInline } from './popedit.js';
 import { formatDate } from './dates.js';
 import { render, now as NOW, download, L as LBL } from './app.js';
 import { guessSide } from './checklists.js';
@@ -226,7 +227,7 @@ function right(row, info, w, res) {
     return h('div', { class: 'ccpi' + (nr ? ' nr' : c.required ? ' need' : '') }, h('b', {}, c.label + (c.factor ? ' (50%)' : '')),
       h('span', {}, nr ? 'Not required — ' + nr : c.required ? 'Required by the methodology' + (c.excess ? ` · ${c.excess}m in excess of 1000m` : '') : 'Where applicable'),
       nr ? h('button', { class: 'link sm', onclick: () => { delete w.notRequired[c.key]; touch(w); render(); } }, 'Undo')
-        : [h('button', { class: 'link sm', onclick: () => addItemSheet(row, info, w, res, c.key) }, 'Add'), c.required ? h('button', { class: 'link sm', onclick: async () => { const r = (await promptBox('Why is ' + c.label + ' not required?', '', 'Reason (kept with the calculation)'))?.trim(); if (r) { w.notRequired[c.key] = r; touch(w); render(); } } }, 'Not required…') : null]);
+        : [h('button', { class: 'link sm', onclick: () => addItemSheet(row, info, w, res, c.key) }, 'Add'), c.required ? h('button', { class: 'link sm', onclick: e => { e.stopPropagation(); editInline(e.currentTarget, 'Why is ' + c.label + ' not required?', '', v => { const r = v.trim(); if (r) { w.notRequired[c.key] = r; touch(w); render(); } }, { ph: 'Why is ' + c.label + ' not required?' }); } }, 'Not required…') : null]);
   })) : null;
   const bulk = sel.size ? h('div', { class: 'hbulk' }, h('b', {}, sel.size + ' selected'), h('button', { class: 'btn', onclick: () => { w.lines = w.lines.filter(l => !sel.has(l.id)); sel.clear(); touch(w); render(); } }, icon('trash', 14), 'Remove'), h('button', { class: 'btn', onclick: () => { sel.clear(); render(); } }, 'Clear')) : null;
   const excluded = res.excluded.length ? h('div', { class: 'ccwarn' }, icon('info', 14), h('span', {}, `${res.excluded.length} item${res.excluded.length > 1 ? 's are' : ' is'} not counted: ` + res.excluded.map(x => `${x.desc} (${x.why})`).join('; '), ' ', h('button', { class: 'link sm', onclick: () => { const ids = new Set(res.excluded.map(x => x.id)); w.lines = w.lines.filter(l => !ids.has(l.id)); touch(w); render(); } }, 'Remove them'))) : null;
@@ -312,11 +313,14 @@ function push(w, comp, code, qty, note, row, info) { w.lines.push({ id: uid(), c
 function lineMenu(anchor, row, info, w, l) {
   const src = w.lines.find(x => x.id === l.id);
   menu(anchor, [
-    { label: src.override ? 'Change rate override' : 'Override rate…', icon: 'pencil', run: async () => {
-      const rate = await promptBox(`Rate for ${l.code} (guideline rate ${money(RATE[l.code].rate)})`, src.override ? String(src.override.rate) : '', 'RM'); if (rate == null) return;
-      if (isNaN(+rate) || rate === '') { toast('Enter a number'); return; }
-      const reason = (await promptBox('Reason for the override (required)', src.override?.reason || '', 'Reason'))?.trim(); if (!reason) { toast('An override needs a reason'); return; }
-      src.override = { rate: +rate, reason }; touch(w); render(); } },
+    { label: src.override ? 'Change rate override' : 'Override rate…', icon: 'pencil', run: () => {
+      // typed in place over the item's row: the rate first, then the reason (both needed)
+      const rr = anchor.closest('.ccr'), at = (rr && rr.querySelector('.ccd')) || anchor;
+      const cur = src.override ? String(src.override.rate) : '';
+      popEdit(at, null, { id: 'rate', name: 'Rate for ' + l.code, type: 'number', single: true, value: cur, ph: `Rate for ${l.code} in RM (guideline ${money(RATE[l.code].rate)})`, save: rate => {
+        rate = rate.trim().replace(/^rm\s*/i, ''); if (rate === '' && !cur) return; if (isNaN(+rate) || rate === '') { toast('Enter a number'); return; }
+        setTimeout(() => { if (!at.isConnected) return; popEdit(at, null, { id: 'reason', name: 'Reason for the override', type: 'text', single: true, value: src.override?.reason || '', ph: 'Reason for the override (required)', save: r => {
+          r = r.trim(); if (!r) { toast('An override needs a reason'); return; } src.override = { rate: +rate, reason: r }; touch(w); render(); } }); }, 60); } }); } },
     ...(src.override ? [{ label: 'Use guideline rate', icon: 'undo', run: () => { src.override = null; touch(w); render(); } }] : []),
     { label: 'Remove item', icon: 'trash', danger: true, run: () => { w.lines = w.lines.filter(x => x.id !== l.id); touch(w); render(); } }]);
 }
@@ -493,7 +497,8 @@ function longTextSheet(row, info, w) {
   const inp = (k, label, o = {}) => h('label', { class: 'ltf' + (o.wide ? ' wide' : ''), 'data-k': k }, h('span', {}, label),
     o.area ? h('textarea', { class: 'field', rows: o.rows || 3, value: f[k] ?? '', oninput: e => set(k, e.target.value) }, f[k] ?? '')
       : o.opts ? h('select', { class: 'field', onchange: e => set(k, e.target.value) }, o.opts.map(([v, l]) => h('option', { value: v, selected: String(f[k]) === v ? true : null }, l)))
-      : h('input', { class: 'field', value: f[k] ?? '', inputmode: o.num ? 'decimal' : null, placeholder: o.ph || '', list: o.list ? 'ltl-' + k : null, oninput: e => set(k, e.target.value) }),
+      : o.money ? moneyInput(f[k], v => set(k, v), label)
+      : h('input', { class: 'field', value: f[k] ?? '', inputmode: o.num ? 'decimal' : null, placeholder: '', list: o.list ? 'ltl-' + k : null, oninput: e => set(k, e.target.value) }),
     o.list ? h('datalist', { id: 'ltl-' + k }, o.list.map(v => h('option', { value: v }))) : null);
   f.extras = w.inputs.extras || (w.inputs.extras = []); // the Additional Items of the Connection Charge tab
   // fields that only some layouts use
@@ -509,7 +514,7 @@ function longTextSheet(row, info, w) {
       inp('title', 'Project title', { wide: true, area: true, rows: 2 }), inp('consultant', 'Consultant / contractor'), inp('client', 'Developer / client'), single ? inp('ic', 'IC / company no.') : null, inp('contact', 'Contact number'),
       ...only('ntk', h('label', { class: 'ltf wide' }, h('span', {}, 'NTK application type (who pays)'), h('select', { class: 'field', 'aria-label': 'NTK application type', onchange: e => {
         const t = NTK_TYPES[e.target.value]; f.ntkType = e.target.value; D.update(row.id, { ntkType: e.target.value, ntkSub: { bda: 'BDA', jkrs: 'JKR', jkrf: 'JKR', commercial: 'Commercial', mixed: 'Commercial & Residential', residential: 'Residential' }[e.target.value] }); // the NTK sub-category follows f.appType = t.appType; f.sst = f.sstExempt && e.target.value !== 'residential' ? '0' : t.sst; touch(w); edited = false;
-        body.querySelectorAll('.ltform input').forEach(i => { const k = i.closest('label')?.dataset.k; if (k && f[k] != null) i.value = f[k]; }); draw(); } },
+        body.querySelectorAll('.ltform input').forEach(i => { const k = i.closest('label')?.dataset.k; if (k && f[k] != null) i.value = i.dataset.money && f[k] !== '' && !isNaN(+f[k]) ? 'RM ' + (+f[k]).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : f[k]; }); draw(); } },
         Object.entries(NTK_TYPES).map(([k, t]) => h('option', { value: k, selected: (f.ntkType || 'commercial') === k ? true : null }, t.label))))),
       // a client with an SST relief letter pays 0% (Section 34 note); without one every type except Residential pays 6%
       ...only('ntk standard tos uos', h('label', { class: 'ltf wide ltchk' }, h('input', { type: 'checkbox', class: 'hchk', 'aria-label': 'SST relief letter attached', checked: f.sstExempt ? true : null, onchange: e => {
@@ -517,7 +522,7 @@ function longTextSheet(row, info, w) {
         const b = body.querySelector('.ltform label[data-k="sst"] input'); if (b) b.value = f.sst; draw(); } }), h('span', {}, 'SST relief letter attached (0% SST, Section 34)'))),
       h('h4', {}, 'Application'), inp('appType', 'Type of application', { list: ['Domestic', 'Commercial', 'Commercial + Residential', 'Commercial 1 (C1)', 'Industrial'] }), inp('load', 'Estimated connected load (kVA)', { num: true }),
       inp('target', 'Target date of supply'), inp('cat', 'Category'), inp('use', 'Type of use', { ph: 'e.g. DWELLING' }), inp('scheme', 'Scheme of supply', { wide: true, area: true, rows: 7 }),
-      h('h4', {}, 'Costs & funding'), inp('costOH', '(a) Cost of project with OH (RM)', { num: true }), inp('costNoOH', '(b) Cost of project without OH (RM)', { num: true }), inp('sst', 'SST %', { num: true }),
+      h('h4', {}, 'Costs & funding'), inp('costOH', '(a) Cost of project with OH (RM)', { money: true }), inp('costNoOH', '(b) Cost of project without OH (RM)', { money: true }), inp('sst', 'SST %', { num: true }),
       ...only('subsidy', inp('subsidy', 'Government subsidy (Domestic only)', { opts: [['auto', 'By amount (≤ RM5,000 100% · ≤ RM10,000 70%)'], ['100', '100%'], ['70', '70%'], ['none', 'No subsidy']] }), inp('subsidyBV', 'Subsidy BV no.')),
       inp('cdpBV', 'CDP BV no.'),
       ...only('uos', inp('existing', 'Existing / minimum assigned load (kVA)', { num: true }), inp('existingLabel', 'Wording for the existing load', { wide: true, ph: 'Minimum assigned load (Terrace/Quadrant house up to 3-storey)' })),
@@ -533,4 +538,13 @@ function longTextSheet(row, info, w) {
         h('button', { class: 'ccbtn primary', onclick: () => { download(name(), txt(), 'text/plain;charset=utf-8'); E.log(row, 'Connection charge', 'Long text saved as .txt: ' + name()); toast('Saved ' + name()); } }, icon('export', 17), h('span', {}, 'Save .txt')))));
   draw(); vis();
   sheet('Long Text — ' + shortApplicants(E.splitNameIc(info.title).name), body, { done: 'Close', wide: true, onDone: () => render() });
+}
+
+/** a money box: shows 'RM 3,300.00' and turns back into the plain number while you type in it */
+function moneyInput(val, onval, label) {
+  const raw = v => String(v ?? '').replace(/rm/i, '').replace(/[,\s]/g, '');
+  const fmt = v => { const t = raw(v); return t === '' || isNaN(+t) ? String(v ?? '') : 'RM ' + (+t).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
+  const i = h('input', { class: 'field ltmoney', value: fmt(val), inputmode: 'decimal', 'aria-label': label,
+    onfocus: e => { const t = raw(e.target.value); e.target.value = t !== '' && !isNaN(+t) ? String(+t) : t; }, oninput: e => onval(raw(e.target.value)), onblur: e => { e.target.value = fmt(e.target.value); } });
+  i.dataset.money = '1'; return i;
 }

@@ -226,7 +226,7 @@ export function propEditor(rec, p, dbr, { compact = false, dfmt } = {}) {
       // tap the value: a Notion-style white edit card opens over it
       const mono = /^ecx/i.test(p.name) && p.type !== 'url'; // ECX numbers in mono; links read as normal text
       const show = val => {
-        if (val == null || val === '') return h('span', { class: 'muted' }, 'Empty');
+        if (val == null || val === '') return h('span', { class: 'muted emptyv' }, 'Empty');
         if (p.type === 'url') { try { const x = new URL(/^[a-z][a-z0-9+.-]*:/i.test(val) ? val : 'https://' + val); return h('span', { class: 'url' }, h('b', {}, x.hostname), h('i', {}, decodeURIComponent(x.pathname + x.search).replace(/\/$/, ''))); } catch {} } // like Notion: host dark, rest grey
         return String(val);
       };
@@ -281,7 +281,7 @@ export function propEditor(rec, p, dbr, { compact = false, dfmt } = {}) {
     case 'formula': {
       const txt = DB.display(rec, p, now());
       const c = /OVERDUE|REJECTED/.test(txt) ? 'var(--red)' : /COMPLETED/.test(txt) ? '#448361' : /🟠/.test(txt) ? 'var(--orange)' : 'inherit';
-      return h('span', { class: 'val fxv', style: { fontWeight: /[🔴🚨🟠✅❌🔵]/u.test(txt) ? 600 : 400, color: c } }, txt || h('span', { class: 'muted' }, 'Empty'));
+      return h('span', { class: 'val fxv', style: { fontWeight: /[🔴🚨🟠✅❌🔵]/u.test(txt) ? 600 : 400, color: c } }, txt || h('span', { class: 'muted emptyv' }, 'Empty'));
     }
     case 'created': return h('span', { class: 'val' }, formatDate(D.val(rec, 'created', 0)));
   }
