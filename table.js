@@ -105,7 +105,7 @@ function cell(r, p, dbr, first, bg, ncom = 0) {
     if (p.type === 'checkbox') { td.append(h('input', { type: 'checkbox', checked: v ? true : null, 'aria-label': p.name, style: { width: '16px', height: '16px', accentColor: 'var(--blue)' }, onclick: e => e.stopPropagation(), onchange: e => D.update(r.id, { ['p:' + p.id]: e.target.checked }) })); return; }
     if (p.type === 'select' || p.type === 'status') { if (v) td.append(chip(p, v)); return; }
     if (p.type === 'multi') { for (const x of v) td.append(chip(p, x)); return; }
-    if (p.type === 'url' && v) { td.append(h('a', { href: browserUrl(v), target: '_blank', rel: 'noopener', style: { color: 'var(--ink)', textDecoration: 'underline', textDecorationColor: 'var(--rule)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }, onclick: e => e.stopPropagation() }, v.replace(/^https?:\/\//, ''))); return; }
+    if (p.type === 'url' && v) { td.append(h('a', { class: 'ulink', href: browserUrl(v), target: '_blank', rel: 'noopener', style: { color: 'var(--blue)', textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }, onclick: e => e.stopPropagation() }, v.replace(/^https?:\/\//, ''))); return; }
     const txt = DB.display(r, p, now());
     if (p.type === 'formula') { td.classList.add('fx'); td.title = txt; td.style.fontWeight = /[🔴🚨🟠✅❌🔵]/u.test(txt) ? 600 : 400; td.style.color = /OVERDUE|REJECTED/.test(txt) ? 'var(--red)' : /COMPLETED/.test(txt) ? '#448361' : /🟠/.test(txt) ? 'var(--orange)' : ''; }
     if (p.type === 'date') td.style.color = 'var(--ink2)';
@@ -238,7 +238,7 @@ async function newView(dbr, draw) {
 // ---------- filter & sort sheet ----------
 export function filterSheet(dbr, v, draw) {
   const body = h('div');
-  const s = sheet(`${(v.filter || []).length} filter${(v.filter || []).length === 1 ? '' : 's'}`, body, { onDone: draw });
+  const s = sheet(`${(v.filter || []).length} filter${(v.filter || []).length === 1 ? '' : 's'}`, body, { float: 'lg', onDone: draw });
   const paint = () => {
     v = DB.views(DB.db(dbr.id)).find(x => x.id === v.id); const ps = DB.props(DB.db(dbr.id));
     s.panel.querySelector('h2').textContent = `${(v.filter || []).length} filter${(v.filter || []).length === 1 ? '' : 's'}`;
@@ -260,13 +260,13 @@ export function filterSheet(dbr, v, draw) {
     const sync = () => { val.style.display = /empty|checked/.test(op.value) ? 'none' : ''; }; op.onchange = sync; sync();
     const s2 = sheet(p.name, h('div', {}, op, h('div', { style: { height: '10px' } }), val,
       h('button', { class: 'btn block primary', onclick: () => { const f = (v.filter || []).filter(x => x.prop !== p.id); f.push({ prop: p.id, op: op.value, value: val.value }); saveView(dbr, { ...v, filter: f }); s2.close(); } }, 'Apply filter'),
-      (v.filter || []).some(x => x.prop === p.id) ? h('button', { class: 'btn block danger', onclick: () => { saveView(dbr, { ...v, filter: (v.filter || []).filter(x => x.prop !== p.id) }); s2.close(); } }, 'Remove filter') : null), { done: 'Cancel', onDone: paint });
+      (v.filter || []).some(x => x.prop === p.id) ? h('button', { class: 'btn block danger', onclick: () => { saveView(dbr, { ...v, filter: (v.filter || []).filter(x => x.prop !== p.id) }); s2.close(); } }, 'Remove filter') : null), { done: 'Cancel', float: true, onDone: paint });
   }
   function sortSheet() {
     const ps = DB.props(DB.db(dbr.id));
     const s2 = sheet('Sort', h('div', {}, group(...ps.map(p => { const cur = (v.sort || []).find(x => x.prop === p.id);
       return row({ icon: DB.TYPE_ICON[p.type], label: p.name, value: cur ? (cur.dir === 'desc' ? 'Descending' : 'Ascending') : '', active: !!cur, chev: false,
-        onclick: () => { const dir = !cur ? 'asc' : cur.dir === 'asc' ? 'desc' : null; saveView(dbr, { ...v, sort: dir ? [{ prop: p.id, dir }] : [] }); v = DB.views(DB.db(dbr.id)).find(x => x.id === v.id); s2.close(); sortSheet(); } }); }))), { onDone: paint });
+        onclick: () => { const dir = !cur ? 'asc' : cur.dir === 'asc' ? 'desc' : null; saveView(dbr, { ...v, sort: dir ? [{ prop: p.id, dir }] : [] }); v = DB.views(DB.db(dbr.id)).find(x => x.id === v.id); s2.close(); sortSheet(); } }); }))), { float: true, onDone: paint });
   }
   paint();
 }

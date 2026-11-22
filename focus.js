@@ -377,7 +377,7 @@ function quickCard(kind) {
   const pickFrom = async (title, list) => {
     if (!list.length) { toast('Nothing in this list right now.'); return null; }
     return new Promise(res => { let chosen = null;
-      const s = sheet(title, h('ul', { class: 'plpick' }, list.map(r => h('li', {}, h('button', { onclick: () => { chosen = r; s.close(); } }, h('b', {}, r.cust), h('small', {}, [r.ref || r.no || r.title, r.status].filter(Boolean).join(' · ')))))), { done: 'Cancel', onDone: () => res(chosen) });
+      const s = sheet(title, h('ul', { class: 'plpick' }, list.map(r => h('li', {}, h('button', { onclick: () => { chosen = r; s.close(); } }, h('b', {}, r.cust), h('small', {}, [r.ref || r.no || r.title, r.status].filter(Boolean).join(' · ')))))), { done: 'Cancel', float: 'lg', onDone: () => res(chosen) });
     });
   };
   const recs = () => PAGES[kind].records(NOW());

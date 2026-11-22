@@ -53,7 +53,9 @@ function field(rec, f) {
     if (f.type === 'date') return dateSheet(f.label, v, set);
     popEdit(btn, D.getRec(rec.id), { id: f.key, name: f.label, type: f.type === 'money' ? 'number' : f.type === 'url' ? 'url' : 'text' }, () => { if (f.onSet) f.onSet(g(D.getRec(rec.id), f.key)); render(); });
   });
-  if (f.type === 'url' && v) return h('span', { class: 'fvwrap' }, btn, h('a', { class: 'iconbtn sm', href: browserUrl(v), target: '_blank', rel: 'noopener', 'aria-label': 'Open ' + f.label }, icon('globe', 16)));
+  // a link: the blue text opens it; tapping anywhere else on the row edits it (no globe button)
+  if (f.type === 'url' && v) { btn.replaceChildren(); btn.classList.add('uedit'); btn.setAttribute('aria-label', 'Edit ' + f.label + ': ' + v);
+    return h('span', { class: 'urlrow ulinkrow' }, btn, h('span', { class: 'ulwrap' }, h('a', { class: 'ulink', href: browserUrl(/^[a-z][a-z0-9+.-]*:/i.test(v) ? v : 'https://' + v), target: '_blank', rel: 'noopener', 'aria-label': 'Open ' + f.label + ': ' + v }, String(v)))); }
   if (f.tel && v) return h('span', { class: 'fvwrap' }, btn, h('a', { class: 'iconbtn sm', href: (f.tel === 'mail' ? 'mailto:' : 'tel:') + String(v).replace(/\s/g, ''), 'aria-label': (f.tel === 'mail' ? 'Email ' : 'Call ') + v }, icon(f.tel === 'mail' ? 'mail' : 'phone', 16)));
   return btn;
 }
@@ -63,7 +65,7 @@ function dateSheet(title, v, set) {
   const inp = h('input', { type: 'date', class: 'field', value: toISODate(v) || '', 'aria-label': title });
   let cleared = false;
   const s = sheet(title, h('div', {}, inp, h('button', { class: 'btn block', onclick: () => { inp.value = today(); } }, 'Today'),
-    h('button', { class: 'btn block danger', onclick: () => { cleared = true; inp.value = ''; s.close(); } }, 'Clear')), { onDone: () => set(cleared ? null : inp.value || (v ?? null)) });
+    h('button', { class: 'btn block danger', onclick: () => { cleared = true; inp.value = ''; s.close(); } }, 'Clear')), { float: true, onDone: () => set(cleared ? null : inp.value || (v ?? null)) });
 }
 // a label can wrap after '/' (e.g. 'Wayleave (Private/Utilities)') so it never runs into the value on narrow screens
 const kv = (ic, label, value) => h('div', { class: 'kv' }, h('span', { class: 'kl' }, icon(ic, 16), typeof label === 'string' ? label.replace(/\//g, '/\u200b') : label), h('div', { class: 'kvv' }, value));
@@ -320,7 +322,7 @@ export function newProjectSheet({ cat: preCat = '' } = {}) {
     const r = DB.newRow(dbr, vals); if (sub.value && !subLab.hidden) E.setSub(r, sub.value); E.ensureAll(); s.close(); go('#/project/' + r.id);
   } }, dl, lab('Customer', cust), h('p', { class: 'muted small' }, names.length ? 'Pick an existing customer to link this project to them, or type a new name.' : 'Type the customer name.'),
     lab('Category', cat), subLab, h('div', { class: 'f2' }, lab('Date assigned', da), lab('Due date', dd)), lab(DB.REF_ECX, ref), lab(DB.REF_ECPAR, pref),
-    h('button', { class: 'btn primary block', type: 'submit' }, 'Create project')), { done: 'Cancel' });
+    h('button', { class: 'btn primary block', type: 'submit' }, 'Create project')), { done: 'Cancel', float: 'lg' });
   setTimeout(() => cust.focus(), 80);
 }
 /** Edit Project: every project field in one sheet; changes save straight away */
@@ -333,7 +335,7 @@ export function editProjectSheet(row) {
     else ed = propEditor(D.getRec(row.id), p, dbr);
     return h('div', { class: 'eprow' }, h('span', { class: 'epname' }, icon(DB.TYPE_ICON[p.type] || 'text', 16), p.type === 'title' ? 'Customer' : p.name), h('div', { class: 'epval props' }, ed));
   });
-  sheet('Edit project', h('div', {}, h('p', { class: 'muted small pad' }, 'Typing the name of an existing customer links this project to that customer.'), h('div', { class: 'agrp eplist' }, rows)), { done: 'Done', onDone: () => render() });
+  sheet('Edit project', h('div', {}, h('p', { class: 'muted small pad' }, 'Typing the name of an existing customer links this project to that customer.'), h('div', { class: 'agrp eplist' }, rows)), { done: 'Done', float: 'lg', onDone: () => render() });
 }
 
 // =====================================================================================
@@ -414,7 +416,7 @@ function applicantSheet(title, a = { name: '', ic: '' }) {
     const nm = textbox({ value: a.name, cls: 'field', label: 'Customer name', placeholder: 'Customer name', attrs: { enterkeyhint: 'next' }, onkeydown: enter(ic) });
     const s = sheet(title, form = h('form', { class: 'aplform', onsubmit: e => { e.preventDefault(); if (!nm.value.trim()) return toast('Enter the customer name'); done = true; res({ name: nm.value.trim().toUpperCase(), ic: ic.value.trim() }); s.close(); } },
       h('label', {}, h('span', {}, 'Customer name'), nm), h('label', {}, h('span', {}, 'Applicant ID (IC No)'), ic), h('button', { class: 'btn primary block', type: 'submit' }, 'Save')),
-      { done: 'Cancel', onDone: () => { if (!done) res(null); } });
+      { done: 'Cancel', float: true, onDone: () => { if (!done) res(null); } });
   });
 }
 // one customer: the name stays plain and its Applicant ID (IC No) is a field of its own (also the Long Text's IC / company no.)
@@ -737,7 +739,7 @@ function editEntry(x, { textKey = 'text', title = 'Edit entry', dateKey = null }
   const ta = h('textarea', { class: 'field entry-ta', rows: 5, 'aria-label': 'Text', enterkeyhint: 'enter' }); ta.value = D.val(rec, textKey, '') || '';
   let deleted = false;
   const del = h('button', { class: 'btn block danger', onclick: async () => { if (await confirmBox('Delete this entry?', 'Delete')) { deleted = true; D.trash(rec.id); s.close(); render(); } } }, 'Delete entry');
-  const s = sheet(title, h('div', { class: 'entry-ed' }, h('label', { class: 'small muted' }, 'Date'), dt, h('label', { class: 'small muted' }, 'Text'), ta, del), {
+  const s = sheet(title, h('div', { class: 'entry-ed' }, h('label', { class: 'small muted' }, 'Date'), dt, h('label', { class: 'small muted' }, 'Text'), ta, del), { float: true,
     onDone: () => {
       if (deleted || !D.live(rec.id)) return;
       const patch = {}, txt = ta.value.replace(/\s+$/, '');

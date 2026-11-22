@@ -230,9 +230,19 @@ export function propEditor(rec, p, dbr, { compact = false, dfmt } = {}) {
         if (p.type === 'url') { try { const x = new URL(/^[a-z][a-z0-9+.-]*:/i.test(val) ? val : 'https://' + val); return h('span', { class: 'url' }, h('b', {}, x.hostname), h('i', {}, decodeURIComponent(x.pathname + x.search).replace(/\/$/, ''))); } catch {} } // like Notion: host dark, rest grey
         return String(val);
       };
+      if (p.type === 'url') {
+        // a link: the blue text opens it; tapping anywhere else in the cell edits it (no globe button)
+        const a = h('a', { class: 'ulink', target: '_blank', rel: 'noopener' }), wrap = h('span', { class: 'ulwrap' }, a);
+        const btn = h('button', { class: 'val tval uedit', type: 'button' });
+        const paint = val => { const has = !(val == null || val === ''); a.hidden = !has; wrap.hidden = !has;
+          if (has) { a.href = browserUrl(/^[a-z][a-z0-9+.-]*:/i.test(val) ? val : 'https://' + val); a.setAttribute('aria-label', 'Open ' + p.name + ': ' + val); a.replaceChildren(show(val)); }
+          btn.replaceChildren(has ? '' : show(val)); btn.classList.toggle('empty', !has); btn.setAttribute('aria-label', 'Edit ' + p.name + ': ' + (has ? val : 'Empty')); };
+        btn.addEventListener('click', () => popEdit(btn, D.getRec(rec.id), p, () => paint(DB.raw(D.getRec(rec.id), p))));
+        paint(v);
+        return h('span', { class: 'urlrow ulinkrow' }, btn, wrap);
+      }
       const btn = h('button', { class: 'val tval' + (v == null || v === '' ? ' empty' : ''), type: 'button', 'aria-label': p.name + ': ' + (v ?? 'Empty'), style: mono ? { fontFamily: 'var(--mono)' } : null,
         onclick: () => popEdit(btn, D.getRec(rec.id), p, () => { const nv = DB.raw(D.getRec(rec.id), p); btn.replaceChildren(show(nv)); btn.classList.toggle('empty', nv == null || nv === ''); }) }, show(v));
-      if (p.type === 'url' && v) return h('span', { class: 'urlrow', style: { display: 'flex', width: '100%', alignItems: 'center', gap: '4px', minWidth: 0 } }, btn, h('a', { class: 'iconbtn', href: browserUrl(/^[a-z][a-z0-9+.-]*:/i.test(v) ? v : 'https://' + v), target: '_blank', rel: 'noopener', 'aria-label': 'Open link' }, icon('globe', 18)));
       return btn;
     }
     case 'checkbox': return h('input', { type: 'checkbox', checked: v ? true : null, 'aria-label': p.name, style: { width: '18px', height: '18px', margin: '4px', accentColor: 'var(--blue)' }, onchange: e => set(e.target.checked) });
@@ -264,7 +274,7 @@ export function propEditor(rec, p, dbr, { compact = false, dfmt } = {}) {
       const btn = h('button', { class: 'val' + (v ? '' : ' empty'), 'aria-label': p.name + ': ' + (v ? formatDate(v) : 'Empty'), onclick: () => {
         const inp = h('input', { type: 'date', class: 'field', value: toISODate(v) || '' });
         const s = sheet(p.name, h('div', {}, inp, h('button', { class: 'btn block', onclick: () => { inp.value = toISODate(new Date(now())); } }, 'Today'),
-          h('button', { class: 'btn block danger', onclick: () => { inp.value = ''; s.close(); } }, 'Clear')), { onDone: () => { set(inp.value || null); refresh(btn); } });
+          h('button', { class: 'btn block danger', onclick: () => { inp.value = ''; s.close(); } }, 'Clear')), { float: true, onDone: () => { set(inp.value || null); refresh(btn); } });
       } }, v ? formatDate(v, dfmt || 'DD/MM/YYYY') : 'Empty');
       return btn;
     }

@@ -242,7 +242,7 @@ export function addFilterSheet(dbr, onAdd, preset = null) {
       const vEl = valBox.querySelector('input,select'), v = vEl ? vEl.value.trim() : '';
       if (vEl && !v) { vEl.focus(); toast('Please enter a value.'); return; }
       s.close(); onAdd({ p: pSel.value, op: opSel.value, v });
-    } }, 'Add filter')));
+    } }, 'Add filter')), { float: 'lg' });
 }
 
 // ---------- add and delete properties ----------
@@ -373,7 +373,7 @@ export function visibilitySheet(dbr, { page = null, pageTitle = '', pageCols = [
       h('p', { class: 'pvnote' }, 'Applies to every table linked to ' + (D.val(dbr, 'name') || 'the tracker') + ': Projects, the Focus pages and the full tracker table. Tap a name to rename the column.'));
   };
   paint();
-  sheet('Property visibility', body, { onDone: after });
+  sheet('Property visibility', body, { float: 'lg', onDone: after });
 }
 /** page-only columns that are switched off on this page */
 export const pageHidden = (dbr, page) => new Set(cfg(dbr).page[page] || []);

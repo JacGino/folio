@@ -221,38 +221,48 @@ export function activityScreen() {
     h('section', { class: 'hcard pcard' }, ev.length ? h('ol', { class: 'tline full' }, ev.map(e => feedItem({ ...e, cat: [e.cat, e.note && e.note !== e.title + '.' ? e.note : ''].filter(Boolean).join(' · ') }))) : h('p', { class: 'hempty' }, 'Nothing recorded yet.')));
 }
 
-// ---------- KPI Trend (last 6 months) ----------
-export function kpiTrend(all, n) {
-  const now = new Date(n), out = [];
-  for (let i = 5; i >= 0; i--) {
-    const m = new Date(now.getFullYear(), now.getMonth() - i, 1), m2 = new Date(m.getFullYear(), m.getMonth() + 1, 1);
-    const inMonth = all.filter(t => isDate(t.completed) && t.completed >= m && t.completed < m2 && (t.archived || t.finished));
-    out.push({ label: formatDate(m, 'MMM'), month: formatDate(m, 'MMMM YYYY'), v: kpiPct(inMonth), count: inMonth.length });
-  }
+// ---------- KPI Trend: last 6 / 12 months, one year by month, or year by year (choice kept per device) ----------
+const trendKey = 'folio-trend';
+const trendPeriod = () => { try { return localStorage.getItem(trendKey) || '6m'; } catch { return '6m'; } };
+const doneOf = all => all.filter(t => isDate(t.completed) && (t.archived || t.finished));
+export function trendYears(all, n) { const ys = new Set(doneOf(all).map(t => t.completed.getFullYear())); ys.add(new Date(n).getFullYear()); return [...ys].sort((a, b) => b - a); }
+export function kpiTrend(all, n, period = '6m') {
+  const now = new Date(n), done = doneOf(all), out = [];
+  const month = (y, mo) => { const m = new Date(y, mo, 1), m2 = new Date(y, mo + 1, 1); const inM = done.filter(t => t.completed >= m && t.completed < m2);
+    out.push({ label: formatDate(m, 'MMM'), month: formatDate(m, 'MMMM YYYY'), v: kpiPct(inM), count: inM.length }); };
+  if (period === 'years') {
+    const ys = trendYears(all, n).sort((a, b) => a - b), from = Math.min(...ys), to = now.getFullYear();
+    for (let y = Math.max(from, to - 9); y <= to; y++) { const inY = done.filter(t => t.completed.getFullYear() === y); out.push({ label: String(y), month: String(y), v: kpiPct(inY), count: inY.length }); }
+  } else if (/^\d{4}$/.test(period)) { for (let mo = 0; mo < 12; mo++) month(+period, mo); }
+  else { const k = period === '12m' ? 12 : 6; for (let i = k - 1; i >= 0; i--) { const d = new Date(now.getFullYear(), now.getMonth() - i, 1); month(d.getFullYear(), d.getMonth()); } }
   return out;
 }
 function trendCard(all, n) {
-  const pts = kpiTrend(all, n), have = pts.filter(p => p.v != null);
+  const period = trendPeriod();
+  const pts = kpiTrend(all, n, period), have = pts.filter(p => p.v != null);
   const last = [...pts].reverse().find(p => p.v != null);
   const badgeEl = h('span', { class: 'tbadge' }, last ? last.v + '%' : '—');
-  const head = h('div', { class: 'chead' }, icon('linechart', 18), h('h2', {}, 'KPI Trend'), h('small', { class: 'muted' }, '(Last 6 Months)'));
-  if (!have.length) return h('section', { class: 'hcard tcard c-trend' }, head, h('p', { class: 'hempty' }, 'Completed projects with a Date Assigned and Date Completed build this chart.'));
+  const opts = [['6m', 'Last 6 months'], ['12m', 'Last 12 months'], ...trendYears(all, n).map(y => [String(y), String(y) + ' (by month)']), ['years', 'By year']];
+  const pick = h('select', { class: 'tperiod', 'aria-label': 'KPI Trend period', onchange: e => { try { localStorage.setItem(trendKey, e.target.value); } catch {} render(); } },
+    opts.map(([v, l]) => h('option', { value: v, selected: v === period ? true : null }, l)));
+  const head = h('div', { class: 'chead' }, icon('linechart', 18), h('h2', {}, 'KPI Trend'), pick);
+  if (!have.length) return h('section', { class: 'hcard tcard c-trend' }, head, h('p', { class: 'hempty' }, 'No completed projects in this period yet. Completed projects with a Date Assigned and Date Completed build this chart.'));
   const H = 210, L0 = 40, R0 = 12, T0 = 30, B0 = 26;
   const tip = h('span', { class: 'ttip', hidden: true });
   // drawn at the card's real width (not stretched), so the labels stay the same size as the rest of the text
   const draw = W => {
     const lo = Math.max(0, Math.min(80, Math.floor((Math.min(...have.map(p => p.v)) - 5) / 5) * 5)), hi = 100;
-    const x = i => L0 + i * (W - L0 - R0) / 5, y = v => T0 + (hi - v) / (hi - lo) * (H - T0 - B0);
+    const x = i => L0 + i * (W - L0 - R0) / Math.max(1, pts.length - 1), every = Math.max(1, Math.ceil(pts.length * 34 / Math.max(1, W - L0 - R0))), y = v => T0 + (hi - v) / (hi - lo) * (H - T0 - B0);
     const ticks = []; const step = (hi - lo) / 4; for (let i = 0; i <= 4; i++) ticks.push(Math.round(lo + step * i));
     const seq = pts.map((p, i) => p.v == null ? null : [x(i), y(p.v)]).filter(Boolean);
     const line = seq.map((q, i) => (i ? 'L' : 'M') + q[0].toFixed(1) + ' ' + q[1].toFixed(1)).join(' ');
     const area = seq.length > 1 ? line + ` L${seq[seq.length - 1][0].toFixed(1)} ${H - B0} L${seq[0][0].toFixed(1)} ${H - B0} Z` : '';
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('viewBox', `0 0 ${W} ${H}`); svg.setAttribute('class', 'tchart'); svg.setAttribute('role', 'img');
-    svg.setAttribute('aria-label', 'KPI achievement by month: ' + pts.map(p => p.label + ' ' + (p.v == null ? 'no data' : p.v + '%')).join(', '));
+    svg.setAttribute('aria-label', 'KPI achievement: ' + pts.map(p => p.label + ' ' + (p.v == null ? 'no data' : p.v + '%')).join(', '));
     svg.innerHTML = `<defs><linearGradient id="tgrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3B8A55" stop-opacity=".22"/><stop offset="1" stop-color="#3B8A55" stop-opacity="0"/></linearGradient></defs>`
       + ticks.map(t => `<line x1="${L0}" x2="${W - R0}" y1="${y(t)}" y2="${y(t)}" class="tgrid"/><text x="${L0 - 8}" y="${y(t) + 4}" class="tax" text-anchor="end">${t}%</text>`).join('')
-      + pts.map((p, i) => `<text x="${x(i)}" y="${H - 6}" class="tax" text-anchor="middle">${p.label}</text>`).join('')
+      + pts.map((p, i) => (pts.length - 1 - i) % every ? '' : `<text x="${x(i)}" y="${H - 6}" class="tax" text-anchor="middle">${p.label}</text>`).join('')
       + (area ? `<path d="${area}" fill="url(#tgrad)"/>` : '') + `<path d="${line}" class="tline2"/>`
       + pts.map((p, i) => p.v == null ? '' : `<g class="tpt" data-i="${i}"><circle cx="${x(i)}" cy="${y(p.v)}" r="14" class="thit"/><circle cx="${x(i)}" cy="${y(p.v)}" r="4.5" class="tdot"/><title>${p.month}: ${p.v}% (${p.count} completed)</title></g>`).join('');
     const show = i => { const p = pts[i]; if (!p || p.v == null) return; tip.hidden = false; tip.textContent = `${p.month}: ${p.v}% · ${p.count} completed`; badgeEl.textContent = p.v + '%'; };
@@ -273,9 +283,9 @@ function categoryCard(all) {
   const done = all.filter(t => t.archived || t.finished), open = all.filter(t => !t.archived && !t.finished);
   return h('section', { class: 'hcard ccard c-cat' },
     h('div', { class: 'chead' }, icon('layers', 18), h('h2', {}, 'By Project Category'), h('a', { class: 'hall', href: '#/kpi' }, 'View KPI', icon('chevr', 13))),
-    h('div', { class: 'ctiles' }, DB.CATEGORIES.map(c => { const v = kpiPct(done.filter(t => t.category.includes(c))), n = open.filter(t => t.category.includes(c)).length;
-      return h('button', { class: 'ctile ' + (v == null ? 'none' : v >= 95 ? 'good' : v >= 80 ? 'mid' : 'low') + (n ? '' : ' zero'), title: `${c}: ${n} open` + (v == null ? ', no completed projects yet' : `, ${v}% done within 7 days`), onclick: () => { setProjectFilter({ cat: c }); go('#/projects'); } },
-        h('small', {}, short(c)), h('b', {}, String(n)), h('em', { class: 'ckpi' }, n === 1 ? 'open' : 'open', v == null ? '' : ` · KPI ${v}%`)); })));
+    h('div', { class: 'ctiles' }, DB.CATEGORIES.map((c, ci) => { const v = kpiPct(done.filter(t => t.category.includes(c))), n = open.filter(t => t.category.includes(c)).length;
+      return h('button', { class: 'ctile pastel p' + (ci % 8) + (n ? '' : ' zero'), title: `${c}: ${n} open` + (v == null ? ', no completed projects yet' : `, ${v}% done within 7 days`), onclick: () => { setProjectFilter({ cat: c }); go('#/projects'); } },
+        h('small', {}, short(c)), h('b', {}, String(n)), h('em', { class: 'ckpi' }, 'open', v == null ? '' : h('span', { class: 'ckv ' + (v >= 95 ? 'good' : v >= 80 ? 'mid' : 'low') }, ` · KPI ${v}%`))); })));
 }
 
 // ---------- Quick Actions ----------
@@ -287,7 +297,7 @@ export function pickProject(title, { fullOnly = false } = {}) {
     const ul = h('ul', { class: 'plpick' });
     const draw = () => { const s = q.value.trim().toLowerCase(); ul.replaceChildren(...list.filter(t => !s || t.title.toLowerCase().includes(s) || String(t.ecx).toLowerCase().includes(s)).slice(0, 60)
       .map(t => h('li', {}, h('button', { onclick: () => { chosen = t.row; sh.close(); } }, h('b', {}, t.title), h('small', {}, [t.category.join(', '), t.status].filter(Boolean).join(' · ') || '—'))))); };
-    const sh = sheet(title, h('div', {}, q, h('p', { class: 'muted small' }, fullOnly ? 'Report-only projects (NEM Solar, Substation, Turnkey Stage 1) are not listed.' : 'Choose the project.'), ul), { done: 'Cancel', onDone: () => res(chosen) });
+    const sh = sheet(title, h('div', {}, q, h('p', { class: 'muted small' }, fullOnly ? 'Report-only projects (NEM Solar, Substation, Turnkey Stage 1) are not listed.' : 'Choose the project.'), ul), { done: 'Cancel', float: 'lg', onDone: () => res(chosen) });
     draw();
   });
 }
@@ -295,7 +305,7 @@ export function logSheet(row) {
   const type = h('select', { class: 'field', 'aria-label': 'Activity type' }, E.ACT_TYPES.map(t => h('option', { value: t }, t)));
   const txt = h('textarea', { class: 'field', rows: 3, placeholder: 'What happened? e.g. Customer follow-up completed.', 'aria-label': 'Description' });
   const s = sheet('Log activity · ' + DB.title(row), h('form', { class: 'npform', onsubmit: e => { e.preventDefault(); const v = txt.value.trim(); if (!v) { txt.focus(); return; } E.log(row, type.value, v, type.value === 'ECPAR' ? { ecpar: true } : {}); s.close(); toast('Saved to the Activity Log'); render(); } },
-    h('label', { class: 'flabel' }, h('span', {}, 'Type'), type), h('label', { class: 'flabel' }, h('span', {}, 'Description'), txt), h('button', { class: 'btn primary block', type: 'submit' }, 'Save')), { done: 'Cancel' });
+    h('label', { class: 'flabel' }, h('span', {}, 'Type'), type), h('label', { class: 'flabel' }, h('span', {}, 'Description'), txt), h('button', { class: 'btn primary block', type: 'submit' }, 'Save')), { done: 'Cancel', float: true });
 }
 /** Quick Actions: small buttons at the top right of the page header (shared look with the Focus pages) */
 export const quickBtn = (ic, label, run) => h('button', { class: 'qs', type: 'button', title: label, 'aria-label': label, onclick: run }, icon(ic, 16), h('span', {}, label));

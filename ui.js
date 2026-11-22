@@ -157,12 +157,12 @@ const vvSync = () => {
   if (kb > 120 && a && a.closest && a.closest('.sheet, .gmodal')) requestAnimationFrame(() => a.scrollIntoView({ block: 'nearest' }));
 };
 if (typeof window !== 'undefined' && window.visualViewport) { visualViewport.addEventListener('resize', vvSync); visualViewport.addEventListener('scroll', vvSync); }
-export function sheet(title, body, { done = 'Done', onDone, wide = false } = {}) {
+export function sheet(title, body, { done = 'Done', onDone, wide = false, float = false } = {}) {
   vvSync();
-  const back = h('div', { class: 'sheet-back', onclick: e => { if (e.target === back) close(); } });
+  const back = h('div', { class: 'sheet-back' + (float ? ' float' + (float === 'lg' ? ' lg' : '') : ''), onclick: e => { if (e.target === back) close(); } });
   const close = () => { back.classList.remove('open'); setTimeout(() => back.remove(), 200); document.removeEventListener('keydown', key); onDone && onDone(); };
   const key = e => { if (e.key === 'Escape') close(); };
-  const panel = h('section', { class: 'sheet' + (wide ? ' wide' : ''), role: 'dialog', 'aria-modal': 'true', 'aria-label': title },
+  const panel = h('section', { class: 'sheet' + (wide ? ' wide' : '') + (float ? ' float' + (float === 'lg' ? ' lg' : '') : ''), role: 'dialog', 'aria-modal': 'true', 'aria-label': title },
     h('div', { class: 'grab', 'aria-hidden': 'true' }),
     h('header', {}, h('span'), h('h2', {}, title), h('button', { class: 'link', onclick: close }, done)),
     h('div', { class: 'sheet-body' }, body));
@@ -205,7 +205,7 @@ export function closeMenus() { $$('.menu').forEach(m => m.remove()); }
 export function confirmBox(msg, okLabel = 'Delete') {
   return new Promise(res => {
     const s = sheet('Are you sure?', h('div', {}, h('p', { class: 'muted pad' }, msg),
-      group(h('button', { class: 'grow danger', onclick: () => { res(true); s.close(); } }, h('span', { class: 'gl' }, okLabel)))), { done: 'Cancel', onDone: () => res(false) });
+      group(h('button', { class: 'grow danger', onclick: () => { res(true); s.close(); } }, h('span', { class: 'gl' }, okLabel)))), { done: 'Cancel', float: true, onDone: () => res(false) });
   });
 }
 export function promptBox(title, value = '', placeholder = '') {
@@ -213,7 +213,7 @@ export function promptBox(title, value = '', placeholder = '') {
     const inp = h('input', { class: 'field', value, placeholder, 'aria-label': title });
     let done = false;
     const s = sheet(title, h('form', { onsubmit: e => { e.preventDefault(); done = true; res(inp.value); s.close(); } }, inp, h('button', { class: 'btn primary block', type: 'submit' }, 'Save')),
-      { done: 'Cancel', onDone: () => { if (!done) res(null); } });
+      { done: 'Cancel', float: true, onDone: () => { if (!done) res(null); } });
   });
 }
 

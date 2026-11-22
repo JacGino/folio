@@ -73,6 +73,22 @@ function textRow() {
     h('button', { class: 'zb zr', 'aria-label': 'Reset text size', onclick: e => { e.stopPropagation(); setText(100); pct.textContent = '100%'; } }, '↺'));
 }
 
+// ---------- button colour (per device, ⋯ → Button colour): the main action buttons (Save, Create project, Confirm…) ----------
+export const BTN_COLOURS = [['blue', 'Blue', '#1F72C4'], ['brown', 'Brown', '#7B5B45'], ['green', 'Green', '#2E7D4F'], ['teal', 'Teal', '#0F7477'],
+  ['purple', 'Purple', '#6A4DB0'], ['rose', 'Rose', '#B23F68'], ['orange', 'Orange', '#B0560B'], ['graphite', 'Graphite', '#3A3A3C']];
+let btnColour = ''; try { btnColour = localStorage.getItem('folio-btn') || ''; } catch {}
+function applyBtn() { const c = BTN_COLOURS.find(x => x[0] === btnColour); const st = document.documentElement.style; if (c) st.setProperty('--btn', c[2]); else st.removeProperty('--btn'); }
+applyBtn();
+function btnRow() {
+  const sw = BTN_COLOURS.map(([k, label, hex]) => h('button', { class: 'bswatch' + (k === (btnColour || '') ? ' on' : ''), type: 'button', style: { background: hex }, 'aria-label': 'Button colour: ' + label, 'aria-pressed': k === btnColour ? 'true' : 'false', title: label,
+    onclick: e => { e.stopPropagation(); btnColour = k === btnColour ? '' : k; try { btnColour ? localStorage.setItem('folio-btn', btnColour) : localStorage.removeItem('folio-btn'); } catch {} applyBtn();
+      wrap.querySelectorAll('.bswatch').forEach(b => { const on = b.title === label && !!btnColour; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); }); } }));
+  const wrap = h('div', { class: 'btnrow' }, h('div', { class: 'zoomrow' }, icon('paint', 16), h('span', {}, 'Button colour'),
+    h('button', { class: 'zb zr', 'aria-label': 'Reset button colour', onclick: e => { e.stopPropagation(); btnColour = ''; try { localStorage.removeItem('folio-btn'); } catch {} applyBtn(); wrap.querySelectorAll('.bswatch').forEach(b => { b.classList.remove('on'); b.setAttribute('aria-pressed', 'false'); }); } }, '↺')),
+    h('div', { class: 'bswatches' }, sw));
+  return wrap;
+}
+
 // ---------- app-wide font (synced with the workspace settings) ----------
 let appFont = 'default';
 export async function loadFont() {
@@ -116,7 +132,7 @@ export function moreMenu(anchor, { extra = [], rec = null, onTrash = null } = {}
   const photo = (field, label) => () => pickImage(async f => { const ref = await Sync.addFile(null, f); Sync.soon(); D.update(rec.id, { [field]: ref }); render(); }, { max: field === 'cover' ? 2000 : 800 });
   const body = h('div', { class: 'actions' },
     h('div', { class: 'agrp fonts' }, fontCard('default', 'Default', '-apple-system, sans-serif'), fontCard('serif', 'Serif', 'var(--serif)'), fontCard('mono', 'Mono', 'var(--mono)')),
-    h('div', { class: 'agrp' }, textRow()),
+    h('div', { class: 'agrp' }, textRow(), btnRow()),
     extra.length ? grp(extra.map(e => act(e.icon || 'chevr', e.label, e.run))) : null,
     grp(rec ? act('star', fav ? 'Remove from Favourites' : 'Add to Favourites', () => { D.update(rec.id, { fav: !fav }); toast(fav ? 'Removed from Favourites' : 'Added to Favourites'); render(); }) : null,
       act('export', 'Share', () => ctx.export ? ctx.export(anchor) : window.print()),
@@ -714,3 +730,18 @@ document.addEventListener('click', e => {
   if (!t || t.classList.contains('tgl') || t.disabled) return;
   t.click();
 });
+
+// Links (Pin Location, ECX Link, any URL): a tap opens the link; press and hold the blue text (about half a second) to edit it.
+{
+  let timer = 0, held = false, sx = 0, sy = 0;
+  const editorOf = a => a.closest('.ulinkrow')?.querySelector('.uedit') || a.closest('td');
+  document.addEventListener('pointerdown', e => {
+    const a = e.target.closest && e.target.closest('a.ulink'); held = false; clearTimeout(timer); if (!a) return;
+    sx = e.clientX; sy = e.clientY;
+    timer = setTimeout(() => { held = true; if (navigator.vibrate) try { navigator.vibrate(10); } catch {} const ed = editorOf(a); if (ed) ed.click(); }, 550);
+  }, true);
+  document.addEventListener('pointermove', e => { if (timer && (Math.abs(e.clientX - sx) > 8 || Math.abs(e.clientY - sy) > 8)) clearTimeout(timer); }, true);
+  for (const ev of ['pointerup', 'pointercancel']) document.addEventListener(ev, () => clearTimeout(timer), true);
+  document.addEventListener('click', e => { if (held && e.target.closest && e.target.closest('a.ulink')) { e.preventDefault(); e.stopPropagation(); held = false; } }, true);
+  document.addEventListener('contextmenu', e => { if (e.target.closest && e.target.closest('a.ulink')) e.preventDefault(); }, true);
+}
