@@ -2395,3 +2395,20 @@ input[type="date"]::-webkit-date-and-time-value, input[type="datetime-local"]::-
 .gdate { display: block; width: 100%; max-width: 100%; overflow: hidden; border-radius: 10px; }
 .gdate input[type="date"].field { display: block; width: 100%; min-width: 0; max-width: 100%; height: 44px; min-height: 44px; margin: 0; padding: 0 12px; line-height: 44px; text-align: left; -webkit-appearance: none; appearance: none; }
 .gdate input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 0; line-height: 44px; margin: 0; }
+
+/* narrow screens (iPhone, Duo outer): the search box gives way so the filter / sort buttons and + always fit on the row */
+@container vpage (max-width: 640px) {
+  .vtools > .vsearch, .vtools > .hsearch { flex: 1 1 0; min-width: 84px; max-width: none; width: auto; }
+  .vtools > *:not(.vsearch):not(.hsearch) { flex: 0 0 auto; }
+  .vtools { gap: 6px; }
+}
+/* the toolbar never grows wider than its card (it was pushing the + off the edge at larger text sizes) */
+.vtools { min-width: 0; max-width: 100%; box-sizing: border-box; }
+@media (max-width: 700px) {
+  .vtools { flex-wrap: nowrap; gap: 6px; }
+  .vtools > .vsearch, .vtools > .hsearch { flex: 1 1 0; min-width: 72px; max-width: none; width: auto; }
+  .vtools > *:not(.vsearch):not(.hsearch) { flex: 0 0 auto; }
+}
+/* IC No / Company No: same size and typeface as the other values in the card (e.g. Address) */
+.val.fv.icv, .aplr > .val.mono.icv { white-space: normal !important; overflow-wrap: anywhere; font-family: inherit !important; font-size: var(--valsize, calc(14.5px * var(--ts, 1))) !important; color: var(--ink) !important; }
+.val.fv.icv.empty { color: transparent !important; }

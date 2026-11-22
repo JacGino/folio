@@ -435,7 +435,7 @@ function applicantsBlock(row, info, c, L = { name: 'Customer', id: 'Applicant ID
     h('div', { class: 'aplhead' }, h('span', { class: 'kl' }, icon('building', 16), L.name), h('span', { class: 'kl aplid' }, L.id), addApplicantBtn(c, info)),
     h('div', { class: 'apl' }, ap.map((a, i) => h('div', { class: 'aplr' }, h('span', { class: 'apln' }, ap.length > 1 ? (i + 1) + ')' : ''),
       h('button', { class: 'val fv aplname', type: 'button', 'aria-label': `Customer ${i + 1}: ${a.name}`, onclick: edit(i) }, h('span', {}, a.name)),
-      h('button', { class: 'val fv mono' + (a.ic ? '' : ' empty'), type: 'button', 'aria-label': `Applicant ID ${i + 1}: ${a.ic || 'Empty'}`, onclick: edit(i) }, h('span', {}, a.ic || 'Empty')),
+      h('button', { class: 'val fv mono icv' + (a.ic ? '' : ' empty'), type: 'button', 'aria-label': `Applicant ID ${i + 1}: ${a.ic || 'Empty'}`, onclick: edit(i) }, h('span', {}, a.ic || 'Empty')),
       ap.length > 1 ? h('button', { class: 'iconbtn sm', type: 'button', 'aria-label': `Remove applicant ${i + 1}`, onclick: async e => { e.stopPropagation();
         if (!await confirmBox('Remove ' + a.name + ' from the customer list?', 'Remove')) return; saveApplicants(c, ap.filter((_, k) => k !== i)); } }, icon('close', 15)) : h('span')))));
 }
@@ -492,7 +492,7 @@ function overview(row, info, n) {
   // NEM Solar: Applications Detail, Metering Scheme (panels, inverters, kWac / kWp), Project Information, Project Progress
   if (cats.includes('NEM Solar')) {
     const multi = c && applicantList(c, info).length > 1;
-    const icBtn = c ? h('button', { class: 'val fv mono' + (E.custIc(c) ? '' : ' empty'), type: 'button', 'aria-label': 'IC No / Company No: ' + (E.custIc(c) || 'Empty'), onclick: e => { e.stopPropagation();
+    const icBtn = c ? h('button', { class: 'val fv mono icv' + (E.custIc(c) ? '' : ' empty'), type: 'button', 'aria-label': 'IC No / Company No: ' + (E.custIc(c) || 'Empty'), onclick: e => { e.stopPropagation();
       editInline(e.currentTarget, 'IC No / Company No', E.custIc(c) || '', v => { E.setCustomerIc(c, v); render(); }); } }, h('span', {}, E.custIc(c) || 'Empty')) : '—';
     const cnum = (key, label) => c ? h('button', { class: 'val fv' + (g(c, key, '') === '' ? ' empty' : ''), type: 'button', 'aria-label': label + ': ' + (g(c, key, '') === '' ? 'Empty' : g(c, key)), onclick: e => { e.stopPropagation();
       editInline(e.currentTarget, label, g(c, key, ''), x => { const t = x.trim(); if (t !== '' && !(+t >= 0)) { toast('Type a number, e.g. 20'); return render(); }
