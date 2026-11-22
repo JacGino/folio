@@ -138,14 +138,14 @@ function lineChartAt(W, pts, { unit = 'd', label }) {
 /** vertical bars with a dashed target line. pts: [{label, v, tip}] (v in %) */
 function barChart(pts, opts) { return fitted(W => barChartAt(W, pts, opts), 380); }
 function barChartAt(W, pts, { target = 100, label, color = 'var(--vblue)' }) {
-  const H = 200, L = 34, R = 8, T = 18, B = 24, bw = Math.min(34, (W - L - R) / pts.length * 0.56);
+  const H = 214, L = 34, R = 8, T = 32, B = 24, bw = Math.min(34, (W - L - R) / pts.length * 0.56);
   const x = i => L + (i + 0.5) * (W - L - R) / pts.length, y = v => T + (1 - v / 100) * (H - T - B);
   const s = svgEl(`0 0 ${W} ${H}`, 'vbars', label,
     [0, 25, 50, 75, 100].map(t => `<line x1="${L}" x2="${W - R}" y1="${y(t)}" y2="${y(t)}" class="tgrid"/><text x="${L - 6}" y="${y(t) + 4}" text-anchor="end" class="tax">${t}%</text>`).join('')
     + pts.map((p, i) => p.v == null ? `<text x="${x(i)}" y="${y(0) - 6}" text-anchor="middle" class="tax">—</text>`
       : `<g class="tpt"><rect x="${x(i) - bw / 2}" y="${y(p.v)}" width="${bw}" height="${Math.max(1, y(0) - y(p.v))}" rx="4" fill="${color}"><title>${esc(p.tip)}</title></rect><text x="${x(i)}" y="${y(p.v) - 5}" text-anchor="middle" class="vlab">${Math.round(p.v * 10) / 10}%</text></g>`).join('')
     + pts.map((p, i) => `<text x="${x(i)}" y="${H - 6}" text-anchor="middle" class="tax">${esc(p.label)}</text>`).join('')
-    + `<line x1="${L}" x2="${W - R}" y1="${y(target)}" y2="${y(target)}" class="vtarget"/><text x="${W - R}" y="${y(target) - 4}" text-anchor="end" class="vtargetl">Target ${target}%</text>`);
+    + `<line x1="${L}" x2="${W - R}" y1="${y(target)}" y2="${y(target)}" class="vtarget"/><line x1="${L}" x2="${L + 18}" y1="9" y2="9" class="vtarget"/><text x="${L + 24}" y="13" text-anchor="start" class="vtargetl">Target ${target}%</text>`);
   s.querySelectorAll('rect').forEach(r => r.addEventListener('click', () => toast(r.querySelector('title').textContent)));
   return s;
 }
@@ -493,7 +493,7 @@ function ecparRejPanel(base, from, to, n) {
   const trend = Array.from({ length: 7 }, (_, i) => { const f = new Date(to.getFullYear(), to.getMonth() - 6 + i, 1), t = new Date(f.getFullYear(), f.getMonth() + 1, 0), x = K.rejSummary(all.filter(r => r.rejected >= f && r.rejected <= t));
     return { label: formatDate(f, 'MMM'), v: x.pct, tip: `${formatDate(f, 'MMMM YYYY')}: ${x.pct == null ? 'no resubmitted rejections' : x.pct + '% resubmitted within 1 day (' + x.within + ' of ' + x.resubmitted + ')'}${x.open ? ' · ' + x.open + ' waiting' : ''}` }; });
   const rows = inM.map(r => h('div', { class: 'rjr', role: 'row', tabindex: '0', onclick: () => go('#/project/' + r.f.id + '/ecpar') },
-    h('span', {}, h('b', {}, r.f.title), h('small', {}, [r.f.ref, r.ref, r.n > 1 ? 'rejection ' + r.n : ''].filter(Boolean).join(' · ') || '—')),
+    h('span', {}, h('b', {}, r.f.title), h('small', {}, [r.f.ref, r.ref && !String(r.f.ref || '').includes(r.ref) ? r.ref : '', r.n > 1 ? 'rejection ' + r.n : ''].filter(Boolean).join(' · ') || '—')),
     h('span', {}, dm(r.rejected)), h('span', {}, r.resub ? dm(r.resub) : h('span', { class: r.late ? 'late' : 'muted' }, r.late ? `Not yet · ${r.age} ${unit}` : 'Waiting')),
     h('span', { class: r.within === false ? 'late' : '' }, r.days == null ? '—' : days(r.days)),
     h('span', { class: 'rw' }, r.within == null ? (r.late ? h('span', { class: 'no', 'aria-label': 'Late' }, icon('xcircle', 18)) : h('span', { class: 'muted' }, '—')) : r.within ? h('span', { class: 'ok', 'aria-label': 'Yes' }, icon('okcircle', 18)) : h('span', { class: 'no', 'aria-label': 'No' }, icon('xcircle', 18)))));

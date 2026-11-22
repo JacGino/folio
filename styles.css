@@ -2480,3 +2480,25 @@ html.kbup .sheet-back.float { top: var(--vvt, 0px); bottom: auto; height: var(--
 a.ulink { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; color: var(--blue) !important; }
 /* Days Left label: regular weight and the same text size as the other labels (Status etc.), not bold */
 .dlt { font-weight: 400 !important; font-size: calc(13px * var(--ts, 1)) !important; }
+
+/* KPI page on narrow screens / larger text / Mono font: nothing runs into anything else */
+.rjtbl > .rjr { flex-shrink: 0; }                                   /* rows are as tall as their text (they were squeezed and overlapped) */
+.rjr { grid-template-columns: minmax(0, 1fr) calc(10.5ch + 6px) minmax(84px, 1fr) 64px 76px; }
+.rjr > :nth-child(2) { white-space: nowrap; }                       /* 13/11/2026 stays on one line */
+@container vpage (max-width: 480px) { .rjr { grid-template-columns: minmax(0, 1fr) calc(10.5ch + 6px) 64px; } }
+@media (max-width: 520px) { .rjr { grid-template-columns: minmax(0, 1fr) calc(10.5ch + 6px) 64px; } .rjr > :nth-child(3), .rjr > :nth-child(4) { display: none; } }
+.rjr.rhd > :last-child { white-space: normal; max-width: 70px; line-height: 1.2; }
+.vpanel .chead h2 { white-space: normal; overflow-wrap: anywhere; min-width: 0; flex: 1 1 auto; }
+.vseg { display: flex; flex-wrap: nowrap; max-width: 100%; overflow-x: auto; scrollbar-width: none; } .vseg::-webkit-scrollbar { display: none; }
+.vseg .cseg { white-space: nowrap; flex: 0 0 auto; }
+/* donut centre (e.g. 11 / Total Projects): the chart is already scaled as a whole, so its two lines don't also grow with Text size (they overlapped at 120–140%) */
+.donut .dn { font-size: 26px !important; } .donut .du { font-size: 11px !important; }
+
+/* Rejection history (ECX) and Revision history (ECPAR): pastel red */
+.rhist { background: #FCECEA !important; border-color: #F2D2CD !important; }
+.rhist .rr { border-top-color: #F1D6D2; } .rhist .rr.rhd { color: #9B4A42; }
+.rhist summary { color: #8E2F27; } .rhist summary svg { color: #C2443A; }
+@media (prefers-color-scheme: dark) {
+  .rhist { background: #3A2321 !important; border-color: #57312D !important; } .rhist .rr { border-top-color: #4F2E2A; }
+  .rhist summary { color: #F4B8B1; } .rhist .rr.rhd { color: #E3A49C; }
+}

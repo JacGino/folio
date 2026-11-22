@@ -39,8 +39,10 @@ const val = (row, n) => { const p = DB.propByName(DB.kpiDb(), n); return p ? DB.
 const lastLog = (row, type, re) => { const a = E.history(row).filter(e => e.type === type && (!re || re.test(e.text))).pop(); return a ? new Date(a.t) : null; };
 export function eventDates(row) {
   const w = E.workOf(row), ep = E.ecparOf(row);
+  // completed: the ECX Completed / Rejection Date (as on the project page, 'Done in N days'), or else Date Completed
+  const ecxEnd = DB.ecxKpi(row.id, val(row, 'Date Assigned') || null).end;
   return {
-    assigned: val(row, 'Date Assigned') || null, due: val(row, 'Due Date') || null, completed: val(row, 'Date Completed') || null,
+    assigned: val(row, 'Date Assigned') || null, due: val(row, 'Due Date') || null, completed: ecxEnd || val(row, 'Date Completed') || null,
     survey: w && E.g(w, 'survey') ? parseDate(E.g(w, 'survey')) : null, surveyPlan: w && E.g(w, 'scheduled') ? parseDate(E.g(w, 'scheduled')) : null,
     report: w && E.g(w, 'report') ? lastLog(row, 'Report', /report/i) : null,
     ecparSubmitted: ep && E.g(ep, 'submitted') ? parseDate(E.g(ep, 'submitted')) : null, ecparApproved: ep && E.g(ep, 'approved') ? parseDate(E.g(ep, 'approved')) : null,

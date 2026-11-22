@@ -224,15 +224,17 @@ export function activityScreen() {
 // ---------- KPI Trend: last 6 / 12 months, one year by month, or year by year (choice kept per device) ----------
 const trendKey = 'folio-trend';
 const trendPeriod = () => { try { return localStorage.getItem(trendKey) || '6m'; } catch { return '6m'; } };
-const doneOf = all => all.filter(t => isDate(t.completed) && (t.archived || t.finished));
-export function trendYears(all, n) { const ys = new Set(doneOf(all).map(t => t.completed.getFullYear())); ys.add(new Date(n).getFullYear()); return [...ys].sort((a, b) => b - a); }
+// the same rule as the KPI page: each project counts in the month of its KPI completion (archived projects included)
+const factsOf = (all, n) => all.map(t => KF.facts(t.row, n)).filter(f => f.kpiEnd && f.turnaround != null);
+const pctOf = list => { const s = KF.summary(list); return s.pct == null ? null : Math.round(s.pct); };
+export function trendYears(all, n) { const ys = new Set(factsOf(all, n).map(f => startOfDay(f.kpiEnd).getFullYear())); ys.add(new Date(n).getFullYear()); return [...ys].sort((a, b) => b - a); }
 export function kpiTrend(all, n, period = '6m') {
-  const now = new Date(n), done = doneOf(all), out = [];
-  const month = (y, mo) => { const m = new Date(y, mo, 1), m2 = new Date(y, mo + 1, 1); const inM = done.filter(t => t.completed >= m && t.completed < m2);
-    out.push({ label: formatDate(m, 'MMM'), month: formatDate(m, 'MMMM YYYY'), v: kpiPct(inM), count: inM.length }); };
+  const now = new Date(n), done = factsOf(all, n).map(f => ({ f, d: startOfDay(f.kpiEnd) })), out = [];
+  const month = (y, mo) => { const m = new Date(y, mo, 1), m2 = new Date(y, mo + 1, 1); const inM = done.filter(x => x.d >= m && x.d < m2).map(x => x.f);
+    out.push({ label: formatDate(m, 'MMM'), month: formatDate(m, 'MMMM YYYY'), v: pctOf(inM), count: inM.length }); };
   if (period === 'years') {
     const ys = trendYears(all, n).sort((a, b) => a - b), from = Math.min(...ys), to = now.getFullYear();
-    for (let y = Math.max(from, to - 9); y <= to; y++) { const inY = done.filter(t => t.completed.getFullYear() === y); out.push({ label: String(y), month: String(y), v: kpiPct(inY), count: inY.length }); }
+    for (let y = Math.max(from, to - 9); y <= to; y++) { const inY = done.filter(x => x.d.getFullYear() === y).map(x => x.f); out.push({ label: String(y), month: String(y), v: pctOf(inY), count: inY.length }); }
   } else if (/^\d{4}$/.test(period)) { for (let mo = 0; mo < 12; mo++) month(+period, mo); }
   else { const k = period === '12m' ? 12 : 6; for (let i = k - 1; i >= 0; i--) { const d = new Date(now.getFullYear(), now.getMonth() - i, 1); month(d.getFullYear(), d.getMonth()); } }
   return out;
