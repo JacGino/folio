@@ -169,7 +169,7 @@ try { const v = JSON.parse(localStorage.getItem('folio-psort') || 'null'); if (v
 const keepSort = () => { try { localStorage.setItem('folio-psort', JSON.stringify({ psort, pcol, pyear })); } catch (e) {} };
 const sel = new Set();
 const PTABS = [['all', 'All Projects'], ['progress', 'In Progress'], ['completed', 'Completed'], ['overdue', 'Overdue'], ['archived', 'Archived']];
-// Rejected projects sit with Completed (they still show in the Rejected Queue / ECPAR & ECX rejected pages until resubmitted)
+// Rejected projects go straight to the archive (their rejected ECX still shows on the Rejected ECX page)
 /** ⋯ menu: close a past year (its finished projects move to "Planning KPI Archive <year>"), open or bring back an archive */
 export function yearMenuItems(n) {
   const k = DB.kpiDb(); if (!k) return [];
@@ -178,7 +178,7 @@ export function yearMenuItems(n) {
   for (const y of ys) out.push({ label: `Close year ${y}…`, icon: 'archive', run: async () => {
     const k2 = DB.kpiDb(), c = DB.rows(k2.id).filter(r => DB.projectYear(r) === y && DB.yearClosable(DB.kpiInfo(r, k2))).length;
     if (!c) return toast(`No Done or archived ${y} projects to move.`);
-    if (!await confirmBox(`Move ${c} ${y} projects (Done, or with the Archive box ticked) to "Planning KPI Archive ${y}"? Open and Rejected ${y} projects stay here, on their pages, until you tick Archive. You can bring them back from this menu.`, `Close ${y}`)) return;
+    if (!await confirmBox(`Move ${c} ${y} projects (Done, Rejected, or with the Archive box ticked) to "Planning KPI Archive ${y}"? Open ${y} projects stay here. You can bring them back from this menu.`, `Close ${y}`)) return;
     const moved = DB.closeYear(y); toast(`${moved} projects moved to Planning KPI Archive ${y}.`); render(); } });
   for (const a of DB.yearArchives()) { const y = D.val(a, 'year');
     out.push({ label: `Open Archive ${y}`, icon: 'table', run: () => go('#/p/' + D.val(a, 'page')) });

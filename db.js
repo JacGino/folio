@@ -134,8 +134,8 @@ export const yearArchive = y => yearArchives().find(d => D.val(d, 'year') === y)
 export const isKpiRow = row => { const d = row && D.live(D.val(row, 'db')); return !!d && (d === kpiDb() || D.val(d, 'role') === 'kpi-archive'); };
 /** the year a project belongs to: its Date Assigned (or when it was made) */
 export const projectYear = row => { const d = kpiDb(), p = d && propByName(d, 'Date Assigned'), v = p && value(row, p); const t = v ? new Date(v) : new Date(D.val(row, 'created', 0) || Date.now()); return t.getFullYear(); };
-/** what Close year moves: Done projects, and any project whose Archive box is ticked. A Rejected project (ECX rejected) stays
- *  in the tracker and on the Rejected ECX page until you tick its Archive box; open projects stay too. */
+/** what Close year moves: Done projects, and any project whose Archive box is ticked (a Rejected project is archived
+ *  straight away, so it moves too); open projects stay. */
 export const yearClosable = i => i.archived || i.status === 'Done';
 /** move a year's Done / archived projects into that year's archive table */
 export function closeYear(y) {
@@ -272,7 +272,7 @@ export function kpiInfo(row, dbr, now = Date.now()) {
     // the KPI runs from Date Assigned (or the ECX Reassigned Date) to the ECX Completed / Rejection Date, or Date Completed
     completed: ecxEnd || (ck.start ? null : g('Date Completed')),
     // finished: Done, or Rejected once it has a Date Completed or an ECX completed / rejection date (then it stops counting days, like a Done project)
-    finished: status === 'Done' || (status === 'Rejected' && !!(g('Date Completed') || ecxEnd)) };
+    finished: status === 'Done' || (status === 'Rejected' && !!(g('Date Completed') || ecxEnd)) || (archived && !!ecxEnd) }; // archived after its ECX was rejected / completed: finished too
 }
 export function kpiTasks(now = Date.now()) { const d = kpiDb(); if (!d) return []; return rows(d.id).map(r => kpiInfo(r, d, now)).filter(t => !t.closed); }
 const byDays = (a, b) => (a.days ?? 9999) - (b.days ?? 9999);

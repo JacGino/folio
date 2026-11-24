@@ -294,7 +294,7 @@ function categoryCard(all) {
 export function pickProject(title, { fullOnly = false } = {}) {
   return new Promise(res => {
     const dbr = DB.kpiDb(); let chosen = null;
-    const list = DB.rows(dbr.id).map(r => DB.kpiInfo(r, dbr, NOW())).filter(t => !t.archived && !(fullOnly && E.reportOnly(t.category))).sort((a, b) => a.title.localeCompare(b.title));
+    const list = DB.rows(dbr.id).map(r => DB.kpiInfo(r, dbr, NOW())).filter(t => (!t.archived || D.val(t.row, 'rejarch')) && !(fullOnly && E.reportOnly(t.category))) // a rejected project (archived) can still get a new ECX / ECPAR.sort((a, b) => a.title.localeCompare(b.title));
     const q = h('input', { class: 'field', placeholder: 'Search customer', 'aria-label': 'Search customer', oninput: () => draw() });
     const ul = h('ul', { class: 'plpick' });
     const draw = () => { const s = q.value.trim().toLowerCase(); ul.replaceChildren(...list.filter(t => !s || t.title.toLowerCase().includes(s) || String(t.ecx).toLowerCase().includes(s)).slice(0, 60)

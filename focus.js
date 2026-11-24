@@ -86,7 +86,7 @@ function ecxRecords(n) {
   const t0 = startOfDay(new Date(n)), out = [];
   for (const x of D.all('ecx', x => !!g(x, 'rejected'))) {
     const row = D.live(D.val(x, 'project')); if (!row || D.val(row, 'db') !== dbr.id) continue;
-    const info = DB.kpiInfo(row, dbr, n); if (info.archived) continue;
+    const info = DB.kpiInfo(row, dbr, n); // a rejected project is archived straight away, but its rejected ECX stays listed here
     const status = ECX_SHOW(g(x, 'status')), active = E.ECX_ACTIVE.includes(status);
     if (status !== 'Rejected') continue; // resubmitted or closed: back in normal progress, not on this page
     const rj = g(x, 'rejected'); // no due date: the rejection ends the ECX KPI, so it is never due or overdue

@@ -413,7 +413,7 @@ export function rejectedEcx(now = Date.now()) {
   const t0 = startOfDay(new Date(now)), out = [];
   for (const x of D.all('ecx', x => ECX_ACTIVE.includes(g(x, 'status')))) {
     const row = D.live(D.val(x, 'project')); if (!row || D.val(row, 'db') !== dbr.id) continue;
-    const info = DB.kpiInfo(row, dbr, now); if (info.archived || info.status === 'Done') continue; // Status Rejected = the ECX is rejected: it stays on this page
+    const info = DB.kpiInfo(row, dbr, now); if (info.status === 'Done') continue; // a rejected project is archived, but its rejected ECX stays on this page
     // no due date: an ECX rejection ends the ECX KPI (Rejection Date − Date Assigned), so a rejected ECX is never due or overdue
     out.push({ ...info, due: null, days: null, ecxDue: true, ecxId: x.id, ecx: g(x, 'number') || info.ecx, ecxReason: g(x, 'reason', '') });
   }
@@ -527,13 +527,28 @@ export function ecxClosedFromStatus(row) {
   log(row, 'ECX', ecxName(x) + ' closed (project status Done).', { ecx: x.id, ev: 'closed' });
   return true;
 }
-/** Done projects go straight to the archive (the Archive box is ticked) */
+/** Done and Rejected projects go straight to the archive (the Archive box is ticked) */
 function archiveRow(row) { const d = DB.kpiDb(), ap = d && DB.propByName(d, 'Archive'); if (ap && D.val(row, 'p:' + ap.id) !== true) D.update(row.id, { ['p:' + ap.id]: true }); }
+/** the ECX rejection belongs to the project's current round: not one from before a newer Date Assigned (a reassigned project) */
+function rejectedThisRound(row, x) { const d = DB.kpiDb(), ap = d && DB.propByName(d, 'Date Assigned'); const rj = String(g(x, 'rejected') || '').slice(0, 10), as = ap ? String(D.val(row, 'p:' + ap.id) || '').slice(0, 10) : '';
+  return !rj || !as || rj >= as; }
 function setRowStatus(row, st) { const d = DB.kpiDb(), sp = d && DB.propByName(d, 'Status'); if (sp && String(D.val(row, 'p:' + sp.id) || '').trim() !== st) { D.update(row.id, { ['p:' + sp.id]: st }); log(row, 'Status', 'Status: ' + st + ' (from the ECX).'); } }
 // the project's Status and its ECX are linked both ways:
 //   project Rejected → ECX Rejected
 //   project Done     ⇄ ECX Closed — and a Done project is archived
 let statusSync = false;
+/** a rejected project that was archived comes back out when its ECX goes in again (resubmitted, or a new ECX application) */
+function unarchiveResubmitted(row, x) {
+  const d = DB.kpiDb(), ap = d && DB.propByName(d, 'Archive'); if (!ap || !D.val(row, 'rejarch') || D.val(row, 'p:' + ap.id) !== true) return;
+  const st = g(x, 'status'); if (!st || st === 'Rejected' || st === 'Closed') return;
+  D.update(row.id, { ['p:' + ap.id]: false, rejarch: null }); log(row, 'Project', 'Taken out of the archive (' + ecxName(x) + ' ' + st.toLowerCase() + ').');
+}
+D.onChange(info => {
+  if (statusSync || info.type !== 'create') return;
+  const rec = D.getRec(info.id); if (!rec || rec.k !== 'ecx') return;
+  const row = D.live(D.val(rec, 'project')), d = DB.kpiDb(); if (!row || !d || D.val(row, 'db') !== d.id) return;
+  statusSync = true; try { unarchiveResubmitted(row, rec); } catch (e) { console.error(e); } finally { statusSync = false; }
+});
 D.onChange(info => {
   if (statusSync || info.type !== 'update' || !info.fields) return;
   const rec = D.getRec(info.id), d = DB.kpiDb(); if (!rec || !d) return;
@@ -542,13 +557,15 @@ D.onChange(info => {
   try {
     if (rec.k === 'row' && D.val(rec, 'db') === d.id && info.fields.includes('p:' + sp.id)) {
       const st = String(D.val(rec, 'p:' + sp.id) || '').trim();
-      if (st === 'Rejected') { if (ecxRejectedFromStatus(rec)) D.update(rec.id, { ecxrej: 1 }); }
+      if (st === 'Rejected') { if (ecxRejectedFromStatus(rec)) D.update(rec.id, { ecxrej: 1 }); archiveRow(rec); D.update(rec.id, { rejarch: 1 }); }
       else if (st === 'Done') { if (ecxClosedFromStatus(rec)) D.update(rec.id, { ecxdone: 1 }); archiveRow(rec); D.update(rec.id, { donearch: 1 }); }
     } else if (rec.k === 'ecx' && info.fields.includes('p:status')) {
       const row = D.live(D.val(rec, 'project')); if (!row || D.val(row, 'db') !== d.id) return;
       const xs = ecxOf(row.id); if (xs[xs.length - 1] !== rec && xs[xs.length - 1].id !== rec.id) return; // only the latest application drives the project
       const st = g(rec, 'status');
       if (st === 'Closed') { setRowStatus(row, 'Done'); archiveRow(row); D.update(row.id, { ecxdone: 1, donearch: 1 }); }
+      else if (st === 'Rejected' && String(D.val(row, 'p:' + sp.id) || '').trim() !== 'Done' && rejectedThisRound(row, rec)) { archiveRow(row); D.update(row.id, { rejarch: 1 }); } // the project's Status is left as it is
+      else unarchiveResubmitted(row, rec);
     }
   } catch (e) { console.error(e); } finally { statusSync = false; }
 });
@@ -572,6 +589,9 @@ function syncRejectedStatus() {
   try { for (const r of DB.rows(d.id)) {
     const st = String(D.val(r, 'p:' + sp.id) || '').trim();
     if (!D.val(r, 'ecxrej') && st === 'Rejected') { if (ecxRejectedFromStatus(r)) D.update(r.id, { ecxrej: 1 }); }
+    // once each: a rejected project goes to the archive (Status Rejected, or its latest ECX Rejected; the Status is not changed)
+    if (!D.val(r, 'rejarch') && st !== 'Done') { const xs = ecxOf(r.id), lx = xs[xs.length - 1];
+      if (st === 'Rejected' || (lx && g(lx, 'status') === 'Rejected' && rejectedThisRound(r, lx))) { archiveRow(r); D.update(r.id, { rejarch: 1 }); } }
     if (st === 'Done') { // once each: older Done projects get their ECX closed (when they have one) and are archived
       if (!D.val(r, 'ecxdone') && ecxClosedFromStatus(r)) D.update(r.id, { ecxdone: 1 });
       if (!D.val(r, 'donearch')) { archiveRow(r); D.update(r.id, { donearch: 1 }); } }
