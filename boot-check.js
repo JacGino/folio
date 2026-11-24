@@ -5,7 +5,20 @@
   addEventListener('unhandledrejection', function (e) { errs.push(String(e.reason && e.reason.message || e.reason)); });
   setTimeout(function () {
     var main = document.getElementById('main');
-    if (main && main.children.length) return;
+    if (main && main.children.length) { try { sessionStorage.removeItem('folio-autoreset'); } catch (e) {} return; }
+    // usually an update caught half-way (some new files, some old): clear the saved copy and reload once by itself before showing this screen
+    var last = 0; try { last = +sessionStorage.getItem('folio-autoreset') || 0; } catch (e) {}
+    if (!errs.length && Date.now() - last > 120000) {
+      try { sessionStorage.setItem('folio-autoreset', String(Date.now())); } catch (e) {}
+      var note = document.createElement('div');
+      note.style.cssText = 'font:16px -apple-system,system-ui,sans-serif;position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#fff;color:#1d1d1f;z-index:99999';
+      note.textContent = 'Finishing an update…'; document.body.appendChild(note);
+      var jobs0 = [];
+      if (navigator.serviceWorker) jobs0.push(navigator.serviceWorker.getRegistrations().then(function (rs) { return Promise.all(rs.map(function (r) { return r.unregister(); })); }));
+      if (window.caches) jobs0.push(caches.keys().then(function (ks) { return Promise.all(ks.map(function (k) { return caches.delete(k); })); }));
+      Promise.all(jobs0).then(function () { setTimeout(function () { location.reload(); }, 1500); }, function () { location.reload(); });
+      return;
+    }
     var files = ['index.html', 'styles.css', 'MAIN', 'app.js', 'sw.js'];
     var main_js = (document.querySelector('script[type=module]') || {}).getAttribute ? document.querySelector('script[type=module]').getAttribute('src') : 'main.js';
     var box = document.createElement('div');

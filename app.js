@@ -734,7 +734,19 @@ export async function boot() {
   window.__folioStep = 'lock'; await initLock();
   window.__folioStep = 'sync'; await startupSync(); window.__folioStep = 'ready';
   startNotifier();
-  if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+  // updates: a new version uploaded to GitHub loads by itself. Folio checks when it opens, every 30 minutes and whenever you switch back to it;
+  // when the new version is ready it reloads (your data is saved first), but never while you are typing — then it waits until you stop.
+  if ('serviceWorker' in navigator && location.protocol === 'https:') {
+    const hadController = !!navigator.serviceWorker.controller; let reloading = false;
+    const editingNow = () => { const a = document.activeElement; return !!(a && a !== document.body && (a.isContentEditable || a.matches('input, textarea, select'))) || !!document.querySelector('.cellpop, .sheet, .menu, .gmodal'); };
+    const reloadWhenIdle = () => { if (reloading) return; if (editingNow()) return setTimeout(reloadWhenIdle, 4000); reloading = true; Promise.resolve(D.flush()).finally(() => location.reload()); };
+    navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController) reloadWhenIdle(); });
+    navigator.serviceWorker.register('sw.js').then(reg => {
+      const check = () => reg.update().catch(() => {});
+      setInterval(check, 30 * 60 * 1000);
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') check(); });
+    }).catch(() => {});
+  }
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') Sync.soon(500); else D.flush(); });
 }
 
