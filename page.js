@@ -37,22 +37,70 @@ const FILE_PROBLEM = {
   missing: 'This file has not been uploaded yet. Open Folio on the device you added it from: it uploads by itself once attachments are unlocked there.',
   error: 'This file could not be downloaded right now. Check your connection and try again.',
 };
-export async function openFile(f) {
-  const u = await fileUrl(f.id, f);
-  if (!u) { toast(f.err || FILE_PROBLEM[await Sync.fileProblem(f.id)] || FILE_PROBLEM.error, 6000); return; }
-  fileViewer(f, u, blobs.get(f.id));
+const opening = new Set();
+export async function openFile(f, load = fileUrl) { // load: how the file is fetched (tests pass a stand-in)
+  // always say something: a big file takes a while to download, and a failure used to end in silence
+  if (!f || opening.has(f.id)) return; opening.add(f.id);
+  const name = f.name || 'the file', slow = setTimeout(() => toast('Opening ' + name + '…', 90000), 350);
+  try {
+    if (urls.has(f.id) && !blobs.has(f.id)) urls.delete(f.id); // a copy kept without its file: download it again
+    const u = await Promise.race([load(f.id, f), new Promise((_, no) => setTimeout(() => no(new Error('timeout')), 90000))]);
+    clearTimeout(slow);
+    if (!u) { toast(f.err || FILE_PROBLEM[await Sync.fileProblem(f.id)] || FILE_PROBLEM.error, 6000); return; }
+    toast('', 1); fileViewer(f, u, blobs.get(f.id));
+  } catch (e) {
+    clearTimeout(slow); console.error(e);
+    toast(e && e.message === 'timeout' ? name + ' is taking too long to download. Check the connection and try again.'
+      : 'Could not open ' + name + (e && e.message ? ': ' + e.message : '') + '. Try again, or open it on the device you added it from.', 7000);
+  } finally { opening.delete(f.id); }
 }
 // Files open inside Folio on every device (iPhone, iPhone Duo, iPad, Mac, laptop): Home Screen apps on iPhone / iPad cannot
 // open a file in a new tab, so photos and PDFs show here, with Share (Open in… / Save to Files) and Download as the way out
 const isIOS = () => /iP(hone|ad|od)/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1); // iPad reports itself as a Mac with a touch screen
-function fileViewer(f, u, blob) {
+// PDFs: every page drawn by Folio itself (pdf.js), one under the other, full page width — the same on iPhone, iPad, Mac and laptop.
+// (iPad showed a PDF inside the viewer as page 1 only, zoomed into one corner.) − / + zoom; falls back to the browser's own view if a PDF can't be read.
+let pdfjsP = null;
+const loadPdfjs = () => pdfjsP || (pdfjsP = import(new URL('pdfjs.min.js', document.baseURI).href).then(m => { m.GlobalWorkerOptions.workerSrc = new URL('pdfjs.worker.min.js', document.baseURI).href; return m; }));
+function pdfPages(u, name, blob) {
+  const pages = h('div', { class: 'pdfpages', role: 'document', 'aria-label': name });
+  const status = h('p', { class: 'pdfstat muted' }, 'Loading pages…');
+  let zoom = 1;
+  const setZoom = z => { zoom = Math.max(1, Math.min(4, z)); pages.style.width = (zoom * 100) + '%'; zl.textContent = Math.round(zoom * 100) + '%'; };
+  const zl = h('span', { class: 'pdfzl' }, '100%');
+  const zbar = h('div', { class: 'pdfzoom' }, status, h('span', { class: 'grow' }),
+    h('button', { class: 'iconbtn sm', type: 'button', 'aria-label': 'Zoom out', onclick: () => setZoom(zoom / 1.5) }, '−'), zl,
+    h('button', { class: 'iconbtn sm', type: 'button', 'aria-label': 'Zoom in', onclick: () => setZoom(zoom * 1.5) }, '+'));
+  const wrap = h('div', { class: 'fview-pdfwrap pdfjs' }, pages);
+  (async () => {
+    try {
+      const lib = await loadPdfjs(); const data = new Uint8Array(await (blob || await fetch(u).then(r => r.blob())).arrayBuffer());
+      const doc = await lib.getDocument({ data, isEvalSupported: false, wasmUrl: new URL('./', document.baseURI).href, useWasm: false }).promise; // image decoders: the plain-JS versions (jbig2 / openjpeg) kept next to the app
+      status.textContent = doc.numPages + (doc.numPages === 1 ? ' page' : ' pages');
+      const cssW = Math.max(320, Math.min(wrap.clientWidth || 800, 1400)), dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+      for (let i = 1; i <= doc.numPages; i++) {
+        if (!wrap.isConnected) return;
+        const page = await doc.getPage(i), v1 = page.getViewport({ scale: 1 });
+        const scale = Math.min(cssW * dpr * 1.6 / v1.width, 4096 / Math.max(v1.width, v1.height)); // sharp enough to zoom in a little
+        const vp = page.getViewport({ scale }), c = document.createElement('canvas');
+        c.width = Math.floor(vp.width); c.height = Math.floor(vp.height); c.className = 'pdfpage'; c.setAttribute('aria-label', 'Page ' + i);
+        pages.append(c);
+        await page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise; page.cleanup();
+      }
+    } catch (e) {
+      console.error(e); status.textContent = 'Shown by the browser';
+      wrap.replaceChildren(h('iframe', { class: 'fview-pdf', src: u, title: name })); zbar.querySelectorAll('button, .pdfzl').forEach(x => x.remove());
+    }
+  })();
+  return h('div', { class: 'pdfview' }, zbar, wrap);
+}
+export function fileViewer(f, u, blob) {
   const type = blob?.type || '', name = f.name || 'File' + (type === 'application/pdf' ? '.pdf' : '');
   const file = blob ? new File([blob], name, { type }) : null;
   const canShare = !!(file && navigator.canShare && navigator.canShare({ files: [file] }));
   const save = () => { const a = h('a', { href: u, download: name }); document.body.append(a); a.click(); a.remove(); };
   const view = type.startsWith('image/') && type !== 'image/heic' ? h('img', { class: 'fview-img', src: u, alt: name })
     // a PDF sits in a box you can scroll and pinch: iPad draws the whole document inside the frame but would not scroll it, so only one corner showed
-    : type === 'application/pdf' ? h('div', { class: 'fview-pdfwrap' }, h('iframe', { class: 'fview-pdf', src: u, title: name }))
+    : type === 'application/pdf' ? pdfPages(u, name, blob)
     : h('div', { class: 'fview-none' }, icon('clip', 28), h('p', {}, 'This file type cannot be shown here.'), h('p', { class: 'muted' }, isIOS() ? 'Tap Share to open it in another app or save it to Files.' : 'Tap Download to open it with an app on this computer.'));
   const fsBtn = type === 'application/pdf' || type.startsWith('image/') ? h('button', { class: 'btn', type: 'button', onclick: e => { const sh = e.currentTarget.closest('.sheet'); const on = sh.classList.toggle('fviewfs'); e.currentTarget.replaceChildren(icon(on ? 'close' : 'expand', 16), on ? 'Exit full screen' : 'Full screen'); } }, icon('expand', 16), 'Full screen') : null;
   sheet(name, h('div', { class: 'fview' }, view,

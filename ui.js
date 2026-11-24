@@ -143,6 +143,7 @@ export const strip = html => { const d = document.createElement('div'); d.innerH
 // ---- toast ----
 export function toast(msg, ms = 2600) {
   let t = $('#toast'); if (!t) { t = h('div', { id: 'toast', role: 'status', 'aria-live': 'polite' }); document.body.append(t); }
+  if (!msg) { t.classList.remove('show'); clearTimeout(t._t); return; }
   t.textContent = msg; t.classList.add('show'); clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove('show'), ms);
 }
 

@@ -2528,3 +2528,14 @@ html.kbup #main::after { content: ''; display: block; height: 45vh; }
 .sheet.fviewfs .fview { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; width: 100%; }
 .sheet.fviewfs .fview-pdfwrap, .sheet.fviewfs .fview-img { flex: 1 1 auto; height: auto; min-height: 0; max-height: none; }
 .sheet.fviewfs .fview-img { object-fit: contain; width: 100%; }
+
+/* PDF pages drawn by Folio (pdf.js): every page, full width, scrolls; − / + zoom */
+.pdfview { display: flex; flex-direction: column; gap: 8px; width: 100%; min-height: 0; }
+.pdfzoom { display: flex; align-items: center; gap: 6px; font-size: calc(13px * var(--ts, 1)); }
+.pdfzoom .grow { flex: 1; } .pdfzoom .pdfstat { margin: 0; } .pdfzoom .pdfzl { min-width: 46px; text-align: center; color: var(--ink2); font-variant-numeric: tabular-nums; }
+.pdfzoom .iconbtn { font-size: 18px; width: 34px; height: 34px; }
+.fview-pdfwrap.pdfjs { background: #e9e8e6; padding: 8px; box-sizing: border-box; }
+.pdfpages { display: flex; flex-direction: column; gap: 8px; width: 100%; margin: 0 auto; }
+.pdfpage { display: block; width: 100%; height: auto; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.18); }
+.sheet.fviewfs .pdfview { flex: 1 1 auto; }
+@media (prefers-color-scheme: dark) { .fview-pdfwrap.pdfjs { background: #2a2826; } }
