@@ -2539,3 +2539,16 @@ html.kbup #main::after { content: ''; display: block; height: 45vh; }
 .pdfpage { display: block; width: 100%; height: auto; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.18); }
 .sheet.fviewfs .pdfview { flex: 1 1 auto; }
 @media (prefers-color-scheme: dark) { .fview-pdfwrap.pdfjs { background: #2a2826; } }
+/* Rotate button (PDF bar and photo bar) */
+.pdfzoom .frot { width: 34px; height: 34px; }
+.fimgwrap { display: flex; justify-content: center; align-items: center; min-height: 0; }
+.fimgwrap > .fview-img { max-width: 100%; max-height: 66vh; height: auto; object-fit: contain; }
+.sheet.fviewfs .fimgwrap { flex: 1 1 auto; } .sheet.fviewfs .fimgwrap > .fview-img { max-height: calc(100dvh - 190px); }
+/* pinch to zoom inside the viewer (the page itself doesn't zoom) */
+.pinch { touch-action: pan-x pan-y; overflow: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; -webkit-user-select: none; user-select: none; }
+.fimgwrap.pinch { display: block; max-height: 66vh; text-align: center; }
+.fimginner { margin: 0 auto; width: 100%; }
+.fimginner > .fview-img { display: block; width: 100%; height: auto; max-height: 66vh; object-fit: contain; margin: 0 auto; }
+.fimginner.zoomed > .fview-img { max-height: none; }
+.sheet.fviewfs .fimgwrap.pinch { max-height: none; flex: 1 1 auto; }
+.sheet.fviewfs .fimginner:not(.zoomed) > .fview-img { max-height: calc(100dvh - 190px); }

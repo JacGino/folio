@@ -60,32 +60,63 @@ const isIOS = () => /iP(hone|ad|od)/.test(navigator.userAgent) || (/Macintosh/.t
 // PDFs: every page drawn by Folio itself (pdf.js), one under the other, full page width — the same on iPhone, iPad, Mac and laptop.
 // (iPad showed a PDF inside the viewer as page 1 only, zoomed into one corner.) − / + zoom; falls back to the browser's own view if a PDF can't be read.
 let pdfjsP = null;
+// rotation chosen for a file (0 / 90 / 180 / 270), kept on this device so a sideways drawing opens the right way up next time
+const rotKey = id => 'folio-rot:' + id;
+const getRot = id => { try { return (+localStorage.getItem(rotKey(id)) || 0) % 360; } catch { return 0; } };
+const setRot = (id, r) => { try { r ? localStorage.setItem(rotKey(id), String(r)) : localStorage.removeItem(rotKey(id)); } catch {} };
+// pinch to zoom (touch), trackpad pinch / Ctrl + wheel (Mac, laptop), double-tap for 200% / back; the spot under your fingers stays put
+function pinchZoom(wrap, getZ, setZ) {
+  const clamp = z => Math.max(1, Math.min(4, z));
+  const zoomAt = (z, cx, cy) => { const r = wrap.getBoundingClientRect(), z0 = getZ(), px = cx - r.left, py = cy - r.top;
+    const fx = (wrap.scrollLeft + px) / z0, fy = (wrap.scrollTop + py) / z0; setZ(clamp(z)); const z1 = getZ();
+    wrap.scrollLeft = fx * z1 - px; wrap.scrollTop = fy * z1 - py; };
+  let d0 = 0, z0 = 1, lastTap = 0;
+  const dist = t => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY), mid = t => [(t[0].clientX + t[1].clientX) / 2, (t[0].clientY + t[1].clientY) / 2];
+  wrap.addEventListener('touchstart', e => {
+    if (e.touches.length === 2) { d0 = dist(e.touches); z0 = getZ(); }
+    else if (e.touches.length === 1) { const now = Date.now(), t = e.touches[0];
+      if (now - lastTap < 300) { e.preventDefault(); zoomAt(getZ() > 1.05 ? 1 : 2, t.clientX, t.clientY); lastTap = 0; } else lastTap = now; }
+  }, { passive: false });
+  wrap.addEventListener('touchmove', e => { if (e.touches.length === 2 && d0) { e.preventDefault(); const [cx, cy] = mid(e.touches); zoomAt(z0 * dist(e.touches) / d0, cx, cy); } }, { passive: false });
+  wrap.addEventListener('touchend', e => { if (e.touches.length < 2) d0 = 0; });
+  wrap.addEventListener('wheel', e => { if (!e.ctrlKey) return; e.preventDefault(); zoomAt(getZ() * Math.exp(-e.deltaY / 200), e.clientX, e.clientY); }, { passive: false });
+  // Safari on Mac: trackpad pinch arrives as gesture events
+  let g0 = 1; wrap.addEventListener('gesturestart', e => { e.preventDefault(); g0 = getZ(); });
+  wrap.addEventListener('gesturechange', e => { e.preventDefault(); zoomAt(g0 * e.scale, e.clientX, e.clientY); });
+  wrap.addEventListener('dblclick', e => zoomAt(getZ() > 1.05 ? 1 : 2, e.clientX, e.clientY));
+}
+const rotBtn = onrot => h('button', { class: 'iconbtn sm frot', type: 'button', 'aria-label': 'Rotate 90°', title: 'Rotate', onclick: onrot }, icon('redo', 17));
 const loadPdfjs = () => pdfjsP || (pdfjsP = import(new URL('pdfjs.min.js', document.baseURI).href).then(m => { m.GlobalWorkerOptions.workerSrc = new URL('pdfjs.worker.min.js', document.baseURI).href; return m; }));
-function pdfPages(u, name, blob) {
+function pdfPages(u, name, blob, id) {
   const pages = h('div', { class: 'pdfpages', role: 'document', 'aria-label': name });
   const status = h('p', { class: 'pdfstat muted' }, 'Loading pages…');
   let zoom = 1;
-  const setZoom = z => { zoom = Math.max(1, Math.min(4, z)); pages.style.width = (zoom * 100) + '%'; zl.textContent = Math.round(zoom * 100) + '%'; };
-  const zl = h('span', { class: 'pdfzl' }, '100%');
-  const zbar = h('div', { class: 'pdfzoom' }, status, h('span', { class: 'grow' }),
-    h('button', { class: 'iconbtn sm', type: 'button', 'aria-label': 'Zoom out', onclick: () => setZoom(zoom / 1.5) }, '−'), zl,
-    h('button', { class: 'iconbtn sm', type: 'button', 'aria-label': 'Zoom in', onclick: () => setZoom(zoom * 1.5) }, '+'));
-  const wrap = h('div', { class: 'fview-pdfwrap pdfjs' }, pages);
+  const zl = h('span', { class: 'pdfzl', hidden: true }, '100%');
+  const setZoom = z => { zoom = Math.max(1, Math.min(4, z)); pages.style.width = (zoom * 100) + '%'; zl.textContent = Math.round(zoom * 100) + '%'; zl.hidden = zoom < 1.01; };
+  let rot = getRot(id), doc = null, run = 0;
+  const zbar = h('div', { class: 'pdfzoom' }, status, h('span', { class: 'grow' }), zl, rotBtn(() => { rot = (rot + 90) % 360; setRot(id, rot); if (doc) draw(); }));
+  const wrap = h('div', { class: 'fview-pdfwrap pdfjs pinch' }, pages);
+  pinchZoom(wrap, () => zoom, setZoom);
+  // draw every page (again after Rotate); an older drawing still running stops when a newer one starts
+  const draw = async () => {
+    const me = ++run; pages.replaceChildren();
+    const cssW = Math.max(320, Math.min(wrap.clientWidth || 800, 1400)), dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+    for (let i = 1; i <= doc.numPages; i++) {
+      if (!wrap.isConnected || me !== run) return;
+      const page = await doc.getPage(i), v1 = page.getViewport({ scale: 1, rotation: (page.rotate + rot) % 360 });
+      const scale = Math.min(cssW * dpr * 1.6 / v1.width, 4096 / Math.max(v1.width, v1.height)); // sharp enough to zoom in a little
+      const vp = page.getViewport({ scale, rotation: (page.rotate + rot) % 360 }), c = document.createElement('canvas');
+      c.width = Math.floor(vp.width); c.height = Math.floor(vp.height); c.className = 'pdfpage'; c.setAttribute('aria-label', 'Page ' + i);
+      pages.append(c);
+      await page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise; page.cleanup();
+    }
+  };
   (async () => {
     try {
       const lib = await loadPdfjs(); const data = new Uint8Array(await (blob || await fetch(u).then(r => r.blob())).arrayBuffer());
-      const doc = await lib.getDocument({ data, isEvalSupported: false, wasmUrl: new URL('./', document.baseURI).href, useWasm: false }).promise; // image decoders: the plain-JS versions (jbig2 / openjpeg) kept next to the app
+      doc = await lib.getDocument({ data, isEvalSupported: false, wasmUrl: new URL('./', document.baseURI).href, useWasm: false }).promise; // image decoders: the plain-JS versions (jbig2 / openjpeg) kept next to the app
       status.textContent = doc.numPages + (doc.numPages === 1 ? ' page' : ' pages');
-      const cssW = Math.max(320, Math.min(wrap.clientWidth || 800, 1400)), dpr = Math.min(window.devicePixelRatio || 1, 2.5);
-      for (let i = 1; i <= doc.numPages; i++) {
-        if (!wrap.isConnected) return;
-        const page = await doc.getPage(i), v1 = page.getViewport({ scale: 1 });
-        const scale = Math.min(cssW * dpr * 1.6 / v1.width, 4096 / Math.max(v1.width, v1.height)); // sharp enough to zoom in a little
-        const vp = page.getViewport({ scale }), c = document.createElement('canvas');
-        c.width = Math.floor(vp.width); c.height = Math.floor(vp.height); c.className = 'pdfpage'; c.setAttribute('aria-label', 'Page ' + i);
-        pages.append(c);
-        await page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise; page.cleanup();
-      }
+      await draw();
     } catch (e) {
       console.error(e); status.textContent = 'Shown by the browser';
       wrap.replaceChildren(h('iframe', { class: 'fview-pdf', src: u, title: name })); zbar.querySelectorAll('button, .pdfzl').forEach(x => x.remove());
@@ -93,14 +124,29 @@ function pdfPages(u, name, blob) {
   })();
   return h('div', { class: 'pdfview' }, zbar, wrap);
 }
+// a photo with a Rotate button (turned on a canvas, so it still fits the viewer the right way round)
+function imgView(u, name, id) {
+  let rot = getRot(id); const img = h('img', { class: 'fview-img', src: u, alt: name });
+  const c = h('canvas', { class: 'fview-img fview-rot', role: 'img', 'aria-label': name, hidden: true });
+  const paint = () => { if (!rot) { img.hidden = false; c.hidden = true; return; } if (!img.naturalWidth) return;
+    const w = img.naturalWidth, hh = img.naturalHeight, side = rot % 180 !== 0; c.width = side ? hh : w; c.height = side ? w : hh;
+    const x = c.getContext('2d'); x.translate(c.width / 2, c.height / 2); x.rotate(rot * Math.PI / 180); x.drawImage(img, -w / 2, -hh / 2); img.hidden = true; c.hidden = false; };
+  img.addEventListener('load', paint);
+  let zoom = 1; const zl = h('span', { class: 'pdfzl', hidden: true }, '100%');
+  const inner = h('div', { class: 'fimginner' }, img, c), wrap = h('div', { class: 'fimgwrap pinch' }, inner);
+  const setZoom = z => { zoom = Math.max(1, Math.min(4, z)); inner.style.width = (zoom * 100) + '%'; inner.classList.toggle('zoomed', zoom > 1.01); zl.textContent = Math.round(zoom * 100) + '%'; zl.hidden = zoom < 1.01; };
+  pinchZoom(wrap, () => zoom, setZoom);
+  const bar = h('div', { class: 'pdfzoom' }, h('span', { class: 'grow' }), zl, rotBtn(() => { rot = (rot + 90) % 360; setRot(id, rot); paint(); }));
+  return h('div', { class: 'pdfview' }, bar, wrap);
+}
 export function fileViewer(f, u, blob) {
   const type = blob?.type || '', name = f.name || 'File' + (type === 'application/pdf' ? '.pdf' : '');
   const file = blob ? new File([blob], name, { type }) : null;
   const canShare = !!(file && navigator.canShare && navigator.canShare({ files: [file] }));
   const save = () => { const a = h('a', { href: u, download: name }); document.body.append(a); a.click(); a.remove(); };
-  const view = type.startsWith('image/') && type !== 'image/heic' ? h('img', { class: 'fview-img', src: u, alt: name })
+  const view = type.startsWith('image/') && type !== 'image/heic' ? imgView(u, name, f.id)
     // a PDF sits in a box you can scroll and pinch: iPad draws the whole document inside the frame but would not scroll it, so only one corner showed
-    : type === 'application/pdf' ? pdfPages(u, name, blob)
+    : type === 'application/pdf' ? pdfPages(u, name, blob, f.id)
     : h('div', { class: 'fview-none' }, icon('clip', 28), h('p', {}, 'This file type cannot be shown here.'), h('p', { class: 'muted' }, isIOS() ? 'Tap Share to open it in another app or save it to Files.' : 'Tap Download to open it with an app on this computer.'));
   const fsBtn = type === 'application/pdf' || type.startsWith('image/') ? h('button', { class: 'btn', type: 'button', onclick: e => { const sh = e.currentTarget.closest('.sheet'); const on = sh.classList.toggle('fviewfs'); e.currentTarget.replaceChildren(icon(on ? 'close' : 'expand', 16), on ? 'Exit full screen' : 'Full screen'); } }, icon('expand', 16), 'Full screen') : null;
   sheet(name, h('div', { class: 'fview' }, view,
