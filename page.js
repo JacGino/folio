@@ -51,10 +51,12 @@ function fileViewer(f, u, blob) {
   const canShare = !!(file && navigator.canShare && navigator.canShare({ files: [file] }));
   const save = () => { const a = h('a', { href: u, download: name }); document.body.append(a); a.click(); a.remove(); };
   const view = type.startsWith('image/') && type !== 'image/heic' ? h('img', { class: 'fview-img', src: u, alt: name })
-    : type === 'application/pdf' ? h('iframe', { class: 'fview-pdf', src: u, title: name })
+    // a PDF sits in a box you can scroll and pinch: iPad draws the whole document inside the frame but would not scroll it, so only one corner showed
+    : type === 'application/pdf' ? h('div', { class: 'fview-pdfwrap' }, h('iframe', { class: 'fview-pdf', src: u, title: name }))
     : h('div', { class: 'fview-none' }, icon('clip', 28), h('p', {}, 'This file type cannot be shown here.'), h('p', { class: 'muted' }, isIOS() ? 'Tap Share to open it in another app or save it to Files.' : 'Tap Download to open it with an app on this computer.'));
+  const fsBtn = type === 'application/pdf' || type.startsWith('image/') ? h('button', { class: 'btn', type: 'button', onclick: e => { const sh = e.currentTarget.closest('.sheet'); const on = sh.classList.toggle('fviewfs'); e.currentTarget.replaceChildren(icon(on ? 'close' : 'expand', 16), on ? 'Exit full screen' : 'Full screen'); } }, icon('expand', 16), 'Full screen') : null;
   sheet(name, h('div', { class: 'fview' }, view,
-    h('div', { class: 'fview-bar' },
+    h('div', { class: 'fview-bar' }, fsBtn,
       canShare ? h('button', { class: 'btn', type: 'button', onclick: () => navigator.share({ files: [file], title: name }).catch(() => {}) }, icon('export', 16), isIOS() ? 'Share / Open in…' : 'Share') : null,
       !isIOS() ? h('button', { class: 'btn', type: 'button', onclick: () => window.open(u, '_blank') }, icon('expand', 16), 'Open in new tab') : null,
       h('button', { class: 'btn', type: 'button', onclick: save }, icon('import', 16), isIOS() ? 'Save' : 'Download'))), { wide: true });

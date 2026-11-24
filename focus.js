@@ -242,7 +242,7 @@ function bulkBar(kind, S, rows, n) {
   const done = msg => { toast(msg); S.sel.clear(); render(); };
   const statusMenu = (a, list, set) => menu(a, list.map(s => ({ label: s, run: () => { chosen.forEach(r => set(r, s)); done(chosen.length + ' updated'); } })));
   return h('div', { class: 'hbulk' }, h('b', {}, chosen.length + ' selected'),
-    kind === 'today' ? btn('check', 'Mark completed', async () => { for (const r of chosen) if (r.kind !== 'project') await completeItem(r, n); done(chosen.length + ' completed'); }) : null,
+    kind === 'today' ? btn('check', 'Mark completed', async () => { for (const r of chosen) for (const i of (r.items || [r])) if (i.kind !== 'project') await completeItem(i, n); done(chosen.length + ' completed'); }) : null,
     kind === 'survey' ? btn('date', 'Schedule', async () => { const v = await formModal({ title: 'Schedule ' + chosen.length + ' site surveys', fields: [{ key: 'date', type: 'date', label: 'Survey date', required: true }], ok: 'Schedule' }); if (v) { chosen.forEach(r => E.scheduleSurvey(r.row, v.date)); done('Scheduled'); } }) : null,
     kind === 'survey' ? btn('check', 'Mark completed', async () => { const v = await formModal({ title: 'Mark ' + chosen.length + ' site surveys completed', fields: [{ key: 'date', type: 'date', label: 'Survey date', required: true }], ok: 'Mark completed' }); if (v) { chosen.forEach(r => E.completeSurvey(r.row, v.date, n)); done('Completed'); } }) : null,
     kind === 'ecpar' ? btn('status', 'Set status', e => statusMenu(e.currentTarget, E.ECPAR_ACTIVE, (r, s) => E.setEcparStatus(r.row, s))) : null,
@@ -257,9 +257,8 @@ const dueCell = r => r.days == null ? muted('—') : h('span', { class: 'fdue' +
 const PAGE_COLS = {
   // the status column already says what is due (Site Survey, Estimation, Rejected…), so only the number is shown; a task you named keeps its name
   // no eCX & WBS No column here (it is a project property: show it from Properties if you want it)
-  // Due item first: one project can have several things due today (the project itself and some of its tasks), so each row says which
-  today: { lead: [{ k: 'item', def: 'Due today', w: 170, fixed: true, cell: r => h('span', { class: 'fdues' }, (r.items || [r]).map(i => h('span', { class: 'fdue fdue-' + i.kind }, icon({ task: 'listcheck', survey: 'target', ecpar: 'ecpar', ecx: 'filex' }[i.kind] || 'folder', 14),
-        i.kind === 'task' ? linkedField(i.task, { key: 'name', label: 'Task' }) : h('span', {}, i.title || 'Project')))) }],
+  // one row per project (everything due for it today is grouped into that row); no extra column
+  today: { lead: [],
     tail: [{ k: 'pri', def: 'Priority', w: 96, cell: r => priPill(r.priority) }, { k: 'due', def: 'Due Date', w: 112, cell: dueCell },
       { k: 'status', def: 'Status', w: 132, cell: r => h('span', { class: 'fstat' }, badge(r.status, { Pending: 'blue', 'In Progress': 'yellow', 'On Hold': 'orange', Completed: 'green' }[r.status])) }] },
   survey: { lead: [],
@@ -342,7 +341,7 @@ function rowMenu(kind, r, anchor, n) {
   const open = tab => go('#/project/' + r.row.id + (tab ? '/' + tab : ''));
   const items = [];
   if (kind === 'today') {
-    items.push({ label: 'Open project', icon: 'expand', run: () => open(r.tab) }, { label: 'Mark completed', icon: 'check', run: () => completeItem(r, n) },
+    items.push({ label: 'Open project', icon: 'expand', run: () => open(r.tab) }, { label: 'Mark completed', icon: 'check', run: async () => { for (const i of (r.items || [r])) if (i.kind !== 'project' || !r.items) await completeItem(i, n); } },
       { label: 'Priority…', icon: 'sort', run: () => menu(anchor, ['High', 'Medium', 'Low'].map(p => ({ label: p, checked: r.priority === p, run: () => { if (r.kind === 'task') D.update(r.task.id, { 'p:priority': p }); else setRowProp(r.row, 'Priority', p); render(); } }))) });
     if (r.kind === 'task') items.push({ label: 'Status…', icon: 'status', run: () => menu(anchor, ['Pending', 'In Progress', 'On Hold'].map(s => ({ label: s, checked: r.status === s, run: () => { D.update(r.task.id, { 'p:status': s }); render(); } }))) },
       { label: 'Task type…', icon: 'list', run: () => menu(anchor, E.TASK_TYPES.map(s => ({ label: s, checked: r.type === s, run: () => { D.update(r.task.id, { 'p:type': s }); render(); } }))) });

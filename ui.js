@@ -150,7 +150,11 @@ export function toast(msg, ms = 2600) {
 // sheets live inside the part of the screen the keyboard leaves visible (iOS keeps the page full height and only shrinks the visual viewport)
 const vvSync = () => {
   const v = window.visualViewport; if (!v) return;
-  const st = document.documentElement.style, kb = Math.max(0, innerHeight - v.height - v.offsetTop);
+  // the keyboard can only be up while something you type into has focus: otherwise treat the screen as full height
+  // (iPad sometimes doesn't report the keyboard closing, which left pop-ups squeezed to their title bar)
+  const fa = document.activeElement, typing = !!(fa && fa !== document.body && (fa.isContentEditable || (fa.matches && fa.matches('input:not([type=checkbox]):not([type=radio]):not([type=button]), textarea'))));
+  const st = document.documentElement.style, kb = typing ? Math.max(0, innerHeight - v.height - v.offsetTop) : 0;
+  if (!kb) { st.setProperty('--vvt', '0px'); st.setProperty('--vvh', innerHeight + 'px'); document.documentElement.classList.remove('kbup'); return; }
   st.setProperty('--vvt', v.offsetTop + 'px'); st.setProperty('--vvh', v.height + 'px');
   document.documentElement.classList.toggle('kbup', kb > 120);
   const a = document.activeElement;
@@ -168,7 +172,10 @@ export function revealFocused(v = window.visualViewport) {
   if (!d) return 0; const sc = scrollerOf(a); sc.scrollBy({ top: d }); return d;
 }
 if (typeof document !== 'undefined') document.addEventListener('focusin', () => { for (const t of [80, 350, 700]) setTimeout(() => { const v = window.visualViewport; if (v && innerHeight - v.height - v.offsetTop > 120) revealFocused(v); }, t); });
-if (typeof window !== 'undefined' && window.visualViewport) { visualViewport.addEventListener('resize', vvSync); visualViewport.addEventListener('scroll', vvSync); }
+if (typeof window !== 'undefined' && window.visualViewport) { visualViewport.addEventListener('resize', vvSync); visualViewport.addEventListener('scroll', vvSync);
+  // check again shortly after typing stops and after rotating, in case the iPad doesn't report the keyboard closing
+  document.addEventListener('focusout', () => { for (const t of [120, 450, 900]) setTimeout(vvSync, t); });
+  addEventListener('orientationchange', () => setTimeout(vvSync, 400)); }
 export function sheet(title, body, { done = 'Done', onDone, wide = false, float = false } = {}) {
   vvSync();
   const back = h('div', { class: 'sheet-back' + (float ? ' float' + (float === 'lg' ? ' lg' : '') : ''), onclick: e => { if (e.target === back) close(); } });
