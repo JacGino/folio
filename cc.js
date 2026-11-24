@@ -29,13 +29,13 @@ const blank = () => ({ inputs: { basis: 'practice', cat: '', method: 'normal', s
 // Load basis: Your rule (1-phase min 5 kVA, 3-phase min 10 kVA) unless Guideline 5.2 was picked for this calculation;
 // calculations saved before Your rule existed carried the old default, so they open on Your rule too
 function fromSaved(c) { const s = D.val(c, 'snap'); return { inputs: { ...s.inputs, basis: s.inputs && s.inputs.basisChosen ? s.inputs.basis : 'practice' }, lines: s.lines.filter(l => !l.auto).map(l => ({ id: l.id || uid(), comp: l.comp, code: l.code, qty: l.qty, override: l.override || null, note: l.note || '' })), notRequired: { ...(s.notRequired || {}) }, loadedId: c.id, dirty: false }; }
-function work(row) {
+export function work(row) {
   let w = WORK.get(row.id);
   if (!w) { const last = calcsOf(row.id)[0]; w = last ? fromSaved(last) : fromCustomer(row); WORK.set(row.id, w);
     // the Applied Load on the Overview is the latest one (it follows every change in either place)
     const c = E.customerOf(row), L = c && g(c, 'load');
     if (last && L != null && L !== '' && String(w.inputs.applied) !== String(L)) { w.inputs.applied = L; if (w.inputs.upgrade) w.inputs.existing = L; touch(w); }
-    const U = c && g(c, 'units'); if (last && U != null && U !== '' && String(w.inputs.units) !== String(U)) { w.inputs.units = U; w.inputs.unitsAuto = false; touch(w); } }
+    const U = c && g(c, 'units'); if (last && U != null && U !== '' && String(w.inputs.units) !== String(U)) { w.inputs.units = U; w.inputs.unitsAuto = false; syncMeters(w, U); touch(w); } }
   // additional items (not in the Guidelines) belong to the calculation; older ones were kept with the Long Text
   if (!w.inputs.extras) w.inputs.extras = (w.inputs.lt && w.inputs.lt.extras) || [];
   return w;
@@ -52,7 +52,7 @@ export function unitsOf(row) { const c = E.customerOf(row), v = c && g(c, 'units
 export function setUnits(row, v) {
   const c = E.customerOf(row); if (c) D.update(c.id, { 'p:units': v === '' || v == null ? null : v });
   const w = WORK.get(row.id) || ((calcsOf(row.id)[0]) ? work(row) : null);
-  if (w) { w.inputs.units = v === '' ? 1 : v; w.inputs.unitsAuto = false; touch(w); }
+  if (w) { w.inputs.units = v === '' ? 1 : v; w.inputs.unitsAuto = false; syncMeters(w, w.inputs.units); touch(w); }
 }
 /** the additional items, worked out (rate × mark-up × qty), and their sum: added to the Total Connection Charge */
 const extrasRes = w => extrasOf({ extras: w.inputs.extras || [] });
@@ -152,7 +152,7 @@ function left(row, info, w, res) {
     frow('Supply Phase', segs([[1, 'Single Phase'], [3, 'Three Phase']], I.phase, v => set('phase', v), 'Supply Phase')),
     frow('Premise Type', pickBtn('Premise Type', I.premise, PREMISES.map(p => [p.key, p.label + (p.mal ? ` — ${p.mal}kVA` : '')]), v => set('premise', v)), 'Table 5.1'),
     PREMISE[I.premise]?.fn ? h('p', { class: 'cchint' }, TABLE51_NOTES[PREMISE[I.premise].fn]) : null,
-    frow(I.premise === 'publight' ? 'Number of LED 70W units' : +I.cat === 2 ? 'Number of houses / units' : 'Number of premises / units', numBox(I.units, 'Number of units', v => { I.units = v; { const c = E.customerOf(row); if (c) D.update(c.id, { 'p:units': v === '' ? null : v }); } touch(w); refreshResults(row, info); })),
+    frow(I.premise === 'publight' ? 'Number of LED 70W units' : +I.cat === 2 ? 'Number of houses / units' : 'Number of premises / units', numBox(I.units, 'Number of units', v => { I.units = v; { const c = E.customerOf(row); if (c) D.update(c.id, { 'p:units': v === '' ? null : v }); } syncMeters(w, v); touch(w); refreshResults(row, info); })),
     has('perhouse') ? frow('House type', pickBtn('House type (Per House Fee)', I.houseType || '', houseTypes, v => set('houseType', v)), 'Table 4.2') : null,
     showDedicated ? frow('Dedicated new substation', tog(!!I.dedicated, v => set('dedicated', v), 'Dedicated new substation'), 'Footnote [1] · Section 3.1.3') : null,
     showZone ? frow('New HT line from Zone Substation', tog(!!I.fromZone, v => set('fromZone', v), 'New HT line from Zone Substation'), 'Footnote [2]') : null,
@@ -206,7 +206,11 @@ function right(row, info, w, res) {
   const qtyCell = l => {
     if (l.auto) return h('span', { class: 'ccq' }, fmtQ(l.qty));
     const src = w.lines.find(x => x.id === l.id);
-    const t = textbox({ value: String(src.qty), cls: 'ccnum q', label: 'Quantity for ' + l.desc, attrs: { inputmode: 'decimal' }, oninput: () => { src.qty = t.value.replace(/[^0-9.]/g, ''); touch(w); clearTimeout(t._t); t._t = setTimeout(() => refreshTotals(row, t, l.id), 300); }, onkeydown: e => { if (e.key === 'Enter') t.blur(); } });
+    const t = textbox({ value: String(src.qty), cls: 'ccnum q', label: 'Quantity for ' + l.desc, attrs: { inputmode: 'decimal' }, oninput: () => { src.qty = t.value.replace(/[^0-9.]/g, '');
+      // Meter Fee: one meter per premise, so its quantity is the Number of premises / units (and the Overview's No of Unit)
+      if (src.comp === 'meter' && +src.qty >= 1) { const u = String(Math.floor(+src.qty)); w.inputs.units = u; w.inputs.unitsAuto = false; const c = E.customerOf(row); if (c) D.update(c.id, { 'p:units': u }); syncMeters(w, u, src); t._meter = true; }
+      touch(w); clearTimeout(t._t); t._t = setTimeout(() => refreshTotals(row, t, l.id), 300); }, onkeydown: e => { if (e.key === 'Enter') t.blur(); } });
+    t.addEventListener('blur', () => { if (t._meter) { t._meter = false; setTimeout(render, 0); } });
     return t;
   };
   const table = h('div', { class: 'cctable', role: 'table', 'aria-label': 'Charge breakdown' },
@@ -283,7 +287,7 @@ function addItemSheet(row, info, w, res, onlyComp) {
     list.replaceChildren(...comps.map(c => {
       const items = itemsFor(c.key, w.inputs).filter(r => !s || (r.desc + ' ' + r.code + ' ' + r.unit).toLowerCase().includes(s));
       return items.length ? h('div', { class: 'ccag' }, h('h4', {}, c.label + (c.required ? '' : ' (where applicable)')), items.map(r => h('button', { class: 'ccai', onclick: () => { sh.close(); addItem(row, info, w, res, c, r); } },
-        h('span', {}, r.desc, h('small', {}, `${r.code} · Table ${r.table}, page ${r.page}`)), h('span', { class: 'ccar' }, money(r.rate), h('small', {}, r.unit))))) : null;
+        h('span', {}, r.desc, h('small', {}, `${r.code} · ` + (r.src || `Table ${r.table}, page ${r.page}`))), h('span', { class: 'ccar' }, money(r.rate), h('small', {}, r.unit))))) : null;
     }).filter(Boolean));
     if (!list.childElementCount) list.append(h('p', { class: 'hempty' }, 'No applicable items match.'));
   };
@@ -309,7 +313,9 @@ async function addItem(row, info, w, res, c, r) {
   const def = c.excess && /meter/.test(r.unit) ? c.excess : 1;
   push(w, c.key, r.code, def, c.excess ? `${c.excess}m in excess of 1000m` : '', row, info);
 }
-function push(w, comp, code, qty, note, row, info) { w.lines.push({ id: uid(), comp, code, qty, note }); touch(w); render(); }
+function push(w, comp, code, qty, note, row, info) { if (comp === 'meter' && +w.inputs.units >= 1) qty = Math.floor(+w.inputs.units); w.lines.push({ id: uid(), comp, code, qty, note }); touch(w); render(); }
+/** every Meter Fee line follows the Number of premises / units (one meter each) */
+function syncMeters(w, units, except) { const u = Math.floor(+units); if (!(u >= 1)) return; for (const l of w.lines) if (l.comp === 'meter' && l !== except) l.qty = u; }
 function lineMenu(anchor, row, info, w, l) {
   const src = w.lines.find(x => x.id === l.id);
   menu(anchor, [
@@ -477,6 +483,7 @@ function longTextSheet(row, info, w) {
   const warn = h('div', { class: 'ltwarn' }), sums = h('div', { class: 'ltsum' });
   let edited = false;
   pre.addEventListener('input', () => { edited = true; });
+  const relNote = h('p', { class: 'ccinfo ltrel', hidden: true, role: 'status' });
   const draw = () => {
     f.noRyb = w.inputs.scope === 'ltnew'; // new substation / HT extension: no R / Y / B readings
     res = calculate(w); const out = longText(f, res);
@@ -487,6 +494,11 @@ function longTextSheet(row, info, w) {
       ...(subs ? [[t.pct ? `Government subsidy ${t.pct}%` : 'Government subsidy', t.gov], ['Customer', t.cust]] : [['Total with SST', t.h]])]
       .map(([k, v]) => h('span', {}, h('small', {}, k), h('b', {}, RMS(v)))));
     warn.replaceChildren(...out.warnings.map(x => h('p', { class: 'ccinfo amber' }, icon('info', 14), x)));
+    // who releases the CDP (partially customer funded): (b) up to RM25,000 → Manager (Theresa); above RM25,000 → Regional Manager (Hung)
+    { const b = +String(f.costNoOH ?? '').replace(/rm|,|\s/gi, ''), has = String(f.costNoOH ?? '').trim() !== '' && isFinite(b) && b > 0 && t.cdpSeek > 0.004;
+      relNote.hidden = !has;
+      if (has) relNote.replaceChildren(icon('person', 15), h('span', {}, h('b', {}, 'Release: ' + (b <= 25000 ? 'Manager (Theresa)' : 'Regional Manager (Hung)')),
+        h('small', {}, `Cost of project without OH ${RMS(b)} ${b <= 25000 ? '≤' : '>'} RM25,000 with CDP ${RMS(t.cdpSeek)} (partially customer funded)`))); }
     // ECPAR Budget Amount follows CDP to seek (once (b) Total cost of project is filled in, so CDP is a real figure)
     if (String(f.costNoOH ?? '').trim() !== '' && isFinite(+String(f.costNoOH).replace(/,/g, ''))) {
       const ep = E.ecpar(row), cur = E.g(ep, 'budget');
@@ -522,7 +534,7 @@ function longTextSheet(row, info, w) {
         const b = body.querySelector('.ltform label[data-k="sst"] input'); if (b) b.value = f.sst; draw(); } }), h('span', {}, 'SST relief letter attached (0% SST, Section 34)'))),
       h('h4', {}, 'Application'), inp('appType', 'Type of application', { list: ['Domestic', 'Commercial', 'Commercial + Residential', 'Commercial 1 (C1)', 'Industrial'] }), inp('load', 'Estimated connected load (kVA)', { num: true }),
       inp('target', 'Target date of supply'), inp('cat', 'Category'), inp('use', 'Type of use', { ph: 'e.g. DWELLING' }), inp('scheme', 'Scheme of supply', { wide: true, area: true, rows: 7 }),
-      h('h4', {}, 'Costs & funding'), inp('costOH', '(a) Cost of project with OH (RM)', { money: true }), inp('costNoOH', '(b) Cost of project without OH (RM)', { money: true }), inp('sst', 'SST %', { num: true }),
+      h('h4', {}, 'Costs & funding'), inp('costOH', '(a) Cost of project with OH (RM)', { money: true }), inp('costNoOH', '(b) Cost of project without OH (RM)', { money: true }), relNote, inp('sst', 'SST %', { num: true }),
       ...only('subsidy', inp('subsidy', 'Government subsidy (Domestic only)', { opts: [['auto', 'By amount (≤ RM5,000 100% · ≤ RM10,000 70%)'], ['100', '100%'], ['70', '70%'], ['none', 'No subsidy']] }), inp('subsidyBV', 'Subsidy BV no.')),
       inp('cdpBV', 'CDP BV no.'),
       ...only('uos', inp('existing', 'Existing / minimum assigned load (kVA)', { num: true }), inp('existingLabel', 'Wording for the existing load', { wide: true, ph: 'Minimum assigned load (Terrace/Quadrant house up to 3-storey)' })),

@@ -1,6 +1,7 @@
 // Folio v2 — search across pages, tasks (every property), comments and page text.
 import * as D from './data.js';
 import * as DB from './db.js';
+import * as E from './entities.js';
 import { h, icon, logo, strip, textbox } from './ui.js';
 import { state, openTask, now, elabel } from './app.js';
 import { pageHead } from './views.js';
@@ -19,7 +20,8 @@ export function renderSearch() {
       for (const r of DB.rows(d.id)) {
         let where = ps.find(p => DB.display(r, p, now()).toLowerCase().includes(q));
         let snippet = where ? `${where.name}: ${DB.display(r, where, now())}` : '';
-        if (!where) { const txt = (D.val(r, 'blocks', []) || []).map(b => strip(b.x || '')).join(' '); if (txt.toLowerCase().includes(q)) snippet = clip(txt, q); }
+        if (!snippet && d === DB.kpiDb()) { const ad = E.custAddress(r); if (ad && ad.toLowerCase().includes(q)) snippet = 'Address: ' + ad; } // the address on the project's Overview (kept with the customer)
+        if (!snippet) { const txt = (D.val(r, 'blocks', []) || []).map(b => strip(b.x || '')).join(' '); if (txt.toLowerCase().includes(q)) snippet = clip(txt, q); }
         if (!snippet) { const c = D.all('cmt', c => D.val(c, 'parent') === r.id).map(c => D.val(c, 'text', '')).join(' '); if (c.toLowerCase().includes(q)) snippet = 'Comment: ' + clip(c, q); }
         if (snippet) hits.push({ kind: 'task', id: r.id, title: DB.title(r), snippet });
         if (hits.length > 200) break;

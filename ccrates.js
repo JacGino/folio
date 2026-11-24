@@ -97,6 +97,11 @@ const T43b = [
   R('LT-47', '4.3 (Part 2)', 12, 'Twin/Double lamp column street lighting (150W) with underground cable', 'each', 7400.00, { street: true }),
   R('LT-48', '4.3 (Part 2)', 12, 'Single lamp column street lighting (250W) with underground cable', 'each', 3100.00, { street: true }),
   R('LT-49', '4.3 (Part 2)', 12, 'Twin/Double lamp column street lighting (250W) with underground cable', 'each', 7550.00, { street: true }),
+  // Standardisation of LED lighting for new street lighting — rates for Connection Charges estimation (memo of 13 November 2025, effective 1 January 2026)
+  ...[['LT-50', 'Bracket Street Lighting wall mounted (70W LED) with wiring', 1210.00], ['LT-51', 'Bracket Street Lighting wall mounted (120W LED) with wiring', 1577.00],
+      ['LT-52', 'Bracket Street Lighting on pole (70W LED) with wiring', 610.00], ['LT-53', 'Bracket Street Lighting on pole (120W LED) with wiring', 860.00],
+      ['LT-54', 'Single lamp column street lighting (70W LED) with underground cable', 3110.00], ['LT-55', 'Twin/Double lamp column street lighting (120W LED) with underground cable', 7580.00]]
+    .map(([code, desc, rate]) => R(code, 'LED memo', null, desc, 'each', rate, { street: true, led: true, src: 'LED Street Lighting memo, 13/11/2025 (effective 1 January 2026)' })),
 ];
 const T43 = [...T43a, ...T43b].map(r => ({ ...r, comp: 'lt' }));
 

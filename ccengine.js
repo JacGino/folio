@@ -231,7 +231,7 @@ function line(r, qty, extra = {}) {
   const rate = extra.override && num(extra.override.rate) != null ? +extra.override.rate : r.rate;
   const amount = r2(qty * rate);
   return { id: extra.id || 'auto-' + r.code, comp: extra.comp || r.comp, code: r.code, desc: r.desc, unit: r.unit, rate, catalogueRate: r.rate, qty, amount, auto: !!extra.auto, override: extra.override || null,
-    spec: extra.spec || r.desc, source: `Table ${r.table}, page ${r.page}`.replace('Table 3.1.14', 'Section 3.1.14'), rule: [extra.rule, r.cond].filter(Boolean).join(' · '), note: extra.note || '',
+    spec: extra.spec || r.desc, source: r.src || `Table ${r.table}, page ${r.page}`.replace('Table 3.1.14', 'Section 3.1.14'), rule: [extra.rule, r.cond].filter(Boolean).join(' · '), note: extra.note || '',
     formula: `${rm(rate)}${r.unit.startsWith('RM/') ? '/kVA' : ''} × ${fmtQ(qty)} ${r.unit.startsWith('RM/') ? 'kVA' : r.unit} = ${rm(amount)}` };
 }
 

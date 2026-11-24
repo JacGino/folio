@@ -47,6 +47,18 @@ function dueRecords(n) {
     return { ...it, id: it.key, type, priority, status, risk, no: ecxNo ? String(ecxNo).split('\n')[0] : '', cats: it.cats };
   });
 }
+// Due Today: one row per project; everything due for it today (the project / site survey / ECPAR and its tasks) is listed in that row
+const KIND_ORDER = { survey: 0, ecpar: 1, ecx: 2, project: 3, task: 4 };
+function byProject(list) {
+  const m = new Map();
+  for (const r of list) { const k = r.row ? r.row.id : r.id; if (!m.has(k)) m.set(k, []); m.get(k).push(r); }
+  return [...m.values()].map(items => {
+    items.sort((a, b) => (KIND_ORDER[a.kind] ?? 9) - (KIND_ORDER[b.kind] ?? 9));
+    const p = items[0];
+    return { ...p, id: 'g' + (p.row ? p.row.id : p.id), items, tasks: items.filter(i => i.kind === 'task'),
+      type: items.some(i => i.type === 'Site Survey') ? 'Site Survey' : p.type, rejected: items.some(i => i.kind === 'ecpar' || i.kind === 'ecx') };
+  });
+}
 function surveyRecords(n) {
   const dbr = DB.kpiDb(); if (!dbr) return [];
   const g0 = DB.surveyGroups(n);
@@ -89,10 +101,10 @@ function ecxRecords(n) {
 // =====================================================================================
 const PAGES = {
   // only what is due TODAY (overdue and coming-up items are not listed here)
-  today: { title: 'Due Today', icon: 'date', desc: 'Projects and tasks due today that require your action.', records: n => dueRecords(n).filter(r => r.days === 0), unit: 'Tasks',
-    tabs: [['all', 'All', null, () => true], ['survey', 'Site Survey', 'target', r => r.type === 'Site Survey'], ['rejected', 'Rejected Queue', 'xcircle', r => r.kind === 'ecpar' || r.kind === 'ecx']],
-    metrics: rs => [['date', 'Total Due Today', rs.length, null, 'blue'], ['target', 'Site Survey', rs.filter(r => r.type === 'Site Survey').length, 'green'], ['listcheck', 'Tasks', rs.filter(r => r.kind === 'task').length, 'orange'], ['xcircle', 'Rejected Queue', rs.filter(r => r.kind === 'ecpar' || r.kind === 'ecx').length, 'red']],
-    statuses: ['Pending', 'In Progress', 'On Hold'], search: r => [r.no, r.cust, r.title, r.cats.join(' ')],
+  today: { title: 'Due Today', icon: 'date', desc: 'Projects and tasks due today that require your action.', records: n => byProject(dueRecords(n).filter(r => r.days === 0)), unit: 'Projects',
+    tabs: [['all', 'All', null, () => true], ['survey', 'Site Survey', 'target', r => r.type === 'Site Survey'], ['rejected', 'Rejected Queue', 'xcircle', r => r.rejected]],
+    metrics: rs => [['date', 'Total Due Today', rs.length, null, 'blue'], ['target', 'Site Survey', rs.filter(r => r.type === 'Site Survey').length, 'green'], ['listcheck', 'Tasks', rs.reduce((a, r) => a + (r.tasks || []).length, 0), 'orange', null, 0], ['xcircle', 'Rejected Queue', rs.filter(r => r.rejected).length, 'red']],
+    statuses: ['Pending', 'In Progress', 'On Hold'], search: r => [r.no, r.cust, ...(r.items || [r]).map(i => i.title), r.cats.join(' ')],
     dates: [['today', 'Due today', r => r.days === 0]],
     donut: { title: 'Due Today by Type', key: r => r.type, order: ['ECX', 'ECPAR', 'Site Survey', 'Report', 'Other'], colors: { ECX: '#3B82F6', ECPAR: '#E5484D', 'Site Survey': '#3FA45B', Report: '#A78BFA', Other: '#B4B2AD' } },
     bars: { title: 'Priority Breakdown', icon: 'barchart', key: r => r.priority || 'Not set', order: ['High', 'Medium', 'Low', 'Not set'], colors: { High: '#E5484D', Medium: '#E5A50A', Low: '#3FA45B', 'Not set': '#B4B2AD' } },
@@ -136,7 +148,7 @@ export function focusScreen(kind) {
   const all = def.records(n);
   // filters other than the tab: search, category, priority, status, date
   const q = S.q.trim().toLowerCase(), dateF = def.dates.find(d => d[0] === S.date);
-  const base = all.filter(r => (!q || def.search(r).filter(Boolean).join(' ').toLowerCase().includes(q)) && (!S.cat || r.cats.includes(S.cat)) && (!S.pri || (r.priority || 'Not set') === S.pri)
+  const base = all.filter(r => (!q || [...def.search(r), r.row ? E.custAddress(r.row) : ''].filter(Boolean).join(' ').toLowerCase().includes(q)) && (!S.cat || r.cats.includes(S.cat)) && (!S.pri || (r.priority || 'Not set') === S.pri)
     && (!S.status || r.status === S.status) && (!dateF || dateF[2](r)) && (!S.pf.length || S.pf.every(f => r.row && C.matches(DB.kpiDb(), r.row, f, n))));
   const tab = def.tabs.find(t => t[0] === S.tab) || def.tabs[0];
   const sorters = { due: (a, b) => (a.days ?? 99999) - (b.days ?? 99999), cust: (a, b) => a.cust.localeCompare(b.cust), pri: (a, b) => ({ High: 0, Medium: 1, Low: 2 }[a.priority] ?? 3) - ({ High: 0, Medium: 1, Low: 2 }[b.priority] ?? 3),
@@ -179,7 +191,7 @@ function tableCard(kind, def, S, base, rows, n) {
   const list = h('div', { class: 'flist', role: 'table', 'aria-label': def.title });
   const tabEls = def.tabs.map(([k, l, ic, f]) => h('button', { class: 'dchip' + (S.tab === k ? ' on' : ''), 'aria-pressed': S.tab === k ? 'true' : 'false', onclick: () => { S.tab = k; S.show = 60; render(); } }, ic ? icon(ic, 14) : null, l, h('span', { class: 'dcount' }, base.filter(f).length)));
   if (kind === 'ecpar') tabEls.push(h('button', { class: 'dchip ecarchip', onclick: () => go('#/ecpar-archive'), title: 'Every ECPAR rejection, by year, for the KPI review' }, icon('archive', 14), 'Archive'));
-  const search = textbox({ value: S.q, cls: 'hsearch-in', placeholder: { today: 'Search ECX, customer, task…', survey: 'Search project, customer or location…', ecpar: 'Search by ECPAR no., customer, reason…', ecx: 'Search ECX, customer, reason…' }[kind], label: 'Search',
+  const search = textbox({ value: S.q, cls: 'hsearch-in', placeholder: { today: 'Search ECX, customer, address…', survey: 'Search project, customer, address…', ecpar: 'Search ECPAR no., customer, address…', ecx: 'Search ECX, customer, address…' }[kind], label: 'Search',
     oninput: () => { S.q = search.value; clearTimeout(search._t); search._t = setTimeout(() => refreshInPlace(kind, search), 220); } });
   const active = [S.cat && ['Category: ' + short(S.cat), () => S.cat = ''], S.pri && ['Priority: ' + S.pri, () => S.pri = ''], S.status && ['Status: ' + S.status, () => S.status = ''],
     S.date && ['Date: ' + def.dates.find(d => d[0] === S.date)[1], () => S.date = ''], S.q && ['Search: ' + S.q, () => S.q = ''],
@@ -245,10 +257,11 @@ const dueCell = r => r.days == null ? muted('—') : h('span', { class: 'fdue' +
 const PAGE_COLS = {
   // the status column already says what is due (Site Survey, Estimation, Rejected…), so only the number is shown; a task you named keeps its name
   // no eCX & WBS No column here (it is a project property: show it from Properties if you want it)
-  today: { lead: [],
+  // Due item first: one project can have several things due today (the project itself and some of its tasks), so each row says which
+  today: { lead: [{ k: 'item', def: 'Due today', w: 170, fixed: true, cell: r => h('span', { class: 'fdues' }, (r.items || [r]).map(i => h('span', { class: 'fdue fdue-' + i.kind }, icon({ task: 'listcheck', survey: 'target', ecpar: 'ecpar', ecx: 'filex' }[i.kind] || 'folder', 14),
+        i.kind === 'task' ? linkedField(i.task, { key: 'name', label: 'Task' }) : h('span', {}, i.title || 'Project')))) }],
     tail: [{ k: 'pri', def: 'Priority', w: 96, cell: r => priPill(r.priority) }, { k: 'due', def: 'Due Date', w: 112, cell: dueCell },
-      { k: 'status', def: 'Status', w: 132, cell: r => h('span', { class: 'fstat' }, badge(r.status, { Pending: 'blue', 'In Progress': 'yellow', 'On Hold': 'orange', Completed: 'green' }[r.status]),
-        r.kind === 'task' ? h('small', { class: 'ftask' }, linkedField(r.task, { key: 'name', label: 'Task' })) : null) }] },
+      { k: 'status', def: 'Status', w: 132, cell: r => h('span', { class: 'fstat' }, badge(r.status, { Pending: 'blue', 'In Progress': 'yellow', 'On Hold': 'orange', Completed: 'green' }[r.status])) }] },
   survey: { lead: [],
     tail: [{ k: 'pri', def: 'Priority', w: 96, cell: r => priPill(r.priority) },
       { k: 'sdate', def: 'Site Survey Date', w: 112, cell: r => r.scheduled ? h('span', { class: r.status === 'Overdue' && r.sdays < 0 ? 'late' : '' }, dmy(r.scheduled)) : muted('—') },

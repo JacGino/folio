@@ -155,7 +155,19 @@ const vvSync = () => {
   document.documentElement.classList.toggle('kbup', kb > 120);
   const a = document.activeElement;
   if (kb > 120 && a && a.closest && a.closest('.sheet, .gmodal')) requestAnimationFrame(() => a.scrollIntoView({ block: 'nearest' }));
+  else if (kb > 120) requestAnimationFrame(() => revealFocused(v));
 };
+// a box you are typing in on the page itself (e.g. the Search box on Due Today / Projects) is scrolled into the part of the screen
+// the keyboard leaves visible: iOS does not scroll Folio's page area for you, so the box used to sit under the keyboard
+const scrollerOf = el => { for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) { const oy = getComputedStyle(p).overflowY; if ((oy === 'auto' || oy === 'scroll') && p.scrollHeight > p.clientHeight + 1) return p; } return document.scrollingElement; };
+export function revealFocused(v = window.visualViewport) {
+  const a = document.activeElement; if (!v || !a || !a.matches || !(a.isContentEditable || a.matches('input, textarea, select'))) return 0;
+  if (a.closest('.sheet, .gmodal, .cellpop, .menu')) return 0;
+  const r = a.getBoundingClientRect(), top = v.offsetTop + 12, bot = v.offsetTop + v.height - 16;
+  const d = r.bottom > bot ? Math.min(r.bottom - bot + 8, r.top - top) : r.top < top ? r.top - top - 8 : 0;
+  if (!d) return 0; const sc = scrollerOf(a); sc.scrollBy({ top: d }); return d;
+}
+if (typeof document !== 'undefined') document.addEventListener('focusin', () => { for (const t of [80, 350, 700]) setTimeout(() => { const v = window.visualViewport; if (v && innerHeight - v.height - v.offsetTop > 120) revealFocused(v); }, t); });
 if (typeof window !== 'undefined' && window.visualViewport) { visualViewport.addEventListener('resize', vvSync); visualViewport.addEventListener('scroll', vvSync); }
 export function sheet(title, body, { done = 'Done', onDone, wide = false, float = false } = {}) {
   vvSync();

@@ -187,7 +187,7 @@ export function yearMenuItems(n) {
 }
 const bucket = t => t.archived ? 'archived' : (t.finished || /^rejected$/i.test(String(t.status || '').trim())) ? 'completed' : 'progress';
 function searchText(t) {
-  return [t.title, t.ecx, DB.projectRef(t.row), ...E.ecxOf(t.id).map(x => [g(x, 'number'), g(x, 'appid')].join(' '))].join(' ').toLowerCase();
+  return [t.title, t.ecx, DB.projectRef(t.row), E.custAddress(t.row), ...E.ecxOf(t.id).map(x => [g(x, 'number'), g(x, 'appid')].join(' '))].join(' ').toLowerCase();
 }
 function projectList(n) {
   const dbr = DB.kpiDb(); if (!dbr) return [];
@@ -257,7 +257,7 @@ export function projectsScreen() {
     return r;
   }
 
-  const search = textbox({ value: pq, placeholder: 'Search customer, reference or ECX…', cls: 'hsearch-in', label: 'Search projects', oninput: () => { pq = search.value; pshow = 50; draw(); } });
+  const search = textbox({ value: pq, placeholder: 'Search customer, address, reference or ECX…', cls: 'hsearch-in', label: 'Search projects', oninput: () => { pq = search.value; pshow = 50; draw(); } });
   const cats = (P('Project Category')?.options || []).map(o => o.name), stats = (P('Status')?.options || []).map(o => o.name);
   const filterMenu = a => menu(a, [
     { el: h('div', { class: 'mhead' }, 'Category') }, { label: 'All categories', checked: !pcat, run: () => { pcat = ''; render(); } }, ...cats.map(c => ({ label: c, checked: pcat === c, run: () => { pcat = c; render(); } })), '-',

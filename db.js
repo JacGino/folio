@@ -81,13 +81,15 @@ export function matches(row, rule, dbr, now) {
   }
   return true;
 }
+// extra text a row is searchable by (set by entities.js: the address kept with the project's customer)
+let extraSearch = null; export const setExtraSearch = fn => { extraSearch = fn; };
 export function viewRows(dbr, view, { search = '', now = Date.now() } = {}) {
   let list = rows(dbr.id);
   const any = view.filterMode === 'or';
   if (view.filter?.length) list = list.filter(r => any ? view.filter.some(f => matches(r, f, dbr, now)) : view.filter.every(f => matches(r, f, dbr, now)));
   if (search) {
     const q = search.toLowerCase(); const ps = props(dbr);
-    list = list.filter(r => ps.some(p => display(r, p, now).toLowerCase().includes(q)) || commentsText(r.id).includes(q));
+    list = list.filter(r => ps.some(p => display(r, p, now).toLowerCase().includes(q)) || commentsText(r.id).includes(q) || (extraSearch && String(extraSearch(r) || '').toLowerCase().includes(q)));
   }
   const sorts = view.sort?.length ? view.sort : [];
   const ps = props(dbr);

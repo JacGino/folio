@@ -2502,3 +2502,25 @@ a.ulink { -webkit-touch-callout: none; -webkit-user-select: none; user-select: n
   .rhist { background: #3A2321 !important; border-color: #57312D !important; } .rhist .rr { border-top-color: #4F2E2A; }
   .rhist summary { color: #F4B8B1; } .rhist .rr.rhd { color: #E3A49C; }
 }
+/* keyboard up: extra room under the page so a search box near the bottom can still scroll up above the keyboard */
+html.kbup #main::after { content: ''; display: block; height: 45vh; }
+/* archived projects look the same as the others (no grey-out), so earlier projects are easy to find and read */
+.prow.arch { opacity: 1 !important; }
+/* Due Today: the "Due item" column (project, task, site survey, ECPAR…) */
+.fdue { display: inline-flex; align-items: flex-start; gap: 6px; min-width: 0; font-weight: 500; line-height: 1.3; overflow-wrap: anywhere; }
+.fdue > svg { flex: none; margin-top: 2px; color: var(--ink2); }
+.fdue-task > svg { color: #B4610F; } .fdue-survey > svg { color: #2F7A45; } .fdue-ecpar > svg, .fdue-ecx > svg { color: #C2443A; } .fdue-project > svg { color: #2F6497; }
+.fdues { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+
+/* PC / laptop (mouse or trackpad): no scroll boxes inside the page — lists and tables (Due Today, Site Survey, ECPAR, ECX, Home's project list,
+   timeline, KPI tables) grow with their content, so the wheel scrolls the page wherever the pointer is, not only over the scroll bar.
+   Wide tables still scroll sideways (Shift + wheel, or the trackpad). */
+@media (hover: hover) and (pointer: fine) {
+  .flist, .gantt, .dlist, .rjtbl, .hlist, .alist { max-height: none !important; overscroll-behavior: auto !important; }
+  .flist, .gantt { overflow-y: visible; }
+}
+/* Long Text: who releases the CDP, under (b) Cost of project without OH */
+.ltform .ltrel { grid-column: 1 / -1; display: flex; gap: 8px; align-items: flex-start; margin: -2px 0 4px; padding: 9px 12px; border-radius: 10px; background: #E4EEF8; color: #234B73; }
+.ltform .ltrel[hidden] { display: none; }
+.ltform .ltrel > span { display: flex; flex-direction: column; gap: 2px; min-width: 0; } .ltform .ltrel small { color: #4A6A8A; overflow-wrap: anywhere; }
+@media (prefers-color-scheme: dark) { .ltform .ltrel { background: #1F3042; color: #CFE2F5; } .ltform .ltrel small { color: #9DB8D2; } }

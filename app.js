@@ -703,6 +703,23 @@ export async function boot() {
   // (only for a Project Category change: other edits must not run the full check, which copies linked dates back onto the project)
   let catT = 0; D.onChange(info => { if (info.type !== 'update' || !info.fields || D.getRec(info.id)?.k !== 'row') return; const d = DB.kpiDb(), cp = d && DB.propByName(d, 'Project Category');
     if (cp && info.fields.includes('p:' + cp.id)) { clearTimeout(catT); catT = setTimeout(() => E.ensureAll(), 300); } });
+  // a project you reopen comes back out of the archive: Archive is unticked when its Status moves from Done to an open stage
+  // (Site Survey, Estimation, To Amend…) or a new, later Date Assigned is keyed in. Changes arriving by sync are left alone.
+  const snap = new Map(); const kp = () => { const d = DB.kpiDb(); return d && { d, st: DB.propByName(d, 'Status'), as: DB.propByName(d, 'Date Assigned'), ar: DB.propByName(d, 'Archive') }; };
+  const take = r => { const k = kp(); if (k && k.st && k.as) snap.set(r.id, { st: String(D.val(r, 'p:' + k.st.id) || ''), as: String(D.val(r, 'p:' + k.as.id) || '').slice(0, 10) }); };
+  const takeAll = () => { const k = kp(); if (k) for (const r of DB.rows(k.d.id)) take(r); };
+  takeAll();
+  D.onChange(info => {
+    if (info.type === 'sync' || info.type === 'wipe') return takeAll();
+    if (info.type === 'create') { const r = D.getRec(info.id); if (r && r.k === 'row') take(r); return; }
+    if (info.type !== 'update' || !info.fields) return; const r = D.getRec(info.id); if (!r || r.k !== 'row') return;
+    const k = kp(); if (!k || D.val(r, 'db') !== k.d.id || !k.ar) return;
+    const before = snap.get(r.id); take(r); const now_ = snap.get(r.id); if (!before || !now_) return;
+    if (!D.val(r, 'p:' + k.ar.id)) return;
+    const reopened = info.fields.includes('p:' + k.st.id) && /^(done|completed?)$/i.test(before.st) && now_.st && !/^(done|completed?|rejected)$/i.test(now_.st);
+    const newDate = info.fields.includes('p:' + k.as.id) && now_.as && now_.as > (before.as || '');
+    if (reopened || newDate) { D.update(r.id, { ['p:' + k.ar.id]: false }); E.log(r, 'Project', 'Taken out of the archive (' + (reopened ? 'Status changed to ' + now_.st : 'new Date Assigned') + ').'); toast('Taken out of the archive'); }
+  });
   D.onChange(info => { if (info.type === 'sync') { E.ensureAll(); if (editing()) { syncPending = true; setTimeout(flushSync, 1500); return; } }
     if (info.type === 'sync' || info.type === 'create' || info.type === 'delete' || info.type === 'wipe') render(); if (info.type !== 'sync') Sync.soon(); });
   Sync.onStatus(() => { renderSide(); loadFont(); });

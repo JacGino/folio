@@ -169,6 +169,7 @@ function splitCustomerIcs() {
   }
 }
 export const custAddress = (row, c = customerOf(row)) => (c && g(c, 'address')) || rowVal(row, 'Address') || '';
+DB.setExtraSearch(r => { try { return r && DB.kpiDb() && D.val(r, 'db') === DB.kpiDb().id ? custAddress(r) : ''; } catch { return ''; } });
 export const custMap = (row, c = customerOf(row)) => (c && g(c, 'map')) || rowVal(row, 'Pin Location') || '';
 
 // ---------------- tasks ----------------
