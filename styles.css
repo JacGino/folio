@@ -2552,3 +2552,15 @@ html.kbup #main::after { content: ''; display: block; height: 45vh; }
 .fimginner.zoomed > .fview-img { max-height: none; }
 .sheet.fviewfs .fimgwrap.pinch { max-height: none; flex: 1 1 auto; }
 .sheet.fviewfs .fimginner:not(.zoomed) > .fview-img { max-height: calc(100dvh - 190px); }
+
+/* Duo outer screen: the app now runs under the right status column (black-translucent).
+   Page content fills to the edge; only top-right controls step clear of the clock. */
+body[data-nav="bar"] #fnav .top { right: var(--sair, 0px); }
+.pdnav { padding-right: var(--sair, 0px); }
+.cover.pgcover .pgcover-a { right: max(var(--he), var(--sair, 0px)); }
+.sheet-back.float { padding-right: max(20px, var(--sair, 0px)); }
+/* Keep the clock zone clear on every Duo screen / orientation (black-translucent status) */
+body.on-home[data-layout="split"] #main > .wrap.home { padding-top: max(18px, calc(env(safe-area-inset-top) + 8px)) !important; }
+.hero .hero-a, .fhead .fhead-a, .cover.pgcover .pgcover-a { right: max(var(--he, 14px), calc(var(--sair, 0px) - 10px)) !important; }
+.hnav, .cover.pgcover .hnav { left: max(var(--he, 14px), calc(env(safe-area-inset-left) - 10px)) !important; }
+body[data-layout="split"][data-orient="landscape"] .home { padding-right: max(16px, 2.2vw) !important; }
