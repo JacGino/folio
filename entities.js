@@ -607,4 +607,17 @@ export function ensureAll() {
   try { singleCategory(); } catch (e) { console.error(e); }
   try { ensureStdTasks(); } catch (e) { console.error(e); }
   try { moveLoading(); } catch (e) { console.error(e); }
-  try { syncRefs(); } catch (e) { console.error(e); } }
+  try { syncRefs(); } catch (e) { console.error(e); }
+  try { ecparHistoryFix(); } catch (e) { console.error(e); } }
+/** an open ECPAR rejection (Pending Revision with a Rejection Date) is always in the revision history: added once if it is missing */
+function ecparHistoryFix() {
+  for (const e of D.all('ecpar', x => g(x, 'status') === 'Pending Revision' && g(x, 'rejected'))) {
+    const rj = g(e, 'rejected'); if (g(e, 'histfix') === rj) continue;
+    const row = D.live(D.val(e, 'project')); if (!row) continue;
+    if (!ecparLogs(row, 'rejected').some(a => sameDay(D.val(a, 'date'), rj))) {
+      const text = g(e, 'correction', '') || g(e, 'reason', ''), d = parseDate(rj);
+      log(row, 'ECPAR', 'ECPAR rejected.' + (text ? ' ' + text : ''), { ecpar: true, ev: 'rejected', date: rj, reason: text, correction: text, cat: g(e, 'rcat', ''), t: d ? d.getTime() + 12 * 3600e3 : Date.now() });
+    }
+    D.update(e.id, { 'p:histfix': rj });
+  }
+}

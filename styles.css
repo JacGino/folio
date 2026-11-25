@@ -2619,3 +2619,11 @@ html.kbup .sheet.ltfull { height: calc(var(--vvh, 100vh) * .96 / var(--zoom, 1))
   padding: max(12px, env(safe-area-inset-top)) max(20px, calc(env(safe-area-inset-right) + 12px)) calc(env(safe-area-inset-bottom) + 10px) max(20px, calc(env(safe-area-inset-left) + 12px)); }
 .sheet.ltfull .grab { display: none; }
 @media (min-width: 700px) { .sheet.ltfull { border-radius: 0; } }
+/* wide screens: each side scrolls on its own, so the form's scroll bar sits in the middle (at the form's edge) and the
+   right side's at the right edge */
+@media (min-width: 861px) {
+  .sheet.ltfull .sheet-body { overflow: hidden; display: flex; flex-direction: column; flex: 1 1 auto; }
+  .sheet.ltfull .ltwrap { flex: 1 1 auto; min-height: 0; height: 100%; align-items: stretch; }
+  .sheet.ltfull .ltform { min-height: 0; max-height: 100%; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; padding-right: 10px; align-content: start; }
+  .sheet.ltfull .ltout { position: static; min-height: 0; max-height: 100%; height: auto; }
+}

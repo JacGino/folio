@@ -81,10 +81,9 @@ export function digest(n = NOW()) {
   for (const t of DB.kpiTasks(n)) if (!t.amend && t.due && t.days != null && t.days >= 0 && t.days <= 7) { due.push({ ...line(t.row), due: toISODate(t.due) }); seen.add(t.row.id + toISODate(t.due)); }
   for (const t of E.dueTasks(n, { within: 7 })) if (t.days >= 0) { const iso = toISODate(new Date(new Date(n).setHours(12, 0, 0, 0) + t.days * 864e5)); if (!seen.has(t.row.id + iso)) { seen.add(t.row.id + iso); due.push({ ...line(t.row), due: iso }); } }
   const g = DB.ecparGroups(n), ecpar = [...g.overdue, ...g.today].map(t => line(t.row));
-  const ecxSeen = new Set(), ecx = E.rejectedEcx(n).filter(t => !ecxSeen.has(t.row.id) && ecxSeen.add(t.row.id)).map(t => line(t.row));
   const refs = {}; for (const row of DB.rows(d.id)) { const r = refOf(row, d); if (r) refs[norm(r)] = { ref: r, name: DB.title(row) }; }
   const by = (a, b) => (a.due || '').localeCompare(b.due || '') || a.ref.localeCompare(b.ref);
-  return { tz: 'Asia/Kuching', due: due.sort(by), ecx: ecx.sort(by), ecpar: ecpar.sort(by), refs };
+  return { tz: 'Asia/Kuching', due: due.sort(by), ecx: [], ecpar: ecpar.sort(by), refs }; // rejected ECX is not notified (left out on purpose)
 }
 /** save it when it changed (after each sync, on any device, once push is set up) */
 let hasConfig = null; // checked once per session: is push set up for this workspace?
