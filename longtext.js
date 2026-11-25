@@ -462,15 +462,13 @@ export function routeToCosting(f, t) {
 }
 
 // ---------- auto Short title (SAP: 40 characters, spaces included) ----------
-/** work code from the Connection Charge items: substation → SS, HT → HT, LT pole/line + service cable → LTSC, service cable only → SL, LT pole/line only → LT */
+/** work code from the Connection Charge items, joined in this order: HT (HT poles / lines, substation, RMU, transformer),
+ *  LT (LT poles / lines and LV equipment such as pillars), SL (service line, riser), SC (service cable) — e.g. LTSL, LTSC, HTLT */
 export function workCode(lines = []) {
   const has = fn => lines.some(fn), d = l => String(l.desc || l.spec || '');
-  const cable = l => l.comp === 'lt' && /service (line|cable)|belian riser/i.test(d(l)); // service line / service cable / riser
-  const line = l => l.comp === 'lt' && !cable(l) && !/street ?light/i.test(d(l)) && /pole|overhead line|underground cable|span/i.test(d(l)); // LT poles and lines
-  if (has(l => l.comp === 'substation')) return 'SS';
-  if (has(l => l.comp === 'ht' || l.comp === 'htexcess')) return 'HT';
-  const sc = has(cable), pole = has(line);
-  return sc && pole ? 'LTSC' : sc ? 'SL' : pole ? 'LT' : '';
+  const sl = l => l.comp === 'lt' && /service line|belian riser/i.test(d(l)), sc = l => l.comp === 'lt' && /service cable/i.test(d(l));
+  const ht = has(l => ['ht', 'htexcess', 'substation'].includes(l.comp)), lt = has(l => (l.comp === 'lt' && !sl(l) && !sc(l)) || l.comp === 'ltstreet');
+  return (ht ? 'HT' : '') + (lt ? 'LT' : '') + (has(sl) ? 'SL' : '') + (has(sc) ? 'SC' : '');
 }
 const HONOR = /^(EN|ENCIK|PUAN|PN|CIK|TUAN|MR|MRS|MS|MDM|DR|HJ|HAJI|HJH|HAJAH|DATO|DATUK|DATIN|TAN SRI|IR|SR)\.?$/i;
 /** first word of the (first) customer's name: 'ZULKIPLI BIN RAMBLI' → 'ZULKIPLI' */
@@ -503,9 +501,9 @@ export function autoShortTitle({ prefix = '', code = '', name = '', address = ''
   let words = join(0, 0, core).split(' '); while (words.length > 1 && words.join(' ').length > max) words.pop();
   return words.join(' ').slice(0, max);
 }
-/** BTU-C-LTSC TO <FULL NAME> AT <FULL ADDRESS> — no length limit; several applicants: the first name & n OTHERS */
-export function autoProjectTitle({ prefix = '', code = '', name = '', address = '' }) {
-  const ps = applicantsOf(name), who = (ps.length ? ps[0].name + ' & ' + (ps.length - 1) + ' OTHER' + (ps.length > 2 ? 'S' : '') : String(name).replace(/\s*\([^)]*\)\s*$/, '')).replace(/\s+/g, ' ').trim().toUpperCase();
+/** BTU-C-LTSC TO <FULL NAME> AT <FULL ADDRESS> — no length limit; a longhouse (several customers): TO 8 CUSTOMER OF LONGHOUSE AT <FULL ADDRESS> */
+export function autoProjectTitle({ prefix = '', code = '', name = '', address = '', units = 0 }) {
+  const ps = applicantsOf(name), who = (units > 1 ? units + ' CUSTOMER OF LONGHOUSE' : ps.length ? ps[0].name + ' & ' + (ps.length - 1) + ' OTHER' + (ps.length > 2 ? 'S' : '') : String(name).replace(/\s*\([^)]*\)\s*$/, '')).replace(/\s+/g, ' ').trim().toUpperCase();
   const addr = String(address).replace(/\s+/g, ' ').replace(/\s+,/g, ',').trim().toUpperCase();
   const head = prefix + (code ? (/-S[7F]$/.test(prefix) ? ' ' : '') + code : '');
   const tail = [code && who ? 'TO' : '', who, addr ? 'AT' : '', addr].filter(Boolean).join(' ');

@@ -455,12 +455,18 @@ function ltApplyPrefix(f, row, totals) {
 function ltAutoShort(f, row, info, res, totals) {
   const P = n => DB.propByName(DB.kpiDb(), n), at = String(f.title || '').toUpperCase().match(/\sAT\s+(.+)$/s);
   const address = (at && at[1]) || (P('Address') ? String(DB.value(row, P('Address')) || '') : '');
-  return autoShortTitle({ prefix: ltPrefix(f, row, totals), code: workCode(res.lines), name: firstName(E.splitNameIc(f.client || info.title).name || info.title), address, units: E.isMultiApplicant(info.title) ? applicantsOf(info.title).length : 0, station: P('Station') ? String(DB.value(row, P('Station')) || '') : '' }); // a longhouse: '8 EA LONGHOUSE … BTU'
+  return autoShortTitle({ prefix: ltPrefix(f, row, totals), code: workCode(res.lines), name: firstName(E.splitNameIc(f.client || info.title).name || info.title), address, units: ltUnits(info, row), station: P('Station') ? String(DB.value(row, P('Station')) || '') : '' }); // a longhouse: '8 EA LONGHOUSE … BTU'
+}
+/** a longhouse (several customers on one ECX): the total units from the calculator, else the number of applicants; 0 for one customer */
+function ltUnits(info, row) {
+  if (!E.isMultiApplicant(info.title)) return 0;
+  const u = Math.floor(+(work(row).inputs || {}).units || 0); // No of Unit (Overview / calculator)
+  return u > 1 ? u : applicantsOf(info.title).length;
 }
 /** the Project title Folio writes: front title + work code + TO + full name + AT + the project's full Address */
 function ltAutoTitle(f, row, info, res, totals) {
   const P = DB.propByName(DB.kpiDb(), 'Address'), address = P ? String(DB.value(row, P) || '') : '';
-  return autoProjectTitle({ prefix: ltPrefix(f, row, totals), code: workCode(res.lines), name: E.isMultiApplicant(info.title) ? info.title : (E.splitNameIc(f.client || info.title).name || info.title), address });
+  return autoProjectTitle({ prefix: ltPrefix(f, row, totals), code: workCode(res.lines), name: E.isMultiApplicant(info.title) ? info.title : (E.splitNameIc(f.client || info.title).name || info.title), address, units: ltUnits(info, row) });
 }
 function ltDefaults(row, info, w, res) {
   const c = E.customerOf(row), P = n => DB.propByName(DB.kpiDb(), n), pv = n => P(n) ? DB.value(row, P(n)) : '';
