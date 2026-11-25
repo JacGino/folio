@@ -13,6 +13,7 @@ import { initLock } from './lock.js';
 import { renderSearch } from './search.js';
 import { startNotifier } from './notify.js';
 import * as Inbox from './inbox.js';
+import * as Push from './push.js';
 import { initKeyboardBar } from './kbar.js';
 import { commentsScreen, calendarScreen, inboxScreen } from './hub.js';
 import * as E from './entities.js';
@@ -734,7 +735,7 @@ export async function boot() {
   initKeyboardBar();
   window.__folioStep = 'lock'; await initLock();
   // ECPAR rejection emails dropped in inbox/ by the iPhone shortcut are recorded after each sync
-  await Inbox.loadUnmatched().catch(() => {}); Sync.setInboxHook(Inbox.checkInbox);
+  await Inbox.loadUnmatched().catch(() => {}); Sync.setInboxHook(async () => { await Inbox.checkInbox(); await Push.writeDigest().catch(e => console.warn('digest', e)); });
   Inbox.onInbox(({ done }) => { if (done.length) toast((done.length === 1 ? 'ECPAR rejected (from email): ' : `${done.length} ECPAR rejections (from email): `) + done.join(', '), 5000); if (/^#\/ecpar\b/.test(location.hash) && !document.activeElement?.matches('input, textarea, select, [contenteditable="true"]')) render(); });
   window.__folioStep = 'sync'; await startupSync(); window.__folioStep = 'ready';
   startNotifier();

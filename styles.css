@@ -2588,3 +2588,11 @@ body[data-layout="split"][data-orient="landscape"] .home { padding-right: max(16
 .ewsheet .ewpaste { min-height: 160px; max-height: 40vh; overflow: auto; }
 .ewsheet .ewout { margin: 10px 0 14px; overflow-wrap: anywhere; }
 @media (prefers-color-scheme: dark) { .emailwait { background: #3A2422; } }
+/* Inbox: notifications when Folio is closed */
+.remind.pushrow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.remind.pushrow .pushlab { display: flex; align-items: center; gap: 12px; flex: 1 1 260px; min-width: 0; }
+.remind.pushrow .pushlab > span { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.remind.pushrow .pushhelp { font-size: calc(13px * var(--ts, 1)); }
+.pushsetup .pushkey { width: 100%; font-family: ui-monospace, Menlo, monospace; font-size: 13px; overflow-wrap: anywhere; margin: 6px 0 8px; }
+.pushsetup .pushsteps { padding-left: 20px; line-height: 1.55; } .pushsetup .pushsteps li { margin: 6px 0; overflow-wrap: anywhere; }
+.pushsetup p { margin: 6px 0 10px; }

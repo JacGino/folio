@@ -90,6 +90,13 @@ export async function inboxRead(path) {
   catch (e) { const b = await gh.getBytes(path).catch(() => null); return b ? new TextDecoder().decode(b) : null; } // not JSON: the text itself
 }
 export async function inboxDrop(path, sha) { if (gh) await gh.remove(path, sha); }
+// ---- push/ (repo root): notification settings, device addresses and the due-list for the GitHub notification job ----
+export async function rootGet(path) { if (!gh) return null; return gh.getJSON(path); } // { data, sha } or null
+export async function rootPut(path, data) {
+  if (!gh) throw new Error('Not connected to GitHub');
+  for (let i = 0; i < 3; i++) { const cur = await gh.getJSON(path).catch(() => null); try { return await gh.putJSON(path, data, cur && cur.sha); } catch (e) { if (!e.conflict || i === 2) throw e; } }
+}
+export async function rootRemove(path) { if (!gh) return; const cur = await gh.getJSON(path).catch(() => null); if (cur) await gh.remove(path, cur.sha); }
 
 let timer = null;
 export function soon(ms = 2500) { clearTimeout(timer); timer = setTimeout(run, ms); }

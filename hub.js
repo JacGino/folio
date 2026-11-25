@@ -2,7 +2,8 @@
 import * as D from './data.js';
 import * as DB from './db.js';
 import * as E from './entities.js';
-import { h, icon, logo, sanitize, strip } from './ui.js';
+import { h, icon, logo, sanitize, strip, sheet, toast } from './ui.js';
+import * as Push from './push.js';
 import { formatDate, toISODate } from './dates.js';
 import { state, openTask, now, render, download, elabel, moreMenu } from './app.js';
 import { head as coverHead, pageHead } from './views.js';
@@ -87,7 +88,8 @@ export function inboxScreen() {
   const sw = h('input', { type: 'checkbox', class: 'switch', role: 'switch', 'aria-label': 'Reminder at 08:00', onchange: async e => { const ok = await setReminder(e.target.checked); e.target.checked = !!ok; } });
   reminderOn().then(v => { sw.checked = v; });
   return h('div', { class: 'wrap home' }, head('Inbox', 'Overdue, due today and due tomorrow', 'inbox'),
-    h('label', { class: 'remind' }, icon('today', 20), h('span', {}, h('b', {}, 'Reminder at 08:00'), h('small', {}, 'Every morning: overdue, due today and due tomorrow tasks')), sw),
+    pushRow(),
+    h('label', { class: 'remind' }, icon('today', 20), h('span', {}, h('b', {}, 'Reminder at 08:00 (while Folio is open)'), h('small', {}, 'Off when push notifications are on, so you do not get it twice')), sw),
     groups.map(([label, test, c]) => { const list = tasks.filter(test); return list.length ? [h('div', { class: 'inboxh ' + c }, label),
       h('div', { class: 'hublist' }, list.map(t => h('button', { class: 'hubitem', onclick: () => openTask(t.id) },
         h('span', { class: 'hi-dot ' + c }), h('span', { class: 'hi-body' }, h('span', { class: 'hi-top' }, h('b', {}, t.title), h('small', {}, formatDate(t.due, 'DD/MM/YYYY'))), h('span', { class: 'hi-text' }, msg(t))))))] : []; }),
@@ -105,4 +107,45 @@ function icsFor(tasks) {
     `SUMMARY:${esc((t.amend ? 'ECPAR amendment: ' : 'Due: ') + t.title)}`, `DESCRIPTION:${esc([t.ecx && 'Reference No (ECX No): ' + t.ecx, t.address, t.status && 'Status: ' + t.status].filter(Boolean).join('\n'))}`,
     t.address ? `LOCATION:${esc(t.address)}` : null, 'END:VEVENT'].filter(Boolean).join('\r\n');
   return ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Folio//EN', 'X-WR-CALNAME:Folio', ...tasks.map(ev), 'END:VCALENDAR'].join('\r\n');
+}
+
+// ---------- push notifications, even when Folio is closed (sent by the GitHub job in folio-data) ----------
+function pushRow() {
+  const sw = h('input', { type: 'checkbox', class: 'switch', role: 'switch', 'aria-label': 'Notifications when Folio is closed', onchange: async e => {
+    const on = e.target.checked; e.target.disabled = true;
+    try { if (on) { await Push.enablePush(); toast('Notifications are on for this ' + (/iPhone|iPad/.test(navigator.userAgent) ? 'device' : 'computer') + '.'); } else { await Push.disablePush(); toast('Notifications are off for this device.'); } }
+    catch (err) { e.target.checked = false; if (err.message === 'nokeys') pushSetup(); else toast(err.message || String(err), 6000); }
+    finally { e.target.disabled = false; render(); } } });
+  Push.pushOn().then(v => { sw.checked = v; });
+  return h('div', { class: 'remind pushrow' }, h('label', { class: 'pushlab' }, icon('bell', 20),
+    h('span', {}, h('b', {}, 'Notifications when Folio is closed'), h('small', {}, '08:00 summary of overdue and due-today work, and ECPAR rejection emails as they arrive')), sw),
+    h('button', { class: 'link pushhelp', onclick: () => pushSetup(true) }, 'Setup on GitHub'));
+}
+/** one-time setup: make the keys, then save the private one as a GitHub secret (Folio does not keep it) */
+function pushSetup(help = false) {
+  const body = h('div', { class: 'pushsetup' });
+  const s = sheet('Set up notifications', body, { done: 'Close', float: 'lg' });
+  const steps = key => h('ol', { class: 'pushsteps' },
+    h('li', {}, 'On github.com open ', h('b', {}, 'JacGino/folio-data'), ' → ', h('b', {}, 'Settings'), ' → ', h('b', {}, 'Secrets and variables'), ' → ', h('b', {}, 'Actions'), ' → ', h('b', {}, 'New repository secret'), '.'),
+    h('li', {}, 'Name: ', h('code', {}, 'VAPID_PRIVATE_KEY'), '. Secret: paste the key', key ? ' below' : ' you copied when the keys were made', '. Save.'),
+    h('li', {}, 'Upload the two notification files (folio-notify.yml and folio-notify.mjs) as described in the setup note.'),
+    h('li', {}, 'Back here, turn on ', h('b', {}, 'Notifications when Folio is closed'), ' on each device (iPhone and iPad: from the Home Screen icon).'));
+  const show = async () => {
+    const cfg = await Push.config().catch(() => null);
+    if (cfg && help) { body.replaceChildren(h('p', {}, 'The keys are made. If the GitHub secret is not saved yet:'), steps(false),
+      h('p', { class: 'muted' }, 'Lost the private key? Make new keys — then save the new secret and turn notifications on again on each device.'),
+      h('button', { class: 'btn block', onclick: make }, 'Make new keys')); return; }
+    if (cfg) { s.close(); return; }
+    body.replaceChildren(h('p', {}, 'First, Folio makes a pair of keys. The private key is shown once — you save it in your folio-data repo as a secret, so only the GitHub job can send to your devices.'),
+      h('button', { class: 'btn primary block', onclick: make }, 'Make keys'));
+  };
+  const make = async () => {
+    try {
+      const k = await Push.setupKeys(); const box = h('textarea', { class: 'field pushkey', readonly: true, rows: 2 }); box.value = k.privateKey;
+      body.replaceChildren(h('p', {}, h('b', {}, 'Private key — copy it now. '), 'Folio does not keep it.'), box,
+        h('button', { class: 'btn block', onclick: async () => { try { await navigator.clipboard.writeText(k.privateKey); toast('Key copied.'); } catch { box.select(); toast('Select the key and copy it.'); } } }, 'Copy key'),
+        steps(true));
+    } catch (e) { toast(e.message || String(e), 6000); }
+  };
+  show();
 }
