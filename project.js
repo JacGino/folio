@@ -8,7 +8,7 @@ import { formatDate, toISODate, parseDate, dateAdd, startOfDay } from './dates.j
 import { state, now as NOW, render, go, moreMenu, elabel, longPress, rowActions, browserUrl, exportList } from './app.js';
 import { popEdit, editInline } from './popedit.js';
 import { propEditor } from './page.js';
-import { ccTab, ccEligible, appliedOf, setApplied, unitsOf, setUnits } from './cc.js';
+import { ccTab, appliedOf, setApplied, unitsOf, setUnits } from './cc.js';
 import { applicantsOf, NTK_TYPES } from './longtext.js';
 import * as C from './cols.js';
 import { viewTabs, head as coverHead } from './views.js';
@@ -351,7 +351,7 @@ export function projectScreen(id, tab = 'overview') {
   const dueDate = info.amend && info.due ? info.due : info.kpiDue || DB.value(row, P('Due Date')), dueDays = dueDate ? Math.round((startOfDay(dueDate) - startOfDay(new Date(n))) / 864e5) : null;
   const tasks = E.tasksOf(row.id), xs = E.ecxOf(row.id), pct = E.progress(row, info), kd = E.kpiDays(info, n);
   const TABS = [['overview', 'Overview', 'home'], ['tasks', 'Tasks', 'listcheck', tasks.filter(E.taskOpen).length], ...(E.needsSurvey(info.category) ? [['survey', 'Site Survey', 'target']] : []),
-    ...(rep ? [] : [['ecpar', 'ECPAR', 'ecpar']]), ...(ccEligible(info.category) ? [['cc', 'Connection Charge', 'table']] : []), ['ecx', 'ECX', 'filex', xs.length], ['docs', 'Documents', 'clip'], ['log', 'Activity Log', 'history']];
+    ...(rep ? [] : [['ecpar', 'ECPAR', 'ecpar']]), ['cc', 'Connection Charge', 'table'], /* always shown, whatever the Project Category (or none yet) */ ['ecx', 'ECX', 'filex', xs.length], ['docs', 'Documents', 'clip'], ['log', 'Activity Log', 'history']];
   if (!TABS.some(t => t[0] === tab)) tab = 'overview';
   state.ctx = { export: a => exportList('today', a), more: a => projectMenu(a, row) };
   const ref = DB.projectRef(row);

@@ -9,7 +9,7 @@ import { popEdit, editInline } from './popedit.js';
 import { formatDate } from './dates.js';
 import { render, now as NOW, download, L as LBL } from './app.js';
 import { guessSide } from './checklists.js';
-import { longText, layoutFor, NTK_TYPES, ntkTypeFor, extras as extrasOf, LAYOUTS, RM as RMS, applicantsOf } from './longtext.js';
+import { longText, sourceOfFund, routeToCosting, layoutFor, NTK_TYPES, ntkTypeFor, extras as extrasOf, LAYOUTS, RM as RMS, applicantsOf } from './longtext.js';
 import { badge, optPill } from './project.js';
 import { GUIDELINE, RATE, PREMISES, PREMISE, COMPONENTS, TABLE51_NOTES } from './ccrates.js';
 import { CATS, SCOPES, METHODS, ELIGIBLE_PROJECT_CATS, methodology, calculate, contributionEligible, itemsFor, upgradeMin, serviceCableSplit, perCircuit, snapshot, rm } from './ccengine.js';
@@ -431,6 +431,26 @@ function isResidential(row) {
   if (t) return /domestic|residential/i.test(t);
   return guessSide(c ? g(c, 'premise', '') : '', '') === 'residential';
 }
+/** the front title of the Long Text: Residential BTU-D-SF (100% subsidy) / BTU-D-S7 (70% subsidy) / BTU-D- (normal); Commercial BTU-C- */
+export function ltPrefix(f, row, totals) {
+  let res;
+  const a = String(f.appType || '');
+  if (f.layout === 'ntk') res = (NTK_TYPES[f.ntkType] || {}) === NTK_TYPES.residential;
+  else res = /commercial|industrial|\bc1\b/i.test(a) ? false : /domestic|residential/i.test(a) || f.layout === 'subsidy' ? true : isResidential(row);
+  if (!res) return 'BTU-C-';
+  const pct = f.layout === 'subsidy' ? +(totals && totals.pct) || 0 : 0;
+  return pct === 100 ? 'BTU-D-SF' : pct === 70 ? 'BTU-D-S7' : 'BTU-D-';
+}
+const PREFIX_RE = /^\s*BTU-[A-Z]-[A-Z0-9]*\s*/i;
+/** put (or swap) the front title at the start of Short title and Project title; true when something changed */
+function ltApplyPrefix(f, row, totals) {
+  const pre = ltPrefix(f, row, totals); let changed = false;
+  for (const k of ['shortTitle', 'title']) {
+    const cur = String(f[k] ?? ''), rest = cur.replace(PREFIX_RE, ''), want = pre + ' ' + rest;
+    if (cur !== want && !(cur === pre && !rest)) { f[k] = want; changed = true; }
+  }
+  return changed;
+}
 function ltDefaults(row, info, w, res) {
   const c = E.customerOf(row), P = n => DB.propByName(DB.kpiDb(), n), pv = n => P(n) ? DB.value(row, P(n)) : '';
   const ecx = E.ecxOf(row.id)[0], tariff = c && g(c, 'tariff'), sub = c && g(c, 'subsidy');
@@ -480,25 +500,28 @@ function longTextSheet(row, info, w) {
   { const wk = E.workOf(row), tf = wk ? E.g(wk, 'findings', '') : ''; if (tf) f.scheme = tf; else if (f.scheme) D.update(E.work(row).id, { 'p:findings': f.scheme }); }
   if (single) { const s1 = E.splitNameIc(f.client); f.client = s1.name; const ov = E.custIc(ltCust); if (ov) f.ic = ov; else if (f.ic && ltCust) E.setCustomerIc(ltCust, f.ic); else if (s1.ic) f.ic = s1.ic; }
   const pre = h('textarea', { class: 'field ltpre', rows: 18, spellcheck: 'false', 'aria-label': 'Long text preview' });
-  const warn = h('div', { class: 'ltwarn' }), sums = h('div', { class: 'ltsum' });
+  const warn = h('div', { class: 'ltwarn' }), sums = h('div', { class: 'ltsum' }), sof = h('div', { class: 'ltsof', role: 'status' }), route = h('div', { class: 'ltsof ltroute', role: 'status' });
   let edited = false;
   pre.addEventListener('input', () => { edited = true; });
-  const relNote = h('p', { class: 'ccinfo ltrel', hidden: true, role: 'status' });
+  const relNote = h('div', { class: 'ltsof ltrel', role: 'status' }); // 3) Approval / Release by, under Route to Regional Costing
   const draw = () => {
     f.noRyb = w.inputs.scope === 'ltnew'; // new substation / HT extension: no R / Y / B readings
-    res = calculate(w); const out = longText(f, res);
+    res = calculate(w); let out = longText(f, res);
+    if (ltApplyPrefix(f, row, out.totals)) { out = longText(f, res); syncPrefixInputs(); }
     if (!edited) pre.value = out.text;
     const t = out.totals;
     const subs = f.layout === 'subsidy' || !f.layout;
     sums.replaceChildren(...[[f.layout === 'tk2' ? 'Material price' : 'Connection cost (c)', f.layout === 'tk2' ? t.mat : t.c], ...(f.layout === 'tk2' ? [['Administration fee', t.adm]] : []), ['Capacity charge', t.d], ['Meter fee', t.e], ['Total (without SST)', t.total], ['CDP to seek', t.cdpSeek],
-      ...(subs ? [[t.pct ? `Government subsidy ${t.pct}%` : 'Government subsidy', t.gov], ['Customer', t.cust]] : [['Total with SST', t.h]])]
+      ...(subs ? [[t.pct ? `Government subsidy ${t.pct}%` : 'Government subsidy', t.gov], ['Customer', t.cust]] : [['Total with SST', t.h], [f.layout === 'ntk' && f.ntkType === 'bda' ? 'BDA Service Order' : f.layout === 'ntk' && /^jkr/.test(f.ntkType || '') ? 'JKR Service Order' : 'Customer', t.h]])] // the customer's contribution: the total cost when there is no subsidy
       .map(([k, v]) => h('span', {}, h('small', {}, k), h('b', {}, RMS(v)))));
+    { const so = sourceOfFund(f, t); sof.replaceChildren(h('small', {}, '1) Source of Fund (SOF)'), h('b', {}, so.text), h('span', {}, so.group + (so.cdp ? ' · with CDP ' + RMS(t.cdpSeek) : ''))); }
+    route.replaceChildren(h('small', {}, '2) Route to Regional Costing'), h('b', {}, routeToCosting(f, t)));
     warn.replaceChildren(...out.warnings.map(x => h('p', { class: 'ccinfo amber' }, icon('info', 14), x)));
     // who releases the CDP (partially customer funded): (b) up to RM25,000 → Manager (Theresa); above RM25,000 → Regional Manager (Hung)
     { const b = +String(f.costNoOH ?? '').replace(/rm|,|\s/gi, ''), has = String(f.costNoOH ?? '').trim() !== '' && isFinite(b) && b > 0 && t.cdpSeek > 0.004;
-      relNote.hidden = !has;
-      if (has) relNote.replaceChildren(icon('person', 15), h('span', {}, h('b', {}, 'Release: ' + (b <= 25000 ? 'Manager (Theresa)' : 'Regional Manager (Hung)')),
-        h('small', {}, `Cost of project without OH ${RMS(b)} ${b <= 25000 ? '≤' : '>'} RM25,000 with CDP ${RMS(t.cdpSeek)} (partially customer funded)`))); }
+      relNote.replaceChildren(h('small', {}, '3) Approval / Release by'),
+        h('b', {}, has ? (b <= 25000 ? 'Manager (Theresa)' : 'Regional Manager (Hung)') : !(String(f.costNoOH ?? '').trim() !== '' && isFinite(b) && b > 0) ? 'Enter (b) Cost of project without OH' : 'No CDP to seek'),
+        ...(has ? [h('span', {}, `Cost of project without OH ${RMS(b)} ${b <= 25000 ? '≤' : '>'} RM25,000 with CDP ${RMS(t.cdpSeek)} (partially customer funded)`)] : [])); }
     // ECPAR Budget Amount follows CDP to seek (once (b) Total cost of project is filled in, so CDP is a real figure)
     if (String(f.costNoOH ?? '').trim() !== '' && isFinite(+String(f.costNoOH).replace(/,/g, ''))) {
       const ep = E.ecpar(row), cur = E.g(ep, 'budget');
@@ -517,12 +540,16 @@ function longTextSheet(row, info, w) {
   const only = (layouts, ...els) => els.map(el => { el.dataset.only = layouts; return el; });
   const vis = () => body.querySelectorAll('[data-only]').forEach(el => { el.hidden = !el.dataset.only.split(' ').includes(f.layout); });
   const txt = () => pre.value.replace(/\r?\n/g, '\r\n');
+  // the BTU-… front title was set from the project type / subsidy: show it in the Short title and Project title boxes
+  const syncPrefixInputs = () => { for (const k of ['shortTitle', 'title']) { let el = null; try { el = body.querySelector(`[data-k="${k}"] .field`); } catch { return; } if (!el || el.value === (f[k] ?? '')) continue;
+    const focused = document.activeElement === el, pos = focused ? el.selectionStart : 0, delta = String(f[k] ?? '').length - el.value.length;
+    el.value = f[k] ?? ''; if (focused) { const q = Math.max(0, pos + delta); try { el.setSelectionRange(q, q); } catch {} } } };
   const name = () => (String(f.shortTitle || f.ref || info.title).replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'Connection charge') + ' Long Text.txt';
   const body = h('div', { class: 'ltwrap' },
     h('div', { class: 'ltform' },
       h('label', { class: 'ltf wide ltlayout' }, h('span', {}, 'Layout (from the project category)'), h('select', { class: 'field', 'aria-label': 'Layout', onchange: e => { f.layout = e.target.value; touch(w); edited = false; vis(); draw(); } },
         Object.entries(LAYOUTS).map(([k, l]) => h('option', { value: k, selected: f.layout === k ? true : null }, l)))),
-      h('h4', {}, 'Project'), inp('shortTitle', 'Short title', { wide: true, ph: 'e.g. BTU-D-SF SL TO AISYAH AT KG PENAN MUSLIM' }), inp('ref', 'REF. NO (ECX)'), inp('projectRef', 'Project ref'),
+      h('h4', {}, 'Project'), inp('shortTitle', 'Short title', { wide: true }), inp('ref', 'REF. NO (ECX)'), inp('projectRef', 'Project ref'),
       inp('title', 'Project title', { wide: true, area: true, rows: 2 }), inp('consultant', 'Consultant / contractor'), inp('client', 'Developer / client'), single ? inp('ic', 'IC / company no.') : null, inp('contact', 'Contact number'),
       ...only('ntk', h('label', { class: 'ltf wide' }, h('span', {}, 'NTK application type (who pays)'), h('select', { class: 'field', 'aria-label': 'NTK application type', onchange: e => {
         const t = NTK_TYPES[e.target.value]; f.ntkType = e.target.value; D.update(row.id, { ntkType: e.target.value, ntkSub: { bda: 'BDA', jkrs: 'JKR', jkrf: 'JKR', commercial: 'Commercial', mixed: 'Commercial & Residential', residential: 'Residential' }[e.target.value] }); // the NTK sub-category follows f.appType = t.appType; f.sst = f.sstExempt && e.target.value !== 'residential' ? '0' : t.sst; touch(w); edited = false;
@@ -534,7 +561,7 @@ function longTextSheet(row, info, w) {
         const b = body.querySelector('.ltform label[data-k="sst"] input'); if (b) b.value = f.sst; draw(); } }), h('span', {}, 'SST relief letter attached (0% SST, Section 34)'))),
       h('h4', {}, 'Application'), inp('appType', 'Type of application', { list: ['Domestic', 'Commercial', 'Commercial + Residential', 'Commercial 1 (C1)', 'Industrial'] }), inp('load', 'Estimated connected load (kVA)', { num: true }),
       inp('target', 'Target date of supply'), inp('cat', 'Category'), inp('use', 'Type of use', { ph: 'e.g. DWELLING' }), inp('scheme', 'Scheme of supply', { wide: true, area: true, rows: 7 }),
-      h('h4', {}, 'Costs & funding'), inp('costOH', '(a) Cost of project with OH (RM)', { money: true }), inp('costNoOH', '(b) Cost of project without OH (RM)', { money: true }), relNote, inp('sst', 'SST %', { num: true }),
+      h('h4', {}, 'Costs & funding'), inp('costOH', '(a) Cost of project with OH (RM)', { money: true }), inp('costNoOH', '(b) Cost of project without OH (RM)', { money: true }), inp('sst', 'SST %', { num: true }),
       ...only('subsidy', inp('subsidy', 'Government subsidy (Domestic only)', { opts: [['auto', 'By amount (≤ RM5,000 100% · ≤ RM10,000 70%)'], ['100', '100%'], ['70', '70%'], ['none', 'No subsidy']] }), inp('subsidyBV', 'Subsidy BV no.')),
       inp('cdpBV', 'CDP BV no.'),
       ...only('uos', inp('existing', 'Existing / minimum assigned load (kVA)', { num: true }), inp('existingLabel', 'Wording for the existing load', { wide: true, ph: 'Minimum assigned load (Terrace/Quadrant house up to 3-storey)' })),
@@ -543,7 +570,7 @@ function longTextSheet(row, info, w) {
         inp('bondTrafoYears', 'Transformer bond valid for'), inp('bondOtherYears', 'Other installation bond valid for')),
       h('h4', {}, 'Source of supply'), inp('source', 'Existing substation', { ph: 'e.g. P/M KG PENAN MUSLIM 2 11KV S/S (DS71115)' }), inp('scada', 'SCADA loading', { ph: 'e.g. KIDJUN 33/11KV : 26/5/2026' }), inp('feeder', 'Feeder'), ...(w.inputs.scope === 'ltnew' ? [] : [inp('r', 'R (A)', { num: true }), inp('y', 'Y (A)', { num: true }), inp('b', 'B (A)', { num: true })]),
       h('h4', {}, 'Submission'), inp('submittedBy', 'Submitted by'), inp('date', 'Date of submission'), inp('remarks', 'Remarks (blank = automatic)', { wide: true })),
-    h('div', { class: 'ltout' }, sums, warn, h('div', { class: 'lthead' }, h('b', {}, 'Preview'), h('small', {}, 'You can edit the text here before saving. Changing a field above rebuilds it.')), pre,
+    h('div', { class: 'ltout' }, sums, sof, route, relNote, warn, h('div', { class: 'lthead' }, h('b', {}, 'Preview'), h('small', {}, 'You can edit the text here before saving. Changing a field above rebuilds it.')), pre,
       h('div', { class: 'ccsave' },
         h('button', { class: 'ccbtn', onclick: () => { navigator.clipboard.writeText(txt()).then(() => toast('Copied'), () => toast('Could not copy')); } }, icon('pages', 17), h('span', {}, 'Copy')),
         navigator.share ? h('button', { class: 'ccbtn', onclick: () => { const file = new File([txt()], name(), { type: 'text/plain' }); (navigator.canShare && navigator.canShare({ files: [file] }) ? navigator.share({ files: [file], title: name() }) : navigator.share({ title: name(), text: txt() })).catch(() => {}); } }, icon('export', 17), h('span', {}, 'Share')) : null,

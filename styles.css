@@ -2564,3 +2564,18 @@ body.on-home[data-layout="split"] #main > .wrap.home { padding-top: max(18px, ca
 .hero .hero-a, .fhead .fhead-a, .cover.pgcover .pgcover-a { right: max(var(--he, 14px), calc(var(--sair, 0px) - 10px)) !important; }
 .hnav, .cover.pgcover .hnav { left: max(var(--he, 14px), calc(env(safe-area-inset-left) - 10px)) !important; }
 body[data-layout="split"][data-orient="landscape"] .home { padding-right: max(16px, 2.2vw) !important; }
+/* Long Text: Source of Fund (SOF) under the totals */
+.ltsof { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; padding: 9px 12px; border-radius: 10px; background: color-mix(in srgb, var(--btn, #6b4f3a) 10%, var(--card, #fff)); }
+.ltsof small { font-size: calc(11.5px * var(--ts, 1)); color: var(--ink2); }
+.ltsof b { font-size: calc(15px * var(--ts, 1)); }
+.ltsof span { font-size: calc(12px * var(--ts, 1)); color: var(--ink2); }
+/* the three funding boxes under the Long Text totals, each its own colour */
+.ltout .ltsof:not(.ltroute):not(.ltrel) { background: #E3F1E6; color: #1F4D2B; }
+.ltout .ltroute { background: #F6ECD9; color: #5C4216; }
+.ltout .ltrel { background: #E4EEF8; color: #234B73; }
+.ltout .ltsof small, .ltout .ltsof span { color: inherit; opacity: .78; }
+@media (prefers-color-scheme: dark) {
+  .ltout .ltsof:not(.ltroute):not(.ltrel) { background: #1E3324; color: #CDEBD5; }
+  .ltout .ltroute { background: #3A2F1C; color: #F1DDB8; }
+  .ltout .ltrel { background: #1F3042; color: #CFE2F5; }
+}

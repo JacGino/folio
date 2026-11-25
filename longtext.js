@@ -436,3 +436,27 @@ export function longText(f, res) {
     default: return subsidyText(f, res);
   }
 }
+
+/** Source of Fund (SOF) from the charges: who pays, by project type, with Self added when there is CDP to seek.
+ *  A normal / NTK / UOS / TOS: Self + Customer · B subsidy 100%: State Grant + Self · C subsidy 70%: Self + State Grant + Customer
+ *  D Turnkey: Customer + Self · E BDA and F JKR Sarawak: State Grant + Self · G JKR Federal: Federal Grant + Self */
+export function sourceOfFund(f, t) {
+  const cdp = (+(t && t.cdpSeek) || 0) > 0.004, pct = f.layout === 'subsidy' ? +(t && t.pct) || 0 : 0, nt = f.layout === 'ntk' ? f.ntkType : '';
+  let group, base, withCdp;
+  if (pct === 100) { group = 'Subsidy 100%'; base = ['State Grant']; withCdp = ['State Grant', 'Self']; }
+  else if (pct === 70) { group = 'Subsidy 70%'; base = ['State Grant', 'Customer']; withCdp = ['Self', 'State Grant', 'Customer']; }
+  else if (f.layout === 'tk2') { group = 'Turnkey'; base = ['Customer']; withCdp = ['Customer', 'Self']; }
+  else if (nt === 'bda') { group = 'BDA'; base = ['State Grant']; withCdp = ['State Grant', 'Self']; }
+  else if (nt === 'jkrs') { group = 'JKR Sarawak'; base = ['State Grant']; withCdp = ['State Grant', 'Self']; }
+  else if (nt === 'jkrf') { group = 'JKR Federal'; base = ['Federal Grant']; withCdp = ['Federal Grant', 'Self']; }
+  else { group = f.layout === 'ntk' ? 'NTK' : f.layout === 'uos' ? 'UOS' : f.layout === 'tos' ? 'TOS' : 'Normal project'; base = ['Customer']; withCdp = ['Self', 'Customer']; }
+  return { group, cdp, text: (cdp ? withCdp : base).join(' + ') };
+}
+
+/** Route to Regional Costing: a project the customer pays for goes as a Normal CC Bill; one without customer payment
+ *  (subsidy 100%, BDA / JKR service orders) goes as SDEC / Service Order / etc. A label only: no bill tracking. */
+export function routeToCosting(f, t) {
+  const so = f.layout === 'ntk' && /^(bda|jkrs|jkrf)$/.test(f.ntkType || '');
+  const pays = !so && /\bCustomer\b/.test(sourceOfFund(f, t).text);
+  return pays ? 'Customer Payment (Normal CC Bill)' : 'Customer Payment (SDEC/Service Order/etc.)';
+}
