@@ -2596,3 +2596,10 @@ body[data-layout="split"][data-orient="landscape"] .home { padding-right: max(16
 .pushsetup .pushkey { width: 100%; font-family: ui-monospace, Menlo, monospace; font-size: 13px; overflow-wrap: anywhere; margin: 6px 0 8px; }
 .pushsetup .pushsteps { padding-left: 20px; line-height: 1.55; } .pushsetup .pushsteps li { margin: 6px 0; overflow-wrap: anywhere; }
 .pushsetup p { margin: 6px 0 10px; }
+.remind.pushrow .pushtests { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; width: 100%; padding-left: 32px; }
+/* Long Text: uses the whole screen; the preview shows all its text (the page scrolls, not a box inside it) */
+.sheet.ltfull { max-width: none; width: calc(100% - 16px); height: calc(100dvh - max(16px, env(safe-area-inset-top)) - 8px); max-height: none; }
+@media (max-width: 699px) { .sheet.ltfull { width: 100%; height: calc(100dvh - max(10px, env(safe-area-inset-top))); } }
+html.kbup .sheet.ltfull { height: calc(var(--vvh, 100vh) * .96 / var(--zoom, 1)); }
+.sheet.ltfull .sheet-body { flex: 1 1 auto; }
+.sheet.ltfull .ltpre { min-height: 360px; overflow: hidden; resize: none; white-space: pre-wrap; overflow-wrap: anywhere; -webkit-user-select: text; user-select: text; }

@@ -500,6 +500,9 @@ function longTextSheet(row, info, w) {
   { const wk = E.workOf(row), tf = wk ? E.g(wk, 'findings', '') : ''; if (tf) f.scheme = tf; else if (f.scheme) D.update(E.work(row).id, { 'p:findings': f.scheme }); }
   if (single) { const s1 = E.splitNameIc(f.client); f.client = s1.name; const ov = E.custIc(ltCust); if (ov) f.ic = ov; else if (f.ic && ltCust) E.setCustomerIc(ltCust, f.ic); else if (s1.ic) f.ic = s1.ic; }
   const pre = h('textarea', { class: 'field ltpre', rows: 18, spellcheck: 'false', 'aria-label': 'Long text preview' });
+  // the preview grows to fit its text, so the page scrolls (not a small box inside it): easy to read, select and copy on a phone
+  const fitPre = () => requestAnimationFrame(() => { if (!pre.isConnected) return; const y = pre.closest('.sheet-body')?.scrollTop; pre.style.height = 'auto'; pre.style.height = (pre.scrollHeight + 4) + 'px'; const b = pre.closest('.sheet-body'); if (b && y != null) b.scrollTop = y; });
+  pre.addEventListener('input', fitPre);
   const warn = h('div', { class: 'ltwarn' }), sums = h('div', { class: 'ltsum' }), sof = h('div', { class: 'ltsof', role: 'status' }), route = h('div', { class: 'ltsof ltroute', role: 'status' });
   let edited = false;
   pre.addEventListener('input', () => { edited = true; });
@@ -509,6 +512,7 @@ function longTextSheet(row, info, w) {
     res = calculate(w); let out = longText(f, res);
     if (ltApplyPrefix(f, row, out.totals)) { out = longText(f, res); syncPrefixInputs(); }
     if (!edited) pre.value = out.text;
+    fitPre();
     const t = out.totals;
     const subs = f.layout === 'subsidy' || !f.layout;
     sums.replaceChildren(...[[f.layout === 'tk2' ? 'Material price' : 'Connection cost (c)', f.layout === 'tk2' ? t.mat : t.c], ...(f.layout === 'tk2' ? [['Administration fee', t.adm]] : []), ['Capacity charge', t.d], ['Meter fee', t.e], ['Total (without SST)', t.total], ['CDP to seek', t.cdpSeek],
@@ -576,7 +580,8 @@ function longTextSheet(row, info, w) {
         navigator.share ? h('button', { class: 'ccbtn', onclick: () => { const file = new File([txt()], name(), { type: 'text/plain' }); (navigator.canShare && navigator.canShare({ files: [file] }) ? navigator.share({ files: [file], title: name() }) : navigator.share({ title: name(), text: txt() })).catch(() => {}); } }, icon('export', 17), h('span', {}, 'Share')) : null,
         h('button', { class: 'ccbtn primary', onclick: () => { download(name(), txt(), 'text/plain;charset=utf-8'); E.log(row, 'Connection charge', 'Long text saved as .txt: ' + name()); toast('Saved ' + name()); } }, icon('export', 17), h('span', {}, 'Save .txt')))));
   draw(); vis();
-  sheet('Long Text — ' + shortApplicants(E.splitNameIc(info.title).name), body, { done: 'Close', wide: true, onDone: () => render() });
+  const sh = sheet('Long Text — ' + shortApplicants(E.splitNameIc(info.title).name), body, { done: 'Close', wide: true, onDone: () => render() });
+  sh.panel.classList.add('ltfull'); sh.panel.parentElement.classList.add('ltfullback'); fitPre(); // the whole screen; the preview shows all of its text (no box to scroll inside)
 }
 
 /** a money box: shows 'RM 3,300.00' and turns back into the plain number while you type in it */

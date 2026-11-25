@@ -64,8 +64,13 @@ export function recordRejection(row, p) {
     if (sp && String(D.val(row, 'p:' + sp.id) || '').trim() !== 'To Amend') fix['p:' + sp.id] = 'To Amend';
     if (ap0 && D.val(row, 'p:' + ap0.id) === true) { fix['p:' + ap0.id] = false; fix.rejarch = null; }
     const rp = P('ECPAR Rejected'); if (rp && !sameDay(D.val(row, 'p:' + rp.id))) fix['p:' + rp.id] = date;
-    if (!Object.keys(fix).length) return 'already';
-    D.update(row.id, fix); return 'new';
+    // and that the rejection is in the revision history (it is gone if it was removed by hand earlier)
+    const inHistory = E.revisions(row).some(x => x.ev === 'rejected' && sameDay(x.date));
+    if (!inHistory) { const text = p.notes || D.val(e, 'p:correction') || ''; const t0 = parseDate(date);
+      E.log(row, 'ECPAR', 'ECPAR rejected.' + (text ? ' ' + text : ''), { ecpar: true, ev: 'rejected', date, reason: text, correction: text, t: t0 ? t0.getTime() + 12 * 3600e3 : Date.now() }); }
+    if (!Object.keys(fix).length && inHistory) return 'already';
+    if (Object.keys(fix).length) D.update(row.id, fix);
+    return 'new';
   }
   // an archived project comes back out of the archive, so the rejection shows on the Rejected ECPAR list
   const d = DB.kpiDb(), ap = d && DB.propByName(d, 'Archive');

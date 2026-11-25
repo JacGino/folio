@@ -96,6 +96,7 @@ export async function rootPut(path, data) {
   if (!gh) throw new Error('Not connected to GitHub');
   for (let i = 0; i < 3; i++) { const cur = await gh.getJSON(path).catch(() => null); try { return await gh.putJSON(path, data, cur && cur.sha); } catch (e) { if (!e.conflict || i === 2) throw e; } }
 }
+export async function runWorkflow(file) { if (!gh) throw new Error('Not connected to GitHub'); return gh.dispatch(file); }
 export async function rootRemove(path) { if (!gh) return; const cur = await gh.getJSON(path).catch(() => null); if (cur) await gh.remove(path, cur.sha); }
 
 let timer = null;

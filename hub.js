@@ -118,8 +118,11 @@ function pushRow() {
     finally { e.target.disabled = false; render(); } } });
   Push.pushOn().then(v => { sw.checked = v; });
   return h('div', { class: 'remind pushrow' }, h('label', { class: 'pushlab' }, icon('bell', 20),
-    h('span', {}, h('b', {}, 'Notifications when Folio is closed'), h('small', {}, '08:00 summary of overdue and due-today work, and ECPAR rejection emails as they arrive')), sw),
-    h('button', { class: 'link pushhelp', onclick: () => pushSetup(true) }, 'Setup on GitHub'));
+    h('span', {}, h('b', {}, 'Notifications when Folio is closed'), h('small', {}, 'Every 4 hours: Due Today and Rejected ECPAR — and ECPAR rejection emails as they arrive')), sw),
+    h('span', { class: 'pushtests' },
+      h('button', { class: 'gbtn', onclick: async () => { try { await Push.testLocal(); toast('Test sent. A notification should appear now.'); } catch (err) { toast(err.message || String(err), 6000); } } }, 'Test this device'),
+      h('button', { class: 'gbtn', onclick: async () => { try { await Push.testGitHub(); toast('GitHub is sending it. It arrives in about a minute — you can close Folio to check.', 7000); } catch (err) { toast(err.message || String(err), 9000); } } }, 'Test from GitHub'),
+      h('button', { class: 'link pushhelp', onclick: () => pushSetup(true) }, 'Setup on GitHub')));
 }
 /** one-time setup: make the keys, then save the private one as a GitHub secret (Folio does not keep it) */
 function pushSetup(help = false) {

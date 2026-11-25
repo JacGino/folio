@@ -31,7 +31,7 @@ export async function config() { const c = await Sync.rootGet(CONFIG).catch(() =
 /** first device: make the keys, save the public one; returns the private key to show once */
 export async function setupKeys() {
   const k = await makeKeys();
-  await Sync.rootPut(CONFIG, { publicKey: k.publicKey, created: new Date().toISOString(), time: '08:00', tz: 'Asia/Kuching' });
+  await Sync.rootPut(CONFIG, { publicKey: k.publicKey, created: new Date().toISOString(), every: '4h', tz: 'Asia/Kuching' });
   return k;
 }
 async function deviceId() { let id = await S.meta.get('deviceId'); if (!id) { id = 'd' + Math.random().toString(36).slice(2, 10); await S.meta.set('deviceId', id); } return id; }
@@ -96,4 +96,22 @@ export async function writeDigest(force = false) {
   if (!force && (await S.meta.get('digestKey')) === key) return false;
   await Sync.rootPut(DIGEST, { ...d, updated: new Date().toISOString() });
   await S.meta.set('digestKey', key); return true;
+}
+
+/** test 1: this device shows a notification itself (checks the device's own notification settings) */
+export async function testLocal() {
+  if (!('Notification' in window)) throw new Error('This browser cannot show notifications.');
+  if (Notification.permission !== 'granted') { const p = await Notification.requestPermission(); if (p !== 'granted') throw new Error('Notifications are not allowed for Folio on this device.'); }
+  const reg = await navigator.serviceWorker?.getRegistration();
+  const body = 'Test: Folio notifications show on this ' + deviceName() + '.';
+  if (reg && reg.showNotification) await reg.showNotification('Folio', { body, tag: 'folio-local-test', icon: 'icon-192.png' });
+  else new Notification('Folio', { body });
+}
+/** test 2: ask GitHub to run the notification job now (same path as the 08:00 summary and email alerts) */
+export async function testGitHub() {
+  const st = await Sync.runWorkflow('folio-notify.yml');
+  if (st === 204) return 'started';
+  if (st === 403 || st === 401) throw new Error('Folio\'s GitHub key cannot start the job. Run it from GitHub: Actions → Folio notifications → Run workflow.');
+  if (st === 404) throw new Error('GitHub did not find the job (.github/workflows/folio-notify.yml), or Folio\'s key cannot see Actions. Run it from GitHub: Actions → Folio notifications → Run workflow.');
+  throw new Error('GitHub answered ' + st + '. Run it from GitHub: Actions → Folio notifications → Run workflow.');
 }

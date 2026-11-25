@@ -43,6 +43,12 @@ export function client({ owner, repo, token, fetchFn = (...a) => fetch(...a), wa
     },
     putJSON(path, data, sha) { return this.put(path, te.encode(JSON.stringify(data)), sha); },
     async list(dir) { const r = await call('GET', dir); if (r.status === 404) return []; if (!r.ok) await fail(r, dir); const j = await r.json(); return Array.isArray(j) ? j.map(x => ({ name: x.name, path: x.path, sha: x.sha, size: x.size })) : []; },
+    /** start a GitHub Actions workflow (needs Actions: Read and write on the key); returns the HTTP status */
+    async dispatch(file, ref = 'main') {
+      const r = await fetchFn(`${base}/actions/workflows/${encodeURIComponent(file)}/dispatches`, { method: 'POST', cache: 'no-store',
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'Content-Type': 'application/json' }, body: JSON.stringify({ ref }) });
+      return r.status;
+    },
     async remove(path, sha) { const r = await call('DELETE', path, { message: `Folio: remove ${path}`, sha }); if (!r.ok && r.status !== 404) await fail(r, path); }
   };
 }
