@@ -2633,3 +2633,4 @@ html.kbup .sheet.ltfull { height: calc(var(--vvh, 100vh) * .96 / var(--zoom, 1))
 /* Long Text: text boxes wrap and grow to show the whole value */
 .ltf textarea.ltgrow { min-height: 44px; height: 44px; padding: 11px 12px; line-height: 1.45; resize: none; overflow: hidden; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: calc(14px * var(--ts, 1)); }
 .ltf textarea.ltgrow.ltarea { min-height: 64px; }
+.ltf textarea.ltgrow.ltcapped { overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }

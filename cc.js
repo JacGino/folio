@@ -458,7 +458,18 @@ function ltAutoShort(f, row, info, res, totals) {
   return autoShortTitle({ prefix: ltPrefix(f, row, totals), code: ltCode(f, res), name: E.splitNameIc(f.client || info.title).name || info.title, address, units: ltUnits(info, row), station: P('Station') ? String(DB.value(row, P('Station')) || '') : '' }); // a longhouse: '8 EA LONGHOUSE … BTU'
 }
 /** a Long Text box grows to show all of its text */
-const ltGrow = el => { if (!el || !el.isConnected) return; el.style.height = 'auto'; el.style.height = (el.scrollHeight + 2) + 'px'; };
+const ltGrow = el => { if (!el || !el.isConnected) return; el.style.height = 'auto'; const full = el.scrollHeight + 2;
+  // several customers (Developer / client): show up to the 3rd, then it scrolls inside the box
+  const m = el.closest('[data-k="client"]') && String(el.value).match(/(?:^|\s)4\s*[).]\s/);
+  const cap = m ? ltMeasure(el, el.value.slice(0, m.index)) : 0;
+  el.style.height = (cap && cap < full ? cap : full) + 'px'; el.style.overflowY = cap && cap < full ? 'auto' : 'hidden'; el.classList.toggle('ltcapped', !!(cap && cap < full)); };
+/** the height a text box would need for `text` (same width and font) */
+function ltMeasure(el, text) {
+  const cs = getComputedStyle(el), d = document.createElement('div');
+  for (const k of ['fontFamily', 'fontSize', 'fontWeight', 'letterSpacing', 'lineHeight', 'paddingTop', 'paddingBottom', 'paddingLeft', 'paddingRight', 'borderTopWidth', 'borderBottomWidth', 'borderLeftWidth', 'borderRightWidth', 'boxSizing', 'wordSpacing', 'textTransform']) d.style[k] = cs[k];
+  Object.assign(d.style, { position: 'absolute', visibility: 'hidden', left: '-9999px', top: '0', width: el.getBoundingClientRect().width + 'px', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', borderStyle: 'solid' });
+  d.textContent = text.replace(/\s+$/, '') + '\u200b'; document.body.appendChild(d); const hgt = d.getBoundingClientRect().height; d.remove(); return Math.ceil(hgt) + 2;
+}
 const ltGrowAll = root => requestAnimationFrame(() => root.querySelectorAll('textarea.ltgrow').forEach(ltGrow));
 /** work code for the titles; Upgrading of Supply / Temporary Supply go in front: UOS/SL, TOS/LTSC (UOS / TOS alone when there are no items yet) */
 function ltCode(f, res) { const c = workCode(res.lines), k = { uos: 'UOS', tos: 'TOS' }[f.layout]; return k ? k + (c ? '/' + c : '') : c; }
