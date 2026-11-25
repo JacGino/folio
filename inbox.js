@@ -57,7 +57,16 @@ export function recordRejection(row, p) {
   const date = p.date || toISODate(new Date());
   const e = E.ecparOf(row);
   const sameDay = x => toISODate(x) === toISODate(date);
-  if (e && D.val(e, 'p:status') === 'Pending Revision' && sameDay(D.val(e, 'p:rejected'))) return 'already';
+  const d0 = DB.kpiDb(), P = n => d0 && DB.propByName(d0, n), sp = P('Status'), ap0 = P('Archive');
+  if (e && D.val(e, 'p:status') === 'Pending Revision' && sameDay(D.val(e, 'p:rejected'))) {
+    // the ECPAR card already has this rejection: make sure the project shows it too (To Amend, not archived)
+    const fix = {};
+    if (sp && String(D.val(row, 'p:' + sp.id) || '').trim() !== 'To Amend') fix['p:' + sp.id] = 'To Amend';
+    if (ap0 && D.val(row, 'p:' + ap0.id) === true) { fix['p:' + ap0.id] = false; fix.rejarch = null; }
+    const rp = P('ECPAR Rejected'); if (rp && !sameDay(D.val(row, 'p:' + rp.id))) fix['p:' + rp.id] = date;
+    if (!Object.keys(fix).length) return 'already';
+    D.update(row.id, fix); return 'new';
+  }
   // an archived project comes back out of the archive, so the rejection shows on the Rejected ECPAR list
   const d = DB.kpiDb(), ap = d && DB.propByName(d, 'Archive');
   if (ap && D.val(row, 'p:' + ap.id) === true) D.update(row.id, { ['p:' + ap.id]: false, rejarch: null });
