@@ -441,13 +441,13 @@ export function ltPrefix(f, row, totals) {
   const pct = f.layout === 'subsidy' ? +(totals && totals.pct) || 0 : 0;
   return pct === 100 ? 'BTU-D-SF' : pct === 70 ? 'BTU-D-S7' : 'BTU-D-';
 }
-const PREFIX_RE = /^\s*BTU-[A-Z]-[A-Z0-9]*\s*/i;
+const PREFIX_RE = /^\s*BTU-(?:D-(?:SF|S7)?|C-)\s*/i; // only the front titles themselves, so a code typed right after (BTU-C-LTSC) is kept
 /** put (or swap) the front title at the start of Short title and Project title; true when something changed */
 function ltApplyPrefix(f, row, totals) {
   const pre = ltPrefix(f, row, totals); let changed = false;
   for (const k of ['shortTitle', 'title']) {
-    const cur = String(f[k] ?? ''), rest = cur.replace(PREFIX_RE, ''), want = pre + ' ' + rest;
-    if (cur !== want && !(cur === pre && !rest)) { f[k] = want; changed = true; }
+    const cur = String(f[k] ?? ''), rest = cur.replace(PREFIX_RE, ''), want = pre + rest; // no space after the front title
+    if (cur !== want) { f[k] = want; changed = true; }
   }
   return changed;
 }
