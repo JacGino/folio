@@ -2603,3 +2603,19 @@ body[data-layout="split"][data-orient="landscape"] .home { padding-right: max(16
 html.kbup .sheet.ltfull { height: calc(var(--vvh, 100vh) * .96 / var(--zoom, 1)); }
 .sheet.ltfull .sheet-body { flex: 1 1 auto; }
 .sheet.ltfull .ltpre { min-height: 360px; overflow: hidden; resize: none; white-space: pre-wrap; overflow-wrap: anywhere; -webkit-user-select: text; user-select: text; }
+/* Long Text, side by side (wide screens): two columns that scroll on their own — the form (ends at Remarks) and, on the right,
+   the totals, the three boxes and the whole preview (it grows to fit, so its text is selected and copied like a page) */
+.sheet.ltfull { padding-bottom: calc(env(safe-area-inset-bottom) + 6px); }
+.sheet.ltfull .sheet-body { padding-bottom: 4px; min-height: 0; }
+@media (min-width: 861px) {
+  .sheet.ltfull .ltwrap { align-items: start; }
+  .sheet.ltfull .ltout { position: sticky; top: 0; max-height: calc(var(--ltvis, 70vh) - 4px); overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; padding-bottom: 6px; }
+}
+.sheet.ltfull .ltout > * { flex-shrink: 0; } /* the column scrolls; nothing in it is squeezed (the preview keeps its full height) */
+/* Long Text: edge to edge, so its corners are the screen's own curved corners (any device); the content keeps clear of the
+   curves, the clock and the home bar */
+.sheet-back.ltfullback { align-items: stretch !important; }
+.sheet.ltfull, html.kbup .sheet.ltfull { width: 100% !important; max-width: none; height: 100%; max-height: none; border-radius: 0;
+  padding: max(12px, env(safe-area-inset-top)) max(20px, calc(env(safe-area-inset-right) + 12px)) calc(env(safe-area-inset-bottom) + 10px) max(20px, calc(env(safe-area-inset-left) + 12px)); }
+.sheet.ltfull .grab { display: none; }
+@media (min-width: 700px) { .sheet.ltfull { border-radius: 0; } }

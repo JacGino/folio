@@ -501,7 +501,8 @@ function longTextSheet(row, info, w) {
   if (single) { const s1 = E.splitNameIc(f.client); f.client = s1.name; const ov = E.custIc(ltCust); if (ov) f.ic = ov; else if (f.ic && ltCust) E.setCustomerIc(ltCust, f.ic); else if (s1.ic) f.ic = s1.ic; }
   const pre = h('textarea', { class: 'field ltpre', rows: 18, spellcheck: 'false', 'aria-label': 'Long text preview' });
   // the preview grows to fit its text, so the page scrolls (not a small box inside it): easy to read, select and copy on a phone
-  const fitPre = () => requestAnimationFrame(() => { if (!pre.isConnected) return; const y = pre.closest('.sheet-body')?.scrollTop; pre.style.height = 'auto'; pre.style.height = (pre.scrollHeight + 4) + 'px'; const b = pre.closest('.sheet-body'); if (b && y != null) b.scrollTop = y; });
+    const fitPre = () => requestAnimationFrame(() => { if (!pre.isConnected) return; const sb = pre.closest('.sheet-body'); if (sb) sb.style.setProperty('--ltvis', sb.clientHeight + 'px');
+ const y = pre.closest('.sheet-body')?.scrollTop, y2 = pre.closest('.ltout')?.scrollTop; pre.style.height = 'auto'; pre.style.height = (pre.scrollHeight + 4) + 'px'; const b = pre.closest('.sheet-body'); if (b && y != null) b.scrollTop = y; const o = pre.closest('.ltout'); if (o && y2 != null) o.scrollTop = y2; });
   pre.addEventListener('input', fitPre);
   const warn = h('div', { class: 'ltwarn' }), sums = h('div', { class: 'ltsum' }), sof = h('div', { class: 'ltsof', role: 'status' }), route = h('div', { class: 'ltsof ltroute', role: 'status' });
   let edited = false;
@@ -581,7 +582,7 @@ function longTextSheet(row, info, w) {
         h('button', { class: 'ccbtn primary', onclick: () => { download(name(), txt(), 'text/plain;charset=utf-8'); E.log(row, 'Connection charge', 'Long text saved as .txt: ' + name()); toast('Saved ' + name()); } }, icon('export', 17), h('span', {}, 'Save .txt')))));
   draw(); vis();
   const sh = sheet('Long Text — ' + shortApplicants(E.splitNameIc(info.title).name), body, { done: 'Close', wide: true, onDone: () => render() });
-  sh.panel.classList.add('ltfull'); sh.panel.parentElement.classList.add('ltfullback'); fitPre(); // the whole screen; the preview shows all of its text (no box to scroll inside)
+  sh.panel.classList.add('ltfull'); sh.panel.parentElement.classList.add('ltfullback'); fitPre(); const onRs = () => { if (!sh.panel.isConnected) return removeEventListener('resize', onRs); fitPre(); }; addEventListener('resize', onRs); // the whole screen; the preview shows all of its text (no box to scroll inside)
 }
 
 /** a money box: shows 'RM 3,300.00' and turns back into the plain number while you type in it */
