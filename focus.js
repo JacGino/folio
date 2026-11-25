@@ -484,23 +484,28 @@ function unmatchedCard() {
         h('button', { class: 'gbtn primary', onclick: async () => { const row = await pickProject('Record ' + it.ref + ' rejection on…'); if (!row) return; await Inbox.resolveUnmatched(it, row); toast('ECPAR rejected: ' + DB.title(row)); render(); } }, 'Choose project'),
         h('button', { class: 'gbtn', onclick: async () => { await Inbox.resolveUnmatched(it, null); toast('Email dismissed.'); render(); } }, 'Dismiss')))));
 }
-/** paste a SAP_WFRT rejection email (for one that came before the shortcut, or without it) */
+/** paste one or more SAP_WFRT rejection emails (ones that came before the shortcut, or without it) */
 export function pasteEmailFlow() {
   const box = textbox({ multiline: true, cls: 'field gtext ewpaste', label: 'Email text', placeholder: '' });
-  const out = h('p', { class: 'muted ewout', role: 'status' });
-  let parsed = null, row = null;
+  const out = h('div', { class: 'muted ewout', role: 'status' });
+  let found = [];
+  const closedNote = row => { const i = DB.kpiInfo(row, DB.kpiDb(), NOW()); return i.archived ? ' (archived — it will be taken out of the archive)' : ''; };
   const read = () => {
-    parsed = Inbox.parseEcparEmail(box.value); row = parsed ? Inbox.findProject(parsed.ref) : null;
-    out.textContent = !box.value.trim() ? 'Copy the whole email in Outlook (subject and message), then paste it here.'
-      : !parsed ? 'No BTU number found in this text.'
-      : `${parsed.ref} · rejected ${parsed.date ? Inbox.shortDate(parsed.date) : '(no date — today)'}${parsed.notes ? ' · ' + parsed.notes : ''}${row ? ' → ' + DB.title(row) : ' → no project with this Project Reference (you can choose one)'}`;
+    found = Inbox.parseEmails(box.value).map(p => ({ p, row: Inbox.findProject(p.ref) }));
+    out.replaceChildren(...(!box.value.trim() ? [h('p', {}, 'Copy the whole email in Mail or Outlook, then paste it here. You can paste several emails one after another.')]
+      : !found.length ? [h('p', {}, 'No BTU number found in this text.')]
+      : found.map(({ p, row }) => h('p', {}, `${p.ref} · rejected ${p.date ? Inbox.shortDate(p.date) : '(no date — today)'}${p.notes ? ' · ' + p.notes : ''} → ${row ? DB.title(row) + closedNote(row) : 'no project with this Project Reference (you will choose one)'}`))));
   };
   box.addEventListener('input', read); read();
   const s = sheet('Paste rejection email', h('div', { class: 'ewsheet' }, box, out,
     h('button', { class: 'btn primary block', onclick: async () => {
-      if (!parsed) { toast('Paste the rejection email first.'); return; }
-      let r = row; if (!r) { r = await pickProject('Record ' + parsed.ref + ' rejection on…'); if (!r) return; }
-      const res = Inbox.recordRejection(r, parsed); s.close();
-      toast(res === 'already' ? 'This rejection is already recorded.' : 'ECPAR rejected: ' + DB.title(r)); render();
+      if (!found.length) { toast('Paste the rejection email first.'); return; }
+      const done = [], already = [];
+      for (const { p, row } of found) {
+        let r = row; if (!r) { r = await pickProject('Record ' + p.ref + ' rejection on…'); if (!r) continue; }
+        (Inbox.recordRejection(r, p) === 'already' ? already : done).push(p.ref + ' ' + DB.title(r));
+      }
+      s.close(); render();
+      toast([done.length ? 'ECPAR rejected: ' + done.join(', ') : '', already.length ? 'Already recorded: ' + already.join(', ') : ''].filter(Boolean).join(' · ') || 'Nothing recorded.', 6000);
     } }, 'Record rejection')), { done: 'Cancel', float: 'lg' });
 }

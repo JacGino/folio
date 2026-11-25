@@ -36,6 +36,14 @@ export function parseEcparEmail(raw, fileName = '') {
   return { ref, date, by, notes, budget: bm ? bm[0] : '', version: vm ? vm[0] : '', rejected: /reject/i.test(flat) };
 }
 
+/** several emails pasted together: one result per BTU number */
+export function parseEmails(raw) {
+  const parts = String(raw || '').split(/(?=\bDear\s)/i).map(x => parseEcparEmail(x)).filter(Boolean);
+  const by = new Map(); for (const p of parts) { const o = by.get(p.ref); if (!o || (!o.date && p.date) || (!o.notes && p.notes && p.date)) by.set(p.ref, p); } // the subject line alone has no date: the table wins
+  const out = [...by.values()];
+  if (out.length) return out;
+  const one = parseEcparEmail(raw); return one ? [one] : [];
+}
 /** the project whose Project Reference (ECPAR No) is this BTU number */
 export function findProject(ref) {
   const d = DB.kpiDb(); if (!d) return null;
@@ -44,12 +52,15 @@ export function findProject(ref) {
 }
 
 /** record it on the project, unless this rejection is already there (same day) */
+// only "already" when the ECPAR is open with this very rejection date: a rejection you removed by hand earlier can be recorded again
 export function recordRejection(row, p) {
   const date = p.date || toISODate(new Date());
   const e = E.ecparOf(row);
   const sameDay = x => toISODate(x) === toISODate(date);
   if (e && D.val(e, 'p:status') === 'Pending Revision' && sameDay(D.val(e, 'p:rejected'))) return 'already';
-  if (E.revisions(row).some(x => x.ev === 'rejected' && sameDay(x.date))) return 'already';
+  // an archived project comes back out of the archive, so the rejection shows on the Rejected ECPAR list
+  const d = DB.kpiDb(), ap = d && DB.propByName(d, 'Archive');
+  if (ap && D.val(row, 'p:' + ap.id) === true) D.update(row.id, { ['p:' + ap.id]: false, rejarch: null });
   E.rejectEcpar(row, date, '', { correction: p.notes || '', remarks: 'From the SAP_WFRT email' + (p.by ? ', rejected by ' + p.by : '') + '.' });
   return 'new';
 }
