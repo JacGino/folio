@@ -477,18 +477,21 @@ export function firstName(name = '') {
   const words = first.replace(/\([^)]*\)/g, ' ').toUpperCase().split(/\s+/).filter(Boolean);
   return words.find(w => !HONOR.test(w)) || words[0] || '';
 }
-const ABBR = { RUMAH: 'RH', KAMPUNG: 'KG', KAMPONG: 'KG', JALAN: 'JLN', TAMAN: 'TMN', LORONG: 'LRG', BATU: 'BT', SUNGAI: 'SG', LONGHOUSE: 'LH', 'RUMAH PANJAI': 'RH' };
+const ABBR = { BLOCK: 'BLK', SUBLOT: 'SL', RUMAH: 'RH', KAMPUNG: 'KG', KAMPONG: 'KG', JALAN: 'JLN', TAMAN: 'TMN', LORONG: 'LRG', BATU: 'BT', SUNGAI: 'SG', LONGHOUSE: 'LH', 'RUMAH PANJAI': 'RH' };
 /** address → { core, extra } parts: LOT / BLOCK first, then the place (abbreviated); no postcode, district, state */
 export function shortAddress(addr = '') {
   const segs = String(addr).toUpperCase().replace(/\s+/g, ' ').split(/[,;\n]/).map(s => s.trim().replace(/\.$/, '').replace(/\s*\b[A-Z-]+\s+(?:LAND\s+|TOWN\s+)?DISTRICT\b/g, '').replace(/^DAERAH\s+\S+/, '').trim()).filter(Boolean)
     .filter(s => !/^\d{5}\b/.test(s) && !/\bDISTRICT\b|\bDAERAH\b|^(SARAWAK|MALAYSIA|SABAH)$/.test(s))
-    .map(s => s.split(' ').map(w => ABBR[w] || w).join(' ').replace(/\bBLK\b/g, 'BLOCK'));
-  const lotblk = segs.filter(s => /\b(LOT|BLOCK)\b/.test(s)), rest = segs.filter(s => !/\b(LOT|BLOCK)\b/.test(s));
+    .map(s => s.replace(/\bSUB[- ]LOT\b/g, 'SUBLOT').replace(/\s+(OF|DI)\s+/g, ' ').split(' ').map(w => ABBR[w] || w).join(' '));
+  const lotblk = segs.filter(s => /\b(LOT|BLK)\b/.test(s)), rest = segs.filter(s => !/\b(LOT|BLK)\b/.test(s));
   const core = lotblk.length ? lotblk : rest.slice(0, 1), extra = lotblk.length ? rest : rest.slice(1);
   return { core, extra };
 }
 /** BTU-D-SF SL TO ZULKIPLI LOT 1800 RH PPRT — at most `max` characters; AT, then TO, then the extra address parts go first when it is too long */
-export function autoShortTitle({ prefix = '', code = '', name = '', address = '', units = 0, station = '', max = 40 }) {
+export function autoShortTitle(o) { return tidyEnd(autoShortTitle0(o)); }
+/** no OF / A / AT / TO / AND … left hanging at the end (after a cut) */
+const tidyEnd = t => { let w = String(t).trim().split(' '); while (w.length > 1 && /^(OF|A|AN|AT|TO|AND|&|THE|DI|DAN|KE|-|,)$/i.test(w[w.length - 1].replace(/,$/, '') || ',')) w.pop(); return w.join(' ').replace(/[,\s-]+$/, ''); };
+function autoShortTitle0({ prefix = '', code = '', name = '', address = '', units = 0, station = '', max = 40 }) {
   if (units > 1) return longhouseShort({ prefix, code, units, address, station, max });
   const head = prefix + (code ? (/-S[7F]$/.test(prefix) ? ' ' : '') + code : ''), { core, extra } = shortAddress(address);
   const join = (to, at, parts) => { const tail = [to && name && code ? 'TO' : '', name, at && parts.length ? 'AT' : '', ...parts].filter(Boolean).join(' ');

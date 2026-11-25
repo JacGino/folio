@@ -455,8 +455,10 @@ function ltApplyPrefix(f, row, totals) {
 function ltAutoShort(f, row, info, res, totals) {
   const P = n => DB.propByName(DB.kpiDb(), n), at = String(f.title || '').toUpperCase().match(/\sAT\s+(.+)$/s);
   const address = (at && at[1]) || (P('Address') ? String(DB.value(row, P('Address')) || '') : '');
-  return autoShortTitle({ prefix: ltPrefix(f, row, totals), code: workCode(res.lines), name: firstName(E.splitNameIc(f.client || info.title).name || info.title), address, units: ltUnits(info, row), station: P('Station') ? String(DB.value(row, P('Station')) || '') : '' }); // a longhouse: '8 EA LONGHOUSE … BTU'
+  return autoShortTitle({ prefix: ltPrefix(f, row, totals), code: ltCode(f, res), name: firstName(E.splitNameIc(f.client || info.title).name || info.title), address, units: ltUnits(info, row), station: P('Station') ? String(DB.value(row, P('Station')) || '') : '' }); // a longhouse: '8 EA LONGHOUSE … BTU'
 }
+/** work code for the titles; Upgrading of Supply / Temporary Supply go in front: UOS/SL, TOS/LTSC (UOS / TOS alone when there are no items yet) */
+function ltCode(f, res) { const c = workCode(res.lines), k = { uos: 'UOS', tos: 'TOS' }[f.layout]; return k ? k + (c ? '/' + c : '') : c; }
 /** a longhouse (several customers on one ECX): the total units from the calculator, else the number of applicants; 0 for one customer */
 function ltUnits(info, row) {
   if (!E.isMultiApplicant(info.title)) return 0;
@@ -466,7 +468,7 @@ function ltUnits(info, row) {
 /** the Project title Folio writes: front title + work code + TO + full name + AT + the project's full Address */
 function ltAutoTitle(f, row, info, res, totals) {
   const P = DB.propByName(DB.kpiDb(), 'Address'), address = P ? String(DB.value(row, P) || '') : '';
-  return autoProjectTitle({ prefix: ltPrefix(f, row, totals), code: workCode(res.lines), name: E.isMultiApplicant(info.title) ? info.title : (E.splitNameIc(f.client || info.title).name || info.title), address, units: ltUnits(info, row) });
+  return autoProjectTitle({ prefix: ltPrefix(f, row, totals), code: ltCode(f, res), name: E.isMultiApplicant(info.title) ? info.title : (E.splitNameIc(f.client || info.title).name || info.title), address, units: ltUnits(info, row) });
 }
 function ltDefaults(row, info, w, res) {
   const c = E.customerOf(row), P = n => DB.propByName(DB.kpiDb(), n), pv = n => P(n) ? DB.value(row, P(n)) : '';
@@ -570,6 +572,7 @@ function longTextSheet(row, info, w) {
   const syncPrefixInputs = () => { for (const k of ['shortTitle', 'title']) { let el = null; try { el = body.querySelector(`[data-k="${k}"] .field`); } catch { return; } if (!el || el.value === (f[k] ?? '')) continue;
     const focused = document.activeElement === el, pos = focused ? el.selectionStart : 0, delta = String(f[k] ?? '').length - el.value.length;
     el.value = f[k] ?? ''; if (focused) { const q = Math.max(0, pos + delta); try { el.setSelectionRange(q, q); } catch {} } } try { body.querySelector('[data-k="shortTitle"]')?._upd?.(); } catch {} };
+  if (f.autoV !== 2) { f.titleAuto = true; f.shortAuto = true; f.autoV = 2; } // every project (titles typed before the auto titles too) gets Folio's titles once; a title you type after that stays yours
   if (f.titleAuto == null) f.titleAuto = !String(f.title || '').replace(PREFIX_RE, '').trim();
   const titleBox = () => { const el = inp('title', 'Project title', { wide: true, area: true, rows: 2 });
     el.querySelector('span').append(' ', h('button', { type: 'button', class: 'ltauto', title: 'Let Folio write the Project title again', onclick: () => { f.titleAuto = true; touch(w); draw(); syncPrefixInputs(); } }, 'Auto')); return el; };
