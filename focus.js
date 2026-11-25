@@ -12,6 +12,7 @@ import * as C from './cols.js';
 import { badge, optPill, linkedField, formModal, newProjectSheet, rejectEcparFlow, resubmitEcparFlow, approveEcparFlow, rejectEcxFlow, resubmitEcxFlow, approveEcxFlow, editRejectionFlow, yearMenuItems } from './project.js';
 import { dueItems, completeItem, pickProject, logSheet, coverInto, quickBtn, quickBar, heroNav } from './home.js';
 import { promptBox } from './ui.js';
+import * as Inbox from './inbox.js';
 
 const { g } = E;
 const P = n => { const d = DB.kpiDb(); return d && DB.propByName(d, n); };
@@ -156,12 +157,13 @@ export function focusScreen(kind) {
   const byCol = S.col && C.comparer(DB.kpiDb(), S.col, r => r.row, n);
   const rows = base.filter(tab[3]).sort((a, b) => byCol?.(a, b) || sorters[S.sort]?.(a, b) || sorters.due(a, b) || a.cust.localeCompare(b.cust));
   for (const id of [...S.sel]) if (!rows.some(r => r.id === id)) S.sel.delete(id);
+  if (kind === 'ecpar' && Inbox.unmatchedEmails().length) wrap.append(unmatchedCard());
   wrap.append(metricsBar(def, base),
     h('div', { class: 'fgrid full' }, tableCard(kind, def, S, base, rows, n))); // the charts were removed (the 4 numbers above already give the counts)
   return wrap;
 }
 function pageMenu(a, kind) {
-  moreMenu(a, { extra: [{ label: 'Card view (classic list)', icon: 'list', run: () => go('#/list/' + kind) }, { label: 'Open Planning KPI Tracker', icon: 'table', run: () => go('#/tracker') }] });
+  moreMenu(a, { extra: [...(kind === 'ecpar' ? [{ label: 'Paste rejection email', icon: 'mail', run: () => pasteEmailFlow() }] : []),{ label: 'Card view (classic list)', icon: 'list', run: () => go('#/list/' + kind) }, { label: 'Open Planning KPI Tracker', icon: 'table', run: () => go('#/tracker') }] });
 }
 
 // ---------- header with the cover banner ----------
@@ -190,7 +192,8 @@ function metricsBar(def, base) {
 function tableCard(kind, def, S, base, rows, n) {
   const list = h('div', { class: 'flist', role: 'table', 'aria-label': def.title });
   const tabEls = def.tabs.map(([k, l, ic, f]) => h('button', { class: 'dchip' + (S.tab === k ? ' on' : ''), 'aria-pressed': S.tab === k ? 'true' : 'false', onclick: () => { S.tab = k; S.show = 60; render(); } }, ic ? icon(ic, 14) : null, l, h('span', { class: 'dcount' }, base.filter(f).length)));
-  if (kind === 'ecpar') tabEls.push(h('button', { class: 'dchip ecarchip', onclick: () => go('#/ecpar-archive'), title: 'Every ECPAR rejection, by year, for the KPI review' }, icon('archive', 14), 'Archive'));
+  if (kind === 'ecpar') tabEls.push(h('button', { class: 'dchip ecarchip', onclick: () => go('#/ecpar-archive'), title: 'Every ECPAR rejection, by year, for the KPI review' }, icon('archive', 14), 'Archive'),
+    h('button', { class: 'dchip ecarchip', onclick: () => pasteEmailFlow(), title: 'Record a rejection from a SAP_WFRT email you copy and paste' }, icon('mail', 14), 'Paste email'));
   const search = textbox({ value: S.q, cls: 'hsearch-in', placeholder: { today: 'Search ECX, customer, address…', survey: 'Search project, customer, address…', ecpar: 'Search ECPAR no., customer, address…', ecx: 'Search ECX, customer, address…' }[kind], label: 'Search',
     oninput: () => { S.q = search.value; clearTimeout(search._t); search._t = setTimeout(() => refreshInPlace(kind, search), 220); } });
   const active = [S.cat && ['Category: ' + short(S.cat), () => S.cat = ''], S.pri && ['Priority: ' + S.pri, () => S.pri = ''], S.status && ['Status: ' + S.status, () => S.status = ''],
@@ -466,4 +469,38 @@ export function ecparArchiveScreen() {
     h('div', { class: 'dmetrics' }, metric('ecpar', 'Rejections', rows.length), metric('okcircle', 'Resubmitted within 1 day', within, 'green'), metric('info', 'Over 1 day', over, 'red'),
       metric('target', 'KPI', pct == null ? '—' : pct + '%', pct == null ? '' : pct >= 90 ? 'green' : 'red'), wait ? metric('date', 'Waiting', wait, 'blue') : null),
     h('section', { class: 'hcard htable' }, table));
+}
+
+// ---------- ECPAR rejection emails (from the iPhone shortcut, or pasted) ----------
+const emailLine = p => [p.ref, p.date ? Inbox.shortDate(p.date) : '', p.notes].filter(Boolean).join(' · ');
+/** emails whose BTU number matched no project: pick the project, or dismiss */
+function unmatchedCard() {
+  const items = Inbox.unmatchedEmails();
+  return h('section', { class: 'hcard emailwait', 'aria-label': 'Rejection emails not matched' },
+    h('h3', {}, icon('mail', 16), items.length === 1 ? '1 rejection email did not match a project' : `${items.length} rejection emails did not match a project`),
+    h('p', { class: 'muted' }, 'No project has this Project Reference (ECPAR No). Choose the project, or dismiss the email.'),
+    items.map(it => h('div', { class: 'ewrow' }, h('span', { class: 'ewtx' }, emailLine(it)),
+      h('span', { class: 'ewact' },
+        h('button', { class: 'gbtn primary', onclick: async () => { const row = await pickProject('Record ' + it.ref + ' rejection on…'); if (!row) return; await Inbox.resolveUnmatched(it, row); toast('ECPAR rejected: ' + DB.title(row)); render(); } }, 'Choose project'),
+        h('button', { class: 'gbtn', onclick: async () => { await Inbox.resolveUnmatched(it, null); toast('Email dismissed.'); render(); } }, 'Dismiss')))));
+}
+/** paste a SAP_WFRT rejection email (for one that came before the shortcut, or without it) */
+export function pasteEmailFlow() {
+  const box = textbox({ multiline: true, cls: 'field gtext ewpaste', label: 'Email text', placeholder: '' });
+  const out = h('p', { class: 'muted ewout', role: 'status' });
+  let parsed = null, row = null;
+  const read = () => {
+    parsed = Inbox.parseEcparEmail(box.value); row = parsed ? Inbox.findProject(parsed.ref) : null;
+    out.textContent = !box.value.trim() ? 'Copy the whole email in Outlook (subject and message), then paste it here.'
+      : !parsed ? 'No BTU number found in this text.'
+      : `${parsed.ref} · rejected ${parsed.date ? Inbox.shortDate(parsed.date) : '(no date — today)'}${parsed.notes ? ' · ' + parsed.notes : ''}${row ? ' → ' + DB.title(row) : ' → no project with this Project Reference (you can choose one)'}`;
+  };
+  box.addEventListener('input', read); read();
+  const s = sheet('Paste rejection email', h('div', { class: 'ewsheet' }, box, out,
+    h('button', { class: 'btn primary block', onclick: async () => {
+      if (!parsed) { toast('Paste the rejection email first.'); return; }
+      let r = row; if (!r) { r = await pickProject('Record ' + parsed.ref + ' rejection on…'); if (!r) return; }
+      const res = Inbox.recordRejection(r, parsed); s.close();
+      toast(res === 'already' ? 'This rejection is already recorded.' : 'ECPAR rejected: ' + DB.title(r)); render();
+    } }, 'Record rejection')), { done: 'Cancel', float: 'lg' });
 }

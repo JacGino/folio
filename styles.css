@@ -2579,3 +2579,12 @@ body[data-layout="split"][data-orient="landscape"] .home { padding-right: max(16
   .ltout .ltroute { background: #3A2F1C; color: #F1DDB8; }
   .ltout .ltrel { background: #1F3042; color: #CFE2F5; }
 }
+/* Rejected ECPAR: emails from the iPhone shortcut that matched no project, and Paste email */
+.emailwait { margin-bottom: 12px; padding: 14px 16px; background: #FBEDEA; }
+.emailwait h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 4px; font-size: calc(15px * var(--ts, 1)); }
+.emailwait .ewrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 0; border-top: 1px solid rgba(0,0,0,.07); }
+.emailwait .ewtx { flex: 1 1 220px; min-width: 0; overflow-wrap: anywhere; }
+.emailwait .ewact { display: flex; gap: 8px; }
+.ewsheet .ewpaste { min-height: 160px; max-height: 40vh; overflow: auto; }
+.ewsheet .ewout { margin: 10px 0 14px; overflow-wrap: anywhere; }
+@media (prefers-color-scheme: dark) { .emailwait { background: #3A2422; } }

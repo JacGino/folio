@@ -12,6 +12,7 @@ import { renderSettings, startupSync } from './settings.js';
 import { initLock } from './lock.js';
 import { renderSearch } from './search.js';
 import { startNotifier } from './notify.js';
+import * as Inbox from './inbox.js';
 import { initKeyboardBar } from './kbar.js';
 import { commentsScreen, calendarScreen, inboxScreen } from './hub.js';
 import * as E from './entities.js';
@@ -732,6 +733,9 @@ export async function boot() {
   if (window.visualViewport) visualViewport.addEventListener('resize', () => { if (!document.activeElement || !document.activeElement.matches('input, textarea, [contenteditable="true"]')) settleViewport(); });
   initKeyboardBar();
   window.__folioStep = 'lock'; await initLock();
+  // ECPAR rejection emails dropped in inbox/ by the iPhone shortcut are recorded after each sync
+  await Inbox.loadUnmatched().catch(() => {}); Sync.setInboxHook(Inbox.checkInbox);
+  Inbox.onInbox(({ done }) => { if (done.length) toast((done.length === 1 ? 'ECPAR rejected (from email): ' : `${done.length} ECPAR rejections (from email): `) + done.join(', '), 5000); if (/^#\/ecpar\b/.test(location.hash) && !document.activeElement?.matches('input, textarea, select, [contenteditable="true"]')) render(); });
   window.__folioStep = 'sync'; await startupSync(); window.__folioStep = 'ready';
   startNotifier();
   // updates: a new version uploaded to GitHub loads by itself. Folio checks when it opens, every 30 minutes and whenever you switch back to it;

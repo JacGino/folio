@@ -71,6 +71,7 @@ export function run() {
       const remoteDbs = (await gh.list(P('db'))).filter(f => f.name.endsWith('.json')).map(f => 'db:' + f.name.slice(0, -5));
       for (const sh of new Set([...D.shards().filter(s => s !== 'ws'), ...remoteDbs])) await syncShard(sh);
       await uploadQueue();
+      if (inboxHook) { try { await inboxHook(); } catch (e) { console.warn('inbox', e); } } // never stops the sync
       setStatus({ state: 'idle', at: Date.now() });
       return true;
     } catch (e) { setStatus({ state: 'error', error: e.message || String(e) }); return false; }
@@ -78,6 +79,17 @@ export function run() {
   })();
   return running;
 }
+
+// ---- inbox/ (repo root): files dropped by the iPhone "ECPAR rejected" email shortcut; Folio reads, records and removes them ----
+let inboxHook = null;
+export const setInboxHook = fn => { inboxHook = fn; };
+export async function inboxList() { if (!gh) return []; return (await gh.list('inbox')).filter(f => /\.json$/i.test(f.name)).sort((a, b) => a.name.localeCompare(b.name)); }
+export async function inboxRead(path) {
+  if (!gh) return null;
+  try { const j = await gh.getJSON(path); return j ? j.data : null; }
+  catch (e) { const b = await gh.getBytes(path).catch(() => null); return b ? new TextDecoder().decode(b) : null; } // not JSON: the text itself
+}
+export async function inboxDrop(path, sha) { if (gh) await gh.remove(path, sha); }
 
 let timer = null;
 export function soon(ms = 2500) { clearTimeout(timer); timer = setTimeout(run, ms); }
