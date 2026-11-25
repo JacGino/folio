@@ -480,12 +480,29 @@ export function firstName(name = '') {
 const ABBR = { BLOCK: 'BLK', SUBLOT: 'SL', RUMAH: 'RH', KAMPUNG: 'KG', KAMPONG: 'KG', JALAN: 'JLN', TAMAN: 'TMN', LORONG: 'LRG', BATU: 'BT', SUNGAI: 'SG', LONGHOUSE: 'LH', 'RUMAH PANJAI': 'RH' };
 /** address → { core, extra } parts: LOT / BLOCK first, then the place (abbreviated); no postcode, district, state */
 export function shortAddress(addr = '') {
+  let town = '';
   const segs = String(addr).toUpperCase().replace(/\s+/g, ' ').split(/[,;\n]/).map(s => s.trim().replace(/\.$/, '').replace(/\s*\b[A-Z-]+\s+(?:LAND\s+|TOWN\s+)?DISTRICT\b/g, '').replace(/^DAERAH\s+\S+/, '').trim()).filter(Boolean)
+    .filter(s => { const m = s.match(/^\d{5}\s+(.+)$/); if (m) { town = town || m[1]; return false; } if (STATION_SHORT[s.replace(/[-/]+/g, ' ')]) { town = town || s; return false; } return true; }) // the town / station: only at the very end, if there is room
     .filter(s => !/^\d{5}\b/.test(s) && !/\bDISTRICT\b|\bDAERAH\b|^(SARAWAK|MALAYSIA|SABAH)$/.test(s))
     .map(s => s.replace(/\bSUB[- ]LOT\b/g, 'SUBLOT').replace(/\s+(OF|DI)\s+/g, ' ').split(' ').map(w => ABBR[w] || w).join(' '));
   const lotblk = segs.filter(s => /\b(LOT|BLK)\b/.test(s)), rest = segs.filter(s => !/\b(LOT|BLK)\b/.test(s));
   const core = lotblk.length ? lotblk : rest.slice(0, 1), extra = lotblk.length ? rest : rest.slice(1);
-  return { core, extra };
+  return { core, extra, town };
+}
+/** the name for the Short title: a Chinese name as surname + initials (TAN ML); otherwise the first word, or the first two when the first is short (SF LOGISTICS, then SF LOGISTIC), else the first word alone */
+/** common Chinese surnames (Sarawak spellings) */
+const CN_SURNAME = new Set('TAN LIM LEE LI NG ONG WONG WANG CHONG CHUNG CHANG CHAN CHEN CHIN CHIEW CHIA CHAI CHEW CHOO CHUA CHIONG FOO FU GOH HO HII HIEW HOU HU HUANG KHO KOH KONG KUEH KUOK KIU KUNG LAI LAU LAW LEONG LIEW LIU LING LO LOH LOI LU LUK LAM LAH MAH NGU NGO NGIENG PANG PUI POH QUEK SIA SIAW SIM SIEW SII SIOW SOO SU SIE SEE SEOW TAY TEH TEO TIONG TING TIE TIEW TOH TONG TSEN TAI THAM WEE WU YAP YEO YII YONG YU DING JONG KHOO PHANG SAW YEOH ZHANG'.split(' '));
+const COMPANY = /\b(SDN|BHD|BERHAD|ENTERPRISE|TRADING|COMPANY|CO|PLC|RESOURCES|CONSTRUCTION|HOLDINGS|LOGISTICS|DEVELOPMENT|INDUSTRIES|SERVICES)\b|&/;
+export function nameOptions(name = '') {
+  const first = String(name).split(/(?:^|\s)\d{1,2}\s*[).]\s+/).map(s => s.trim()).filter(Boolean)[0] || '';
+  const w = first.replace(/\([^)]*\)/g, ' ').toUpperCase().split(/\s+/).filter(Boolean).filter((x, i, a) => !(HONOR.test(x) && i < a.length - 1));
+  if (!w.length) return [''];
+  // a Chinese name: surname + initials, TAN MEI LING → TAN ML
+  if (CN_SURNAME.has(w[0]) && w.length >= 2 && w.length <= 4 && !COMPANY.test(first.toUpperCase()) && !w.slice(1).some(x => /^(BIN|BINTI|AK|ANAK|A\/L|A\/P|@)$/.test(x)))
+    return [w[0] + ' ' + w.slice(1).map(x => x[0]).join(''), w[0]];
+  const second = w[1] && !/^(&|AND|BIN|BINTI|BT|AK|ANAK|A\/L|A\/P|@|SDN|BHD|ENTERPRISE)$/.test(w[1]) ? w[1] : '';
+  if (w[0].length > 3 || !second) return [w[0]];
+  return [w[0] + ' ' + second, ...(/S$/.test(second) && second.length > 4 ? [w[0] + ' ' + second.slice(0, -1)] : []), w[0]];
 }
 /** BTU-D-SF SL TO ZULKIPLI LOT 1800 RH PPRT — at most `max` characters; AT, then TO, then the extra address parts go first when it is too long */
 export function autoShortTitle(o) { return tidyEnd(autoShortTitle0(o)); }
@@ -493,15 +510,20 @@ export function autoShortTitle(o) { return tidyEnd(autoShortTitle0(o)); }
 const tidyEnd = t => { let w = String(t).trim().split(' '); while (w.length > 1 && /^(OF|A|AN|AT|TO|AND|&|THE|DI|DAN|KE|-|,)$/i.test(w[w.length - 1].replace(/,$/, '') || ',')) w.pop(); return w.join(' ').replace(/[,\s-]+$/, ''); };
 function autoShortTitle0({ prefix = '', code = '', name = '', address = '', units = 0, station = '', max = 40 }) {
   if (units > 1) return longhouseShort({ prefix, code, units, address, station, max });
-  const head = prefix + (code ? (/-S[7F]$/.test(prefix) ? ' ' : '') + code : ''), { core, extra } = shortAddress(address);
-  const join = (to, at, parts) => { const tail = [to && name && code ? 'TO' : '', name, at && parts.length ? 'AT' : '', ...parts].filter(Boolean).join(' ');
+  const head = prefix + (code ? (/-S[7F]$/.test(prefix) ? ' ' : '') + code : ''), { core, extra, town } = shortAddress(address), names = nameOptions(name);
+  const join = (nm, to, at, parts) => { const tail = [to && nm && code ? 'TO' : '', nm, at && parts.length ? 'AT' : '', ...parts].filter(Boolean).join(' ');
     return !tail ? head : !head ? tail : head + (/-$/.test(head) ? '' : ' ') + tail; };
-  // keep, in this order: LOT / BLOCK, the first place name, TO, AT, the other address parts
+  // keep, in this order: LOT / BLK, the name (two words when the first is short), the first place name, TO, AT, the other address parts;
+  // the station (short form) is added last, only when everything else is in and there is still room
   const tries = [], kmin = extra.length ? 1 : 0;
-  for (const [to, at] of [[1, 1], [1, 0], [0, 0]]) for (let k = extra.length; k >= kmin; k--) tries.push([to, at, k]);
-  if (kmin) for (const [to, at] of [[1, 1], [1, 0], [0, 0]]) tries.push([to, at, 0]);
-  for (const [to, at, k] of tries) { const s = join(to, at, [...core, ...extra.slice(0, k)]); if (s.length <= max) return s; }
-  let words = join(0, 0, core).split(' '); while (words.length > 1 && words.join(' ').length > max) words.pop();
+  for (const nm of names) {
+    for (const [to, at] of [[1, 1], [1, 0], [0, 0]]) for (let k = extra.length; k >= kmin; k--) tries.push([nm, to, at, k]);
+    if (kmin) for (const [to, at] of [[1, 1], [1, 0], [0, 0]]) tries.push([nm, to, at, 0]);
+  }
+  for (const [nm, to, at, k] of tries) { const s = join(nm, to, at, [...core, ...extra.slice(0, k)]); if (s.length <= max) {
+    const st = stationShort(station || town), full = nm === names[0] && to && at && k === extra.length;
+    return full && st && (s + ' ' + st).length <= max ? s + ' ' + st : s; } }
+  let words = join(names[names.length - 1], 0, 0, core).split(' '); while (words.length > 1 && words.join(' ').length > max) words.pop();
   return words.join(' ').slice(0, max);
 }
 /** BTU-C-LTSC TO <FULL NAME> AT <FULL ADDRESS> — no length limit; a longhouse (several customers): TO 8 CUSTOMER OF LONGHOUSE AT <FULL ADDRESS> */

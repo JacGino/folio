@@ -2630,3 +2630,6 @@ html.kbup .sheet.ltfull { height: calc(var(--vvh, 100vh) * .96 / var(--zoom, 1))
 /* Long Text: auto Short title (40 characters) */
 .ltf .ltcount { font-style: normal; font-size: 11px; color: var(--muted, #8a8a8a); margin-left: 4px; }
 .ltf .ltauto { margin-left: 8px; font: inherit; font-size: 11px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line, #d0d0d0); background: transparent; color: var(--accent, #2f6fdf); cursor: pointer; }
+/* Long Text: text boxes wrap and grow to show the whole value */
+.ltf textarea.ltgrow { min-height: 44px; height: 44px; padding: 11px 12px; line-height: 1.45; resize: none; overflow: hidden; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: calc(14px * var(--ts, 1)); }
+.ltf textarea.ltgrow.ltarea { min-height: 64px; }

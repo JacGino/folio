@@ -455,8 +455,11 @@ function ltApplyPrefix(f, row, totals) {
 function ltAutoShort(f, row, info, res, totals) {
   const P = n => DB.propByName(DB.kpiDb(), n), at = String(f.title || '').toUpperCase().match(/\sAT\s+(.+)$/s);
   const address = (at && at[1]) || (P('Address') ? String(DB.value(row, P('Address')) || '') : '');
-  return autoShortTitle({ prefix: ltPrefix(f, row, totals), code: ltCode(f, res), name: firstName(E.splitNameIc(f.client || info.title).name || info.title), address, units: ltUnits(info, row), station: P('Station') ? String(DB.value(row, P('Station')) || '') : '' }); // a longhouse: '8 EA LONGHOUSE … BTU'
+  return autoShortTitle({ prefix: ltPrefix(f, row, totals), code: ltCode(f, res), name: E.splitNameIc(f.client || info.title).name || info.title, address, units: ltUnits(info, row), station: P('Station') ? String(DB.value(row, P('Station')) || '') : '' }); // a longhouse: '8 EA LONGHOUSE … BTU'
 }
+/** a Long Text box grows to show all of its text */
+const ltGrow = el => { if (!el || !el.isConnected) return; el.style.height = 'auto'; el.style.height = (el.scrollHeight + 2) + 'px'; };
+const ltGrowAll = root => requestAnimationFrame(() => root.querySelectorAll('textarea.ltgrow').forEach(ltGrow));
 /** work code for the titles; Upgrading of Supply / Temporary Supply go in front: UOS/SL, TOS/LTSC (UOS / TOS alone when there are no items yet) */
 function ltCode(f, res) { const c = workCode(res.lines), k = { uos: 'UOS', tos: 'TOS' }[f.layout]; return k ? k + (c ? '/' + c : '') : c; }
 /** a longhouse (several customers on one ECX): the total units from the calculator, else the number of applicants; 0 for one customer */
@@ -558,20 +561,22 @@ function longTextSheet(row, info, w) {
   const set = (k, v) => { f[k] = v; if (k === 'shortTitle') f.shortAuto = !String(v).replace(PREFIX_RE, '').trim(); if (k === 'title') f.titleAuto = !String(v).replace(PREFIX_RE, '').trim(); // empty it to let Folio write it again
     if (['subsidyBV', 'cdpBV', 'submittedBy'].includes(k)) ltKeep(k, v); if (k === 'ic' && single && ltCust) E.setCustomerIc(ltCust, v); if (k === 'use' && ltCust) E.setCustomer(ltCust, 'use', v); if (k === 'scheme') D.update(E.work(row).id, { 'p:findings': v }); if (k === 'source' || k === 'feeder') D.update(E.work(row).id, { ['p:' + (k === 'source' ? 'tfSub' : 'tfFeeder')]: v }); touch(w); edited = false; draw(); };
   const inp = (k, label, o = {}) => h('label', { class: 'ltf' + (o.wide ? ' wide' : ''), 'data-k': k }, h('span', {}, label),
-    o.area ? h('textarea', { class: 'field', rows: o.rows || 3, value: f[k] ?? '', oninput: e => set(k, e.target.value) }, f[k] ?? '')
+    o.area ? h('textarea', { class: 'field ltgrow ltarea', rows: o.rows || 3, value: f[k] ?? '', oninput: e => { set(k, e.target.value); ltGrow(e.target); } }, f[k] ?? '')
       : o.opts ? h('select', { class: 'field', onchange: e => set(k, e.target.value) }, o.opts.map(([v, l]) => h('option', { value: v, selected: String(f[k]) === v ? true : null }, l)))
       : o.money ? moneyInput(f[k], v => set(k, v), label)
-      : h('input', { class: 'field', value: f[k] ?? '', inputmode: o.num ? 'decimal' : null, placeholder: '', list: o.list ? 'ltl-' + k : null, oninput: e => set(k, e.target.value) }),
+      : o.num || o.list ? h('input', { class: 'field', value: f[k] ?? '', inputmode: o.num ? 'decimal' : null, placeholder: '', list: o.list ? 'ltl-' + k : null, oninput: e => set(k, e.target.value) })
+      // text boxes wrap and grow, so the whole value shows (one line of data: Enter does nothing)
+      : h('textarea', { class: 'field ltgrow', rows: 1, value: f[k] ?? '', spellcheck: 'false', onkeydown: e => { if (e.key === 'Enter') e.preventDefault(); }, oninput: e => { const v = e.target.value.replace(/\r?\n/g, ' '); if (v !== e.target.value) e.target.value = v; set(k, v); ltGrow(e.target); } }, f[k] ?? ''),
     o.list ? h('datalist', { id: 'ltl-' + k }, o.list.map(v => h('option', { value: v }))) : null);
   f.extras = w.inputs.extras || (w.inputs.extras = []); // the Additional Items of the Connection Charge tab
   // fields that only some layouts use
   const only = (layouts, ...els) => els.map(el => { el.dataset.only = layouts; return el; });
-  const vis = () => body.querySelectorAll('[data-only]').forEach(el => { el.hidden = !el.dataset.only.split(' ').includes(f.layout); });
+  const vis = () => { body.querySelectorAll('[data-only]').forEach(el => { el.hidden = !el.dataset.only.split(' ').includes(f.layout); }); ltGrowAll(body); };
   const txt = () => pre.value.replace(/\r?\n/g, '\r\n');
   // the BTU-… front title was set from the project type / subsidy: show it in the Short title and Project title boxes
   const syncPrefixInputs = () => { for (const k of ['shortTitle', 'title']) { let el = null; try { el = body.querySelector(`[data-k="${k}"] .field`); } catch { return; } if (!el || el.value === (f[k] ?? '')) continue;
     const focused = document.activeElement === el, pos = focused ? el.selectionStart : 0, delta = String(f[k] ?? '').length - el.value.length;
-    el.value = f[k] ?? ''; if (focused) { const q = Math.max(0, pos + delta); try { el.setSelectionRange(q, q); } catch {} } } try { body.querySelector('[data-k="shortTitle"]')?._upd?.(); } catch {} };
+    el.value = f[k] ?? ''; ltGrow(el); if (focused) { const q = Math.max(0, pos + delta); try { el.setSelectionRange(q, q); } catch {} } } try { body.querySelector('[data-k="shortTitle"]')?._upd?.(); } catch {} };
   if (f.autoV !== 2) { f.titleAuto = true; f.shortAuto = true; f.autoV = 2; } // every project (titles typed before the auto titles too) gets Folio's titles once; a title you type after that stays yours
   if (f.titleAuto == null) f.titleAuto = !String(f.title || '').replace(PREFIX_RE, '').trim();
   const titleBox = () => { const el = inp('title', 'Project title', { wide: true, area: true, rows: 2 });
@@ -615,7 +620,7 @@ function longTextSheet(row, info, w) {
         h('button', { class: 'ccbtn primary', onclick: () => { download(name(), txt(), 'text/plain;charset=utf-8'); E.log(row, 'Connection charge', 'Long text saved as .txt: ' + name()); toast('Saved ' + name()); } }, icon('export', 17), h('span', {}, 'Save .txt')))));
   draw(); vis();
   const sh = sheet('Long Text — ' + shortApplicants(E.splitNameIc(info.title).name), body, { done: 'Close', wide: true, onDone: () => render() });
-  sh.panel.classList.add('ltfull'); sh.panel.parentElement.classList.add('ltfullback'); fitPre(); const onRs = () => { if (!sh.panel.isConnected) return removeEventListener('resize', onRs); fitPre(); }; addEventListener('resize', onRs); // the whole screen; the preview shows all of its text (no box to scroll inside)
+  sh.panel.classList.add('ltfull'); sh.panel.parentElement.classList.add('ltfullback'); fitPre(); const onRs = () => { if (!sh.panel.isConnected) return removeEventListener('resize', onRs); fitPre(); ltGrowAll(body); }; addEventListener('resize', onRs); ltGrowAll(body); // the whole screen; the preview shows all of its text (no box to scroll inside)
 }
 
 /** a money box: shows 'RM 3,300.00' and turns back into the plain number while you type in it */
