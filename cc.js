@@ -446,7 +446,7 @@ const PREFIX_RE = /^\s*BTU-(?:D-(?:SF|S7)?|C-)\s*/i; // only the front titles th
 function ltApplyPrefix(f, row, totals) {
   const pre = ltPrefix(f, row, totals); let changed = false;
   for (const k of ['shortTitle', 'title']) {
-    const cur = String(f[k] ?? ''), rest = cur.replace(PREFIX_RE, ''), want = pre + rest; // no space after the front title
+    const cur = String(f[k] ?? ''), rest = cur.replace(PREFIX_RE, ''), want = pre + (/-S[7F]$/.test(pre) ? ' ' : '') + rest; // BTU-C- / BTU-D- run straight on; BTU-D-S7 / BTU-D-SF take one space
     if (cur !== want) { f[k] = want; changed = true; }
   }
   return changed;
