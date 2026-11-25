@@ -6,7 +6,7 @@
 import * as D from './data.js';
 import * as M from './model.js';
 import * as DB from './db.js';
-import { parseDate, dateAdd, dateBetween, startOfDay, toISODate } from './dates.js';
+import { parseDate, dateAdd, dateBetween, startOfDay, toISODate, formatDate } from './dates.js';
 
 export const TASK_STATUS = ['Not Started', 'Pending', 'In Progress', 'Completed', 'On Hold'];
 export const PRIORITY = ['High', 'Medium', 'Low'];
@@ -372,7 +372,7 @@ let ecxOp = false; // set while the Reject button writes the card, so the field 
 export function rejectEcx(row, x, date, reason, { cat = '', correction = '', remarks = '' } = {}) {
   ecxOp = true;
   try {
-    D.update(x.id, { 'p:status': 'Rejected', 'p:rejected': date, 'p:reason': reason || '', 'p:rcat': cat || null, 'p:correction': correction || '', ...(remarks ? { 'p:remarks': remarks } : {}) });
+    D.update(x.id, { 'p:status': 'Rejected', 'p:rejected': date, 'p:submitted': null, 'p:reason': reason || '', 'p:rcat': cat || null, 'p:correction': correction || '', ...(remarks ? { 'p:remarks': remarks } : {}) }); // the Completed Date is emptied: key it in again when this round is done
     log(row, 'ECX', ecxName(x) + ' rejected.' + (reason ? ' ' + reason : ''), { ecx: x.id, ev: 'rejected', date, reason, cat, correction });
   } finally { ecxOp = false; }
 }
@@ -388,14 +388,43 @@ D.onChange(info => {
   try {
     if (has('rejected') && rj && !ECX_ACTIVE.includes(st) && st !== 'Closed') { ecxOp = false; rejectEcx(row, x, rj, g(x, 'reason', ''), { cat: g(x, 'rcat') || '' }); ecxOp = true; }
     else if (ECX_ACTIVE.includes(st) && (has('reason') || has('rcat') || has('rejected'))) { const l = last(); if (l) D.update(l.id, { reason: g(x, 'reason', ''), cat: g(x, 'rcat') || '', ...(rj ? { date: rj } : {}) }); }
+    else if (has('resubmitted') && g(x, 'resubmitted') && st === 'Resubmitted' && latestEcx(row) === x.id) assignFromResubmission(row, g(x, 'resubmitted'));
+    // a Completed Date typed in on the latest application closes it, and the project becomes Done (and is archived)
+    else if (has('submitted') && g(x, 'submitted') && st !== 'Closed') {
+      const xs = ecxOf(row.id), latest = xs[xs.length - 1], cd = parseDate(g(x, 'submitted')), rd = parseDate(rj);
+      const stillRejected = st === 'Rejected' && rd && cd && +startOfDay(cd) <= +startOfDay(rd); // a completed date from before the rejection
+      if (latest && latest.id === x.id && !stillRejected) { ecxOp = false; closeEcx(row, x, 'Completed ' + formatDate(cd, 'DD/MM/YYYY') + '.'); ecxOp = true; }
+    }
   } catch (e) { console.error(e); } finally { ecxOp = false; }
 });
+D.onChange(info => {
+  if (ecxOp || info.type !== 'update' || !info.fields) return;
+  const row = D.getRec(info.id), d = DB.kpiDb(); if (!row || row.k !== 'row' || !d || D.val(row, 'db') !== d.id) return;
+  const ap = DB.propByName(d, 'Date Assigned'); if (!ap || !info.fields.includes('p:' + ap.id)) return;
+  const iso = toISODate(D.val(row, 'p:' + ap.id));
+  // Due Date = Date Assigned (or the ECX Resubmission Date, which sets it) + 7 days, whenever Date Assigned is keyed in or changed
+  const dp = DB.propByName(d, 'Due Date');
+  if (dp && iso && !info.fields.includes('p:' + dp.id)) { const due = toISODate(dateAdd(parseDate(iso), 7, 'days')), id = row.id; queueMicrotask(() => { const r = D.live(id); if (r && toISODate(D.val(r, 'p:' + dp.id)) !== due) D.update(id, { ['p:' + dp.id]: due }); }); } // just after, so the other Date Assigned links (archive) see this change first
+  const xs = ecxOf(row.id), x = xs[xs.length - 1];
+  if (!x || g(x, 'status') !== 'Resubmitted' || !iso || toISODate(g(x, 'resubmitted')) === iso) return;
+  ecxOp = true;
+  try { D.update(x.id, { 'p:resubmitted': iso }); const l = D.all('act', a => D.val(a, 'ecx') === x.id && D.val(a, 'ev') === 'resubmitted').sort((a, b) => D.val(b, 't', 0) - D.val(a, 't', 0))[0]; if (l) D.update(l.id, { date: iso }); }
+  finally { ecxOp = false; }
+});
+const latestEcx = row => { const xs = ecxOf(row.id); return xs.length ? xs[xs.length - 1].id : null; };
 export function closeEcx(row, x, note) {
   D.update(x.id, { 'p:status': 'Closed' });
   log(row, 'ECX', ecxName(x) + ' closed.' + (note ? ' ' + note : ''), { ecx: x.id, ev: 'closed' });
 }
+/** an ECX resubmitted to you is a new assignment: Date Assigned = the resubmission date, Due Date 7 days later (a new KPI round) */
+function assignFromResubmission(row, date) {
+  const iso = toISODate(date); if (!iso) return;
+  const ap = P('Date Assigned'), dp = P('Due Date');
+  if (ap && toISODate(D.val(row, 'p:' + ap.id)) !== iso) D.update(row.id, { ['p:' + ap.id]: iso, ...(dp ? { ['p:' + dp.id]: toISODate(dateAdd(parseDate(iso), 7, 'days')) } : {}) });
+}
 export function resubmitEcx(row, x, date, note) {
   D.update(x.id, { 'p:status': 'Resubmitted', 'p:resubmitted': date });
+  if (latestEcx(row) === x.id) assignFromResubmission(row, date);
   log(row, 'ECX', ecxName(x) + ' resubmitted.' + (note ? ' ' + note : ''), { ecx: x.id, ev: 'resubmitted', date, reason: note });
 }
 export function approveEcx(row, x, date) {

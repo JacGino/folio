@@ -9,7 +9,7 @@ import { popEdit, editInline } from './popedit.js';
 import { formatDate } from './dates.js';
 import { render, now as NOW, download, L as LBL } from './app.js';
 import { guessSide } from './checklists.js';
-import { longText, sourceOfFund, routeToCosting, layoutFor, NTK_TYPES, ntkTypeFor, extras as extrasOf, LAYOUTS, RM as RMS, applicantsOf } from './longtext.js';
+import { longText, sourceOfFund, routeToCosting, layoutFor, NTK_TYPES, ntkTypeFor, extras as extrasOf, LAYOUTS, RM as RMS, applicantsOf, workCode, firstName, autoShortTitle, autoProjectTitle } from './longtext.js';
 import { badge, optPill } from './project.js';
 import { GUIDELINE, RATE, PREMISES, PREMISE, COMPONENTS, TABLE51_NOTES } from './ccrates.js';
 import { CATS, SCOPES, METHODS, ELIGIBLE_PROJECT_CATS, methodology, calculate, contributionEligible, itemsFor, upgradeMin, serviceCableSplit, perCircuit, snapshot, rm } from './ccengine.js';
@@ -451,6 +451,17 @@ function ltApplyPrefix(f, row, totals) {
   }
   return changed;
 }
+/** the Short title Folio writes: front title + work code + TO + first customer name + AT + short address (40 characters at most) */
+function ltAutoShort(f, row, info, res, totals) {
+  const P = n => DB.propByName(DB.kpiDb(), n), at = String(f.title || '').toUpperCase().match(/\sAT\s+(.+)$/s);
+  const address = (at && at[1]) || (P('Address') ? String(DB.value(row, P('Address')) || '') : '');
+  return autoShortTitle({ prefix: ltPrefix(f, row, totals), code: workCode(res.lines), name: firstName(E.splitNameIc(f.client || info.title).name || info.title), address, units: E.isMultiApplicant(info.title) ? applicantsOf(info.title).length : 0, station: P('Station') ? String(DB.value(row, P('Station')) || '') : '' }); // a longhouse: '8 EA LONGHOUSE … BTU'
+}
+/** the Project title Folio writes: front title + work code + TO + full name + AT + the project's full Address */
+function ltAutoTitle(f, row, info, res, totals) {
+  const P = DB.propByName(DB.kpiDb(), 'Address'), address = P ? String(DB.value(row, P) || '') : '';
+  return autoProjectTitle({ prefix: ltPrefix(f, row, totals), code: workCode(res.lines), name: E.isMultiApplicant(info.title) ? info.title : (E.splitNameIc(f.client || info.title).name || info.title), address });
+}
 function ltDefaults(row, info, w, res) {
   const c = E.customerOf(row), P = n => DB.propByName(DB.kpiDb(), n), pv = n => P(n) ? DB.value(row, P(n)) : '';
   const ecx = E.ecxOf(row.id)[0], tariff = c && g(c, 'tariff'), sub = c && g(c, 'subsidy');
@@ -511,7 +522,10 @@ function longTextSheet(row, info, w) {
   const draw = () => {
     f.noRyb = w.inputs.scope === 'ltnew'; // new substation / HT extension: no R / Y / B readings
     res = calculate(w); let out = longText(f, res);
-    if (ltApplyPrefix(f, row, out.totals)) { out = longText(f, res); syncPrefixInputs(); }
+    let ch = ltApplyPrefix(f, row, out.totals);
+    if (f.titleAuto) { const a = ltAutoTitle(f, row, info, res, out.totals); if (f.title !== a) { f.title = a; ch = true; } } // Folio writes the Project title until you type your own
+    if (f.shortAuto) { const a = ltAutoShort(f, row, info, res, out.totals); if (f.shortTitle !== a) { f.shortTitle = a; ch = true; } } // Folio writes the Short title until you type your own
+    if (ch) { out = longText(f, res); syncPrefixInputs(); }
     if (!edited) pre.value = out.text;
     fitPre();
     const t = out.totals;
@@ -533,7 +547,8 @@ function longTextSheet(row, info, w) {
       if (cur === '' || cur == null || Math.abs(+cur - t.cdpSeek) > 0.004) D.update(ep.id, { 'p:budget': t.cdpSeek });
     }
   };
-  const set = (k, v) => { f[k] = v; if (['subsidyBV', 'cdpBV', 'submittedBy'].includes(k)) ltKeep(k, v); if (k === 'ic' && single && ltCust) E.setCustomerIc(ltCust, v); if (k === 'use' && ltCust) E.setCustomer(ltCust, 'use', v); if (k === 'scheme') D.update(E.work(row).id, { 'p:findings': v }); if (k === 'source' || k === 'feeder') D.update(E.work(row).id, { ['p:' + (k === 'source' ? 'tfSub' : 'tfFeeder')]: v }); touch(w); edited = false; draw(); };
+  const set = (k, v) => { f[k] = v; if (k === 'shortTitle') f.shortAuto = !String(v).replace(PREFIX_RE, '').trim(); if (k === 'title') f.titleAuto = !String(v).replace(PREFIX_RE, '').trim(); // empty it to let Folio write it again
+    if (['subsidyBV', 'cdpBV', 'submittedBy'].includes(k)) ltKeep(k, v); if (k === 'ic' && single && ltCust) E.setCustomerIc(ltCust, v); if (k === 'use' && ltCust) E.setCustomer(ltCust, 'use', v); if (k === 'scheme') D.update(E.work(row).id, { 'p:findings': v }); if (k === 'source' || k === 'feeder') D.update(E.work(row).id, { ['p:' + (k === 'source' ? 'tfSub' : 'tfFeeder')]: v }); touch(w); edited = false; draw(); };
   const inp = (k, label, o = {}) => h('label', { class: 'ltf' + (o.wide ? ' wide' : ''), 'data-k': k }, h('span', {}, label),
     o.area ? h('textarea', { class: 'field', rows: o.rows || 3, value: f[k] ?? '', oninput: e => set(k, e.target.value) }, f[k] ?? '')
       : o.opts ? h('select', { class: 'field', onchange: e => set(k, e.target.value) }, o.opts.map(([v, l]) => h('option', { value: v, selected: String(f[k]) === v ? true : null }, l)))
@@ -548,14 +563,23 @@ function longTextSheet(row, info, w) {
   // the BTU-… front title was set from the project type / subsidy: show it in the Short title and Project title boxes
   const syncPrefixInputs = () => { for (const k of ['shortTitle', 'title']) { let el = null; try { el = body.querySelector(`[data-k="${k}"] .field`); } catch { return; } if (!el || el.value === (f[k] ?? '')) continue;
     const focused = document.activeElement === el, pos = focused ? el.selectionStart : 0, delta = String(f[k] ?? '').length - el.value.length;
-    el.value = f[k] ?? ''; if (focused) { const q = Math.max(0, pos + delta); try { el.setSelectionRange(q, q); } catch {} } } };
+    el.value = f[k] ?? ''; if (focused) { const q = Math.max(0, pos + delta); try { el.setSelectionRange(q, q); } catch {} } } try { body.querySelector('[data-k="shortTitle"]')?._upd?.(); } catch {} };
+  if (f.titleAuto == null) f.titleAuto = !String(f.title || '').replace(PREFIX_RE, '').trim();
+  const titleBox = () => { const el = inp('title', 'Project title', { wide: true, area: true, rows: 2 });
+    el.querySelector('span').append(' ', h('button', { type: 'button', class: 'ltauto', title: 'Let Folio write the Project title again', onclick: () => { f.titleAuto = true; touch(w); draw(); syncPrefixInputs(); } }, 'Auto')); return el; };
+  if (f.shortAuto == null) f.shortAuto = !String(f.shortTitle || '').replace(PREFIX_RE, '').trim(); // an older Short title you typed stays yours
+  const shortBox = () => { const el = inp('shortTitle', 'Short title (max 40)'), lab = el.querySelector('span'), fld = el.querySelector('.field');
+    el.classList.add('wide'); fld.maxLength = 40;
+    const cnt = h('em', { class: 'ltcount' }), upd = () => { cnt.textContent = (fld.value || '').length + '/40'; };
+    lab.append(' ', cnt, h('button', { type: 'button', class: 'ltauto', title: 'Let Folio write the Short title again', onclick: () => { f.shortAuto = true; touch(w); draw(); syncPrefixInputs(); upd(); } }, 'Auto'));
+    fld.addEventListener('input', upd); requestAnimationFrame(upd); el._upd = upd; return el; };
   const name = () => (String(f.shortTitle || f.ref || info.title).replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'Connection charge') + ' Long Text.txt';
   const body = h('div', { class: 'ltwrap' },
     h('div', { class: 'ltform' },
       h('label', { class: 'ltf wide ltlayout' }, h('span', {}, 'Layout (from the project category)'), h('select', { class: 'field', 'aria-label': 'Layout', onchange: e => { f.layout = e.target.value; touch(w); edited = false; vis(); draw(); } },
         Object.entries(LAYOUTS).map(([k, l]) => h('option', { value: k, selected: f.layout === k ? true : null }, l)))),
-      h('h4', {}, 'Project'), inp('shortTitle', 'Short title', { wide: true }), inp('ref', 'REF. NO (ECX)'), inp('projectRef', 'Project ref'),
-      inp('title', 'Project title', { wide: true, area: true, rows: 2 }), inp('consultant', 'Consultant / contractor'), inp('client', 'Developer / client'), single ? inp('ic', 'IC / company no.') : null, inp('contact', 'Contact number'),
+      h('h4', {}, 'Project'), shortBox(), inp('ref', 'REF. NO (ECX)'), inp('projectRef', 'Project ref'),
+      titleBox(), inp('consultant', 'Consultant / contractor'), inp('client', 'Developer / client'), single ? inp('ic', 'IC / company no.') : null, inp('contact', 'Contact number'),
       ...only('ntk', h('label', { class: 'ltf wide' }, h('span', {}, 'NTK application type (who pays)'), h('select', { class: 'field', 'aria-label': 'NTK application type', onchange: e => {
         const t = NTK_TYPES[e.target.value]; f.ntkType = e.target.value; D.update(row.id, { ntkType: e.target.value, ntkSub: { bda: 'BDA', jkrs: 'JKR', jkrf: 'JKR', commercial: 'Commercial', mixed: 'Commercial & Residential', residential: 'Residential' }[e.target.value] }); // the NTK sub-category follows f.appType = t.appType; f.sst = f.sstExempt && e.target.value !== 'residential' ? '0' : t.sst; touch(w); edited = false;
         body.querySelectorAll('.ltform input').forEach(i => { const k = i.closest('label')?.dataset.k; if (k && f[k] != null) i.value = i.dataset.money && f[k] !== '' && !isNaN(+f[k]) ? 'RM ' + (+f[k]).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : f[k]; }); draw(); } },

@@ -460,3 +460,70 @@ export function routeToCosting(f, t) {
   const pays = !so && /\bCustomer\b/.test(sourceOfFund(f, t).text);
   return pays ? 'Customer Payment (Normal CC Bill)' : 'Customer Payment (SDEC/Service Order/etc.)';
 }
+
+// ---------- auto Short title (SAP: 40 characters, spaces included) ----------
+/** work code from the Connection Charge items: substation → SS, HT → HT, LT pole/line + service cable → LTSC, service cable only → SL, LT pole/line only → LT */
+export function workCode(lines = []) {
+  const has = fn => lines.some(fn), d = l => String(l.desc || l.spec || '');
+  const cable = l => l.comp === 'lt' && /service (line|cable)|belian riser/i.test(d(l)); // service line / service cable / riser
+  const line = l => l.comp === 'lt' && !cable(l) && !/street ?light/i.test(d(l)) && /pole|overhead line|underground cable|span/i.test(d(l)); // LT poles and lines
+  if (has(l => l.comp === 'substation')) return 'SS';
+  if (has(l => l.comp === 'ht' || l.comp === 'htexcess')) return 'HT';
+  const sc = has(cable), pole = has(line);
+  return sc && pole ? 'LTSC' : sc ? 'SL' : pole ? 'LT' : '';
+}
+const HONOR = /^(EN|ENCIK|PUAN|PN|CIK|TUAN|MR|MRS|MS|MDM|DR|HJ|HAJI|HJH|HAJAH|DATO|DATUK|DATIN|TAN SRI|IR|SR)\.?$/i;
+/** first word of the (first) customer's name: 'ZULKIPLI BIN RAMBLI' → 'ZULKIPLI' */
+export function firstName(name = '') {
+  const first = String(name).split(/(?:^|\s)\d{1,2}\s*[).]\s+/).map(s => s.trim()).filter(Boolean)[0] || '';
+  const words = first.replace(/\([^)]*\)/g, ' ').toUpperCase().split(/\s+/).filter(Boolean);
+  return words.find(w => !HONOR.test(w)) || words[0] || '';
+}
+const ABBR = { RUMAH: 'RH', KAMPUNG: 'KG', KAMPONG: 'KG', JALAN: 'JLN', TAMAN: 'TMN', LORONG: 'LRG', BATU: 'BT', SUNGAI: 'SG', LONGHOUSE: 'LH', 'RUMAH PANJAI': 'RH' };
+/** address → { core, extra } parts: LOT / BLOCK first, then the place (abbreviated); no postcode, district, state */
+export function shortAddress(addr = '') {
+  const segs = String(addr).toUpperCase().replace(/\s+/g, ' ').split(/[,;\n]/).map(s => s.trim().replace(/\.$/, '').replace(/\s*\b[A-Z-]+\s+(?:LAND\s+|TOWN\s+)?DISTRICT\b/g, '').replace(/^DAERAH\s+\S+/, '').trim()).filter(Boolean)
+    .filter(s => !/^\d{5}\b/.test(s) && !/\bDISTRICT\b|\bDAERAH\b|^(SARAWAK|MALAYSIA|SABAH)$/.test(s))
+    .map(s => s.split(' ').map(w => ABBR[w] || w).join(' ').replace(/\bBLK\b/g, 'BLOCK'));
+  const lotblk = segs.filter(s => /\b(LOT|BLOCK)\b/.test(s)), rest = segs.filter(s => !/\b(LOT|BLOCK)\b/.test(s));
+  const core = lotblk.length ? lotblk : rest.slice(0, 1), extra = lotblk.length ? rest : rest.slice(1);
+  return { core, extra };
+}
+/** BTU-D-SF SL TO ZULKIPLI LOT 1800 RH PPRT — at most `max` characters; AT, then TO, then the extra address parts go first when it is too long */
+export function autoShortTitle({ prefix = '', code = '', name = '', address = '', units = 0, station = '', max = 40 }) {
+  if (units > 1) return longhouseShort({ prefix, code, units, address, station, max });
+  const head = prefix + (code ? (/-S[7F]$/.test(prefix) ? ' ' : '') + code : ''), { core, extra } = shortAddress(address);
+  const join = (to, at, parts) => { const tail = [to && name && code ? 'TO' : '', name, at && parts.length ? 'AT' : '', ...parts].filter(Boolean).join(' ');
+    return !tail ? head : !head ? tail : head + (/-$/.test(head) ? '' : ' ') + tail; };
+  // keep, in this order: LOT / BLOCK, the first place name, TO, AT, the other address parts
+  const tries = [], kmin = extra.length ? 1 : 0;
+  for (const [to, at] of [[1, 1], [1, 0], [0, 0]]) for (let k = extra.length; k >= kmin; k--) tries.push([to, at, k]);
+  if (kmin) for (const [to, at] of [[1, 1], [1, 0], [0, 0]]) tries.push([to, at, 0]);
+  for (const [to, at, k] of tries) { const s = join(to, at, [...core, ...extra.slice(0, k)]); if (s.length <= max) return s; }
+  let words = join(0, 0, core).split(' '); while (words.length > 1 && words.join(' ').length > max) words.pop();
+  return words.join(' ').slice(0, max);
+}
+/** BTU-C-LTSC TO <FULL NAME> AT <FULL ADDRESS> — no length limit; several applicants: the first name & n OTHERS */
+export function autoProjectTitle({ prefix = '', code = '', name = '', address = '' }) {
+  const ps = applicantsOf(name), who = (ps.length ? ps[0].name + ' & ' + (ps.length - 1) + ' OTHER' + (ps.length > 2 ? 'S' : '') : String(name).replace(/\s*\([^)]*\)\s*$/, '')).replace(/\s+/g, ' ').trim().toUpperCase();
+  const addr = String(address).replace(/\s+/g, ' ').replace(/\s+,/g, ',').trim().toUpperCase();
+  const head = prefix + (code ? (/-S[7F]$/.test(prefix) ? ' ' : '') + code : '');
+  const tail = [code && who ? 'TO' : '', who, addr ? 'AT' : '', addr].filter(Boolean).join(' ');
+  return !tail ? head : !head ? tail : head + (/-$/.test(head) ? '' : ' ') + tail;
+}
+/** station short forms for the Short title */
+export const STATION_SHORT = { BINTULU: 'BTU', SAMALAJU: 'SJU', TATAU: 'TTU', SEBAUH: 'SBH', NYALAU: 'NYALAU', 'BINTULU MIRI': 'BTU-MYY', 'BINTULU TATAU': 'BTU-TTU' };
+export const stationShort = st => { const k = String(st || '').toUpperCase().replace(/[-/_,]+/g, ' ').replace(/\s+/g, ' ').trim(); return STATION_SHORT[k] || k; };
+/** a longhouse (several customers, one address): BTU-D-SL TO 8 CUST AT LONGHOUSE RH ENTI BTU, cut to 40.
+ *  Always kept: the number + CUST, the RH name, the station; then LONGHOUSE (else LH); TO and AT are optional */
+function longhouseShort({ prefix, code, units, address, station, max }) {
+  const head = prefix + (code ? (/-S[7F]$/.test(prefix) ? ' ' : '') + code : '');
+  const raw = String(address).toUpperCase().replace(/\s+/g, ' ').split(/[,;\n]/).map(x => x.trim()).filter(Boolean);
+  const pc = raw.map(x => x.match(/^\d{5}\s+(.+)$/)).find(Boolean), st = stationShort(station || (pc ? pc[1] : ''));
+  const { core, extra } = shortAddress(address), house = core.concat(extra).find(x => /^RH\b/.test(x)) || core[0] || '';
+  const join = (lh, to, at, t) => { const tail = [to && code ? 'TO' : '', units + ' CUST', at ? 'AT' : '', lh, house, t && st && !house.split(' ').includes(st) ? st : ''].filter(Boolean).join(' ');
+    return !head ? tail : head + (/-$/.test(head) ? '' : ' ') + tail; };
+  for (const t of [1, 0]) for (const lh of ['LONGHOUSE', 'LH']) for (const [to, at] of [[1, 1], [1, 0], [0, 1], [0, 0]]) { const x = join(lh, to, at, t); if (x.length <= max) return x; }
+  let words = join('LH', 0, 0, 0).split(' '); while (words.length > 1 && words.join(' ').length > max) words.pop();
+  return words.join(' ').slice(0, max);
+}

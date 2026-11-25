@@ -2627,3 +2627,6 @@ html.kbup .sheet.ltfull { height: calc(var(--vvh, 100vh) * .96 / var(--zoom, 1))
   .sheet.ltfull .ltform { min-height: 0; max-height: 100%; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; padding-right: 10px; align-content: start; }
   .sheet.ltfull .ltout { position: static; min-height: 0; max-height: 100%; height: auto; }
 }
+/* Long Text: auto Short title (40 characters) */
+.ltf .ltcount { font-style: normal; font-size: 11px; color: var(--muted, #8a8a8a); margin-left: 4px; }
+.ltf .ltauto { margin-left: 8px; font: inherit; font-size: 11px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line, #d0d0d0); background: transparent; color: var(--accent, #2f6fdf); cursor: pointer; }

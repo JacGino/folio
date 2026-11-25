@@ -312,6 +312,7 @@ export function newProjectSheet({ cat: preCat = '' } = {}) {
   cat.addEventListener('change', subFill); subFill();
   const da = h('input', { type: 'date', class: 'field', value: today(), 'aria-label': 'Date assigned' });
   const dd = h('input', { type: 'date', class: 'field', value: toISODate(dateAdd(new Date(NOW()), 7, 'days')), 'aria-label': 'Due date' });
+  da.addEventListener('change', () => { const d0 = parseDate(da.value); if (d0) dd.value = toISODate(dateAdd(d0, 7, 'days')); }); // Due Date = Date Assigned + 7 days
   const ref = h('input', { class: 'field mono', placeholder: 'e.g. ECX_202607_2457 (optional)', 'aria-label': DB.REF_ECX });
   const pref = h('input', { class: 'field mono', placeholder: 'e.g. BTU-260476 (optional)', 'aria-label': DB.REF_ECPAR });
   const lab = (t, el) => h('label', { class: 'flabel' }, h('span', {}, t), el);
@@ -786,6 +787,7 @@ function ecxCard(row, x) {
       kv('date', 'Completed Date', xf('submitted', 'Completed date', { type: 'date' })),
       // no Reassigned Date: a reassignment gives the project a new Date Assigned / Due Date (a new KPI count)
       kv('date', 'Rejection Date', xf('rejected', 'Rejection date', { type: 'date' })),
+      kv('date', 'Resubmission Date', xf('resubmitted', 'Resubmission date (= Date Assigned)', { type: 'date' })),
       kv('list', 'Reason Category', xf('rcat', 'Reason category', { type: 'select', options: E.ECX_REASONS })),
       kv('text', 'Rejection Reason', xf('reason', 'Rejection reason'))),
     historyBlock('Rejection history', E.revisions(row, x.id)));
