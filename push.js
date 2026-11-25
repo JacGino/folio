@@ -4,11 +4,13 @@
 // and sends "ECPAR rejected" as soon as the iPhone shortcut drops a rejection email in inbox/.
 // Keys: the public key is in push/config.json; the private key is shown once to be saved as the repo secret
 // VAPID_PRIVATE_KEY — Folio never stores it.
+import * as D from './data.js';
 import * as DB from './db.js';
 import * as E from './entities.js';
 import * as Sync from './sync.js';
 import * as S from './store.js';
 import { toISODate } from './dates.js';
+import { now as NOW } from './app.js';
 
 export const CONFIG = 'push/config.json', DIGEST = 'push/digest.json', SUBS = 'push/subs/';
 const b64u = bytes => btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -66,21 +68,31 @@ export async function disablePush() {
   await S.meta.set('pushOn', false);
 }
 
-/** the due-list the GitHub job reads: projects (and amendments) and tasks with a due date, open ones only */
-export function digest(n = Date.now()) {
-  const items = [];
-  for (const t of DB.kpiTasks(n)) if (t.due && t.days != null && t.days >= -120 && t.days <= 7) items.push({ title: t.title, due: toISODate(t.due), kind: t.amend ? 'amend' : 'project' });
-  for (const t of E.dueTasks(n, { within: 7 })) if (t.days >= -120) items.push({ title: (t.name || 'Task') + ' — ' + t.customer, due: toISODate(new Date(new Date(n).setHours(12, 0, 0, 0) + t.days * 864e5)), kind: 'task' });
-  items.sort((a, b) => a.due.localeCompare(b.due) || a.title.localeCompare(b.title));
-  return { tz: 'Asia/Kuching', items };
+/** what the GitHub job reads: due dates, open rejected ECX / ECPAR, and BTU number → customer (for the email alerts).
+ *  Each line of a notification is "Due Today - BTU-xxxxxx Name", "Rejected ECX - …" or "Rejected ECPAR - …". */
+const norm = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+function refOf(row, d) {
+  const v = n => { const p = DB.propByName(d, n); return p ? String(D.val(row, 'p:' + p.id) || '').split(/\r?\n/)[0].trim() : ''; };
+  return v(DB.REF_ECPAR) || v(DB.REF_ECX);
 }
-/** save the due-list when it changed (after each sync, on any device, once push is set up) */
+export function digest(n = NOW()) {
+  const d = DB.kpiDb(), line = row => ({ ref: refOf(row, d), name: DB.title(row) });
+  const due = [], seen = new Set();
+  for (const t of DB.kpiTasks(n)) if (!t.amend && t.due && t.days != null && t.days >= 0 && t.days <= 7) { due.push({ ...line(t.row), due: toISODate(t.due) }); seen.add(t.row.id + toISODate(t.due)); }
+  for (const t of E.dueTasks(n, { within: 7 })) if (t.days >= 0) { const iso = toISODate(new Date(new Date(n).setHours(12, 0, 0, 0) + t.days * 864e5)); if (!seen.has(t.row.id + iso)) { seen.add(t.row.id + iso); due.push({ ...line(t.row), due: iso }); } }
+  const g = DB.ecparGroups(n), ecpar = [...g.overdue, ...g.today].map(t => line(t.row));
+  const ecxSeen = new Set(), ecx = E.rejectedEcx(n).filter(t => !ecxSeen.has(t.row.id) && ecxSeen.add(t.row.id)).map(t => line(t.row));
+  const refs = {}; for (const row of DB.rows(d.id)) { const r = refOf(row, d); if (r) refs[norm(r)] = { ref: r, name: DB.title(row) }; }
+  const by = (a, b) => (a.due || '').localeCompare(b.due || '') || a.ref.localeCompare(b.ref);
+  return { tz: 'Asia/Kuching', due: due.sort(by), ecx: ecx.sort(by), ecpar: ecpar.sort(by), refs };
+}
+/** save it when it changed (after each sync, on any device, once push is set up) */
 let hasConfig = null; // checked once per session: is push set up for this workspace?
 export async function writeDigest(force = false) {
   if (!Sync.connected() || !DB.kpiDb()) return false;
   if (!force) { if (hasConfig === null) hasConfig = !!(await config()); if (!hasConfig) return false; } // every device keeps it current once any device has push
   hasConfig = true;
-  const d = digest(), key = JSON.stringify(d.items);
+  const d = digest(), key = JSON.stringify([d.due, d.ecx, d.ecpar, d.refs]);
   if (!force && (await S.meta.get('digestKey')) === key) return false;
   await Sync.rootPut(DIGEST, { ...d, updated: new Date().toISOString() });
   await S.meta.set('digestKey', key); return true;
