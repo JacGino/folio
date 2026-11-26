@@ -2634,3 +2634,8 @@ html.kbup .sheet.ltfull { height: calc(var(--vvh, 100vh) * .96 / var(--zoom, 1))
 .ltf textarea.ltgrow { min-height: 44px; height: 44px; padding: 11px 12px; line-height: 1.45; resize: none; overflow: hidden; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: calc(14px * var(--ts, 1)); }
 .ltf textarea.ltgrow.ltarea { min-height: 64px; }
 .ltf textarea.ltgrow.ltcapped { overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+/* search boxes: × clears the search */
+.tclear { flex: 0 0 auto; width: 24px; height: 24px; border-radius: 50%; border: 0; padding: 0; margin-left: 4px; background: var(--bg3, rgba(0,0,0,.08)); color: var(--ink2, #555); font-size: 16px; line-height: 24px; text-align: center; cursor: pointer; }
+.tclear:hover { background: var(--bg4, rgba(0,0,0,.14)); color: var(--ink, #222); }
+.tclear[hidden] { display: none; }
+.searchbox + .tclear, .dbsearch + .tclear { margin-left: -34px; margin-right: 10px; align-self: center; position: relative; z-index: 1; }

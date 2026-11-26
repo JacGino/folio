@@ -253,7 +253,18 @@ export function textbox({ value = '', placeholder = '', multiline = false, cls =
   el.addEventListener('input', e => { if (!el.textContent && el.innerHTML) el.innerHTML = ''; oninput && oninput(e); });
   el.addEventListener('paste', e => { if (el.contentEditable === 'plaintext-only') return; e.preventDefault(); document.execCommand('insertText', false, (e.clipboardData || window.clipboardData).getData('text/plain')); });
   if (onblur) el.addEventListener('blur', onblur);
+  if (/\b(hsearch-in|searchbox|dbsearch)\b/.test(cls)) addClear(el);
   return el;
+}
+/** a search box gets an × at its right end that clears it (shown only when there is something typed) */
+function addClear(el) {
+  const btn = h('button', { type: 'button', class: 'tclear', 'aria-label': 'Clear search', title: 'Clear', hidden: !el.textContent.trim() || null,
+    onpointerdown: e => e.preventDefault(), // keep the keyboard up
+    onclick: e => { e.stopPropagation(); el.value = ''; btn.hidden = true; el.dispatchEvent(new Event('input', { bubbles: true })); try { el.focus(); } catch {} } }, '×');
+  const place = () => { if (el.parentNode && btn.previousSibling !== el) el.after(btn); };
+  el.addEventListener('input', () => { place(); btn.hidden = !el.textContent.trim(); }); // textContent: no page re-measure (innerText would) on every key
+  el.addEventListener('focus', place); el._placeClear = place; // a page that moves the box into a fresh header calls this
+  if (el.parentNode) place(); else requestAnimationFrame(function again(n = 0) { if (el.parentNode) place(); else if (n < 120) requestAnimationFrame(() => again(n + 1)); });
 }
 
 // ---- choose a photo (profile photo, cover, page icon) ----

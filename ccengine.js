@@ -108,8 +108,8 @@ function chargeableOne(inp) {
   if (inp.phase !== 1 && inp.phase !== 3) { out.errors.push('Supply Phase'); return out; }
   if (applied != null && applied <= 0) out.errors.push('Applied Load must be more than 0 kVA');
   const basis = inp.basis === 'guideline' ? 'guideline' : 'practice';
-  if (p.perLamp) { // public lighting: charge actual — LED 70W = 0.08 kVA per unit, no minimum
-    out.mode = basis; out.perUnit = p.perLamp; out.basis = `Public lighting LED 70W: ${p.perLamp} kVA per unit (charge actual, no minimum)`; out.ref = 'Your rule: public lighting charged actual';
+  if (p.perLamp) { // public lighting: charge actual — LED 70W = 0.10 kVA per unit, no minimum
+    out.mode = basis; out.perUnit = p.perLamp; out.basis = `Public lighting LED 70W: ${(+p.perLamp).toFixed(2)} kVA per unit (charge actual, no minimum)`; out.ref = 'Your rule: public lighting charged actual';
     out.total = r2(out.perUnit * units); if (units > 1) out.basis += ` × ${units} units`; return out;
   }
   out.mode = basis;

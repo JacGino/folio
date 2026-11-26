@@ -463,12 +463,15 @@ export function routeToCosting(f, t) {
 
 // ---------- auto Short title (SAP: 40 characters, spaces included) ----------
 /** work code from the Connection Charge items, joined in this order: HT (HT poles / lines, substation, RMU, transformer),
- *  LT (LT poles / lines and LV equipment such as pillars), SL (service line, riser), SC (service cable) — e.g. LTSL, LTSC, HTLT */
+ *  LT (LT poles / lines and LV equipment such as pillars), SL (service line, riser), SC (service cable) — e.g. LTSL, LTSC, HTLT;
+ *  only public / street lighting: ST LIGHT */
 export function workCode(lines = []) {
   const has = fn => lines.some(fn), d = l => String(l.desc || l.spec || '');
   const sl = l => l.comp === 'lt' && /service line|belian riser/i.test(d(l)), sc = l => l.comp === 'lt' && /service cable/i.test(d(l));
-  const ht = has(l => ['ht', 'htexcess', 'substation'].includes(l.comp)), lt = has(l => (l.comp === 'lt' && !sl(l) && !sc(l)) || l.comp === 'ltstreet');
-  return (ht ? 'HT' : '') + (lt ? 'LT' : '') + (has(sl) ? 'SL' : '') + (has(sc) ? 'SC' : '');
+  const st = l => l.comp === 'ltstreet' || (l.comp === 'lt' && /street ?light/i.test(d(l))); // public / street lighting
+  const ht = has(l => ['ht', 'htexcess', 'substation'].includes(l.comp)), lt = has(l => l.comp === 'lt' && !sl(l) && !sc(l) && !st(l)), light = has(st);
+  if (light && !ht && !lt && !has(sl) && !has(sc)) return 'ST LIGHT'; // only public lighting
+  return (ht ? 'HT' : '') + (lt || light ? 'LT' : '') + (has(sl) ? 'SL' : '') + (has(sc) ? 'SC' : '');
 }
 const HONOR = /^(EN|ENCIK|PUAN|PN|CIK|TUAN|MR|MRS|MS|MDM|DR|HJ|HAJI|HJH|HAJAH|DATO|DATUK|DATIN|TAN SRI|IR|SR)\.?$/i;
 /** first word of the (first) customer's name: 'ZULKIPLI BIN RAMBLI' → 'ZULKIPLI' */
@@ -493,10 +496,20 @@ export function shortAddress(addr = '') {
 /** common Chinese surnames (Sarawak spellings) */
 const CN_SURNAME = new Set('TAN LIM LEE LI NG ONG WONG WANG CHONG CHUNG CHANG CHAN CHEN CHIN CHIEW CHIA CHAI CHEW CHOO CHUA CHIONG FOO FU GOH HO HII HIEW HOU HU HUANG KHO KOH KONG KUEH KUOK KIU KUNG LAI LAU LAW LEONG LIEW LIU LING LO LOH LOI LU LUK LAM LAH MAH NGU NGO NGIENG PANG PUI POH QUEK SIA SIAW SIM SIEW SII SIOW SOO SU SIE SEE SEOW TAY TEH TEO TIONG TING TIE TIEW TOH TONG TSEN TAI THAM WEE WU YAP YEO YII YONG YU DING JONG KHOO PHANG SAW YEOH ZHANG'.split(' '));
 const COMPANY = /\b(SDN|BHD|BERHAD|ENTERPRISE|TRADING|COMPANY|CO|PLC|RESOURCES|CONSTRUCTION|HOLDINGS|LOGISTICS|DEVELOPMENT|INDUSTRIES|SERVICES)\b|&/;
+const GOV = { 'BINTULU DEVELOPMENT AUTHORITY': 'BDA', 'LEMBAGA KEMAJUAN BINTULU': 'BDA', 'JABATAN KERJA RAYA': 'JKR', 'PUBLIC WORKS DEPARTMENT': 'JKR', 'SARAWAK ENERGY BERHAD': 'SEB', 'SYARIKAT SESCO BERHAD': 'SESCO' };
+/** a government body or agency as its initials; known ones from the list, others when the name has AUTHORITY / JABATAN / MAJLIS … */
+export function govShort(name = '') {
+  const n = String(name).toUpperCase().replace(/\([^)]*\)/g, ' ').replace(/\s+/g, ' ').trim();
+  for (const [k, v] of Object.entries(GOV)) if (n.includes(k)) return v;
+  if (!/\b(AUTHORITY|JABATAN|MAJLIS|KEMENTERIAN|LEMBAGA|DEPARTMENT|COUNCIL|PERBADANAN|MINISTRY|AGENCY)\b/.test(n)) return '';
+  return n.split(' ').filter(x => !/^(OF|DAN|AND|&|THE|-)$/.test(x)).map(x => x[0]).join('');
+}
 export function nameOptions(name = '') {
   const first = String(name).split(/(?:^|\s)\d{1,2}\s*[).]\s+/).map(s => s.trim()).filter(Boolean)[0] || '';
   const w = first.replace(/\([^)]*\)/g, ' ').toUpperCase().split(/\s+/).filter(Boolean).filter((x, i, a) => !(HONOR.test(x) && i < a.length - 1));
   if (!w.length) return [''];
+  // government bodies: the short form (BINTULU DEVELOPMENT AUTHORITY → BDA, JABATAN KERJA RAYA → JKR)
+  const gov = govShort(w.join(' ')); if (gov) return [gov];
   // a Chinese name: surname + initials, TAN MEI LING → TAN ML
   if (CN_SURNAME.has(w[0]) && w.length >= 2 && w.length <= 4 && !COMPANY.test(first.toUpperCase()) && !w.slice(1).some(x => /^(BIN|BINTI|AK|ANAK|A\/L|A\/P|@)$/.test(x)))
     return [w[0] + ' ' + w.slice(1).map(x => x[0]).join(''), w[0]];

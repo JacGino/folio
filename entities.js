@@ -126,19 +126,63 @@ export const customerOf = row => D.live(D.val(row, 'cust'));
 export const projects = () => { const d = DB.kpiDb(); return d ? DB.rows(d.id) : []; };
 export const projectsOf = custId => projects().filter(r => D.val(r, 'cust') === custId);
 
-/** keep each project linked to the customer whose name it shows (also fixes links after a rename elsewhere) */
+/** projects with the same customer name (each has its own customer details) */
+export const projectsNamed = name => { const k = custKey(name || ''); return k ? projects().filter(r => custKey(DB.title(r)) === k) : []; };
+let custCount = null; // customer id → number of projects linked, built once per ensureModel
+/** each project has its OWN customer details (address, load, units, phone, tariff …), even when the customer name is the same
+ *  as another project's — so changing one project never changes another. Older projects that shared one record are split once:
+ *  the newest keeps it, each older one gets its own copy (load / units / premise from its own saved calculation when it has one). */
 function linkCustomer(row) {
   const name = DB.title(row); if (!name || name === 'Untitled') return;
-  const key = custKey(name), cur = customerOf(row);
-  if (cur && custKey(g(cur, 'name')) === key) return;
-  const same = customers().find(c => custKey(g(c, 'name')) === key);
-  if (same) { D.update(row.id, { cust: same.id }); return; }
-  if (cur && projectsOf(cur.id).length === 1) { D.update(cur.id, { 'p:name': name.trim() }); return; } // only project of that customer: the customer was renamed
-  const c = ensure('cust', 'cu' + hash(key), { 'p:name': name.trim() });
+  let cur = customerOf(row);
+  if (cur) {
+    if ((custCount ? custCount.get(cur.id) || 0 : 2) > 1) { const sharers = projectsOf(cur.id); // only when shared (rare): no scan of every project for each project
+    if (sharers.length > 1) {
+      const keep = sharers.slice().sort((a, b) => (D.val(b, 'created') || 0) - (D.val(a, 'created') || 0))[0];
+      if (keep.id !== row.id) { cur = ownCustomer(row, cur, D.val(keep, 'created') || 0); if (custCount) custCount.set(D.val(row, 'cust'), 1); }
+    } }
+    if (g(cur, 'name') !== name.trim() && custKey(g(cur, 'name')) !== custKey(name)) D.update(cur.id, { 'p:name': name.trim() }); // renamed
+    return;
+  }
+  const c = ensure('cust', 'cp' + row.id, { 'p:name': name.trim() });
   if (!g(c, 'name')) D.update(c.id, { 'p:name': name.trim() });
   if (!g(c, 'address') && rowVal(row, 'Address')) D.update(c.id, { 'p:address': rowVal(row, 'Address') });
   if (!g(c, 'map') && rowVal(row, 'Pin Location')) D.update(c.id, { 'p:map': rowVal(row, 'Pin Location') });
   D.update(row.id, { cust: c.id });
+}
+/** a field's value as it was at time T (ms), from the record's edit history; null when it was not set yet */
+const tsMs = ts => parseInt(String(ts || '').split(':')[0], 36) || 0;
+export function valueAt(rec, n, T) {
+  const cands = [].concat(rec && rec.f && rec.f[n] ? [rec.f[n]] : [], ((rec && rec.h) || []).filter(e => e.n === n));
+  let best = null; for (const c of cands) { const t = tsMs(c.ts); if (t <= T && (!best || t > tsMs(best.ts))) best = c; }
+  return best ? { v: best.v } : null;
+}
+/** this project's own copy of a shared customer record: its details as they were before the newer project took the record over
+ *  (from the edit history), then load / units / premise from its own saved calculation */
+function ownCustomer(row, from, since) {
+  const raw = D.getRec(from.id), props = {};
+  for (const k of Object.keys(from.f || {})) if (k.startsWith('p:')) {
+    const old = since ? valueAt(raw, k, since) : { v: D.val(from, k) };
+    if (old && old.v != null && old.v !== '') props[k] = old.v;
+  }
+  props['p:name'] = DB.title(row).trim();
+  const snap = D.all('ccalc', c => D.val(c, 'project') === row.id).sort((a, b) => D.val(b, 'version', 0) - D.val(a, 'version', 0))[0];
+  const inp = (snap && (D.val(snap, 'snap') || {}).inputs) || null;
+  if (inp) { if (inp.applied != null && inp.applied !== '') props['p:load'] = inp.applied; if (inp.units != null && inp.units !== '') props['p:units'] = inp.units; if (inp.premise) props['p:premise'] = inp.premise; }
+  // the project's own Address / Pin Location (copied over by the shared record): as they were before, when the history has it
+  const dbr = DB.kpiDb(), rr = D.getRec(row.id);
+  for (const [prop, key] of [['Address', 'address'], ['Pin Location', 'map']]) {
+    const P = DB.propByName(dbr, prop); if (!P) continue;
+    const old = since ? valueAt(rr, 'p:' + P.id, since) : null;
+    const v = old && old.v ? old.v : rowVal(row, prop);
+    if (v) { props['p:' + key] = v; if (old && old.v && old.v !== rowVal(row, prop)) setRow(row, prop, old.v); }
+  }
+  const id = 'cp' + row.id + '_' + from.id; // the same id on every device, so two devices splitting at once make one record
+  let c = D.getRec(id);
+  if (c) { if (!D.live(id)) D.restore(id); D.update(id, props); c = D.live(id); }
+  else c = D.create('cust', shard(), { id, created: Date.now(), ...props });
+  D.update(row.id, { cust: c.id });
+  return c;
 }
 /** customer fields; name, address and pin are copied to every linked project so all lists stay the same */
 export function setCustomer(c, key, v) {
@@ -498,6 +542,7 @@ export function ensureModel() {
   for (const k of ['ecpar', 'ecx']) for (const r of D.all(k)) { const s = g(r, 'status'), to = OLD_STATUS[k][s]; if (to) D.update(r.id, { 'p:status': to }); }
   // ECX Draft / Approved are gone: Draft → Submitted when it has a Completed Date (else no status); Approved → Resubmitted / Submitted (never Closed: that would close the project)
   for (const x of D.all('ecx', x => ['Draft', 'Approved'].includes(g(x, 'status')))) D.update(x.id, { 'p:status': g(x, 'status') === 'Approved' ? (g(x, 'resubmitted') ? 'Resubmitted' : 'Submitted') : g(x, 'submitted') ? 'Submitted' : null });
+  custCount = new Map(); for (const r of DB.rows(dbr.id)) { const c = D.val(r, 'cust'); if (c) custCount.set(c, (custCount.get(c) || 0) + 1); }
   for (const row of DB.rows(dbr.id)) {
     linkCustomer(row);
     // one ECX application from the Reference No (ECX No), once per project

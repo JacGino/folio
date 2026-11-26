@@ -458,7 +458,11 @@ function ltAutoShort(f, row, info, res, totals) {
   return autoShortTitle({ prefix: ltPrefix(f, row, totals), code: ltCode(f, res), name: E.splitNameIc(f.client || info.title).name || info.title, address, units: ltUnits(info, row), station: P('Station') ? String(DB.value(row, P('Station')) || '') : '' }); // a longhouse: '8 EA LONGHOUSE … BTU'
 }
 /** a Long Text box grows to show all of its text */
-const ltGrow = el => { if (!el || !el.isConnected) return; el.style.height = 'auto'; const full = el.scrollHeight + 2;
+const ltGrow = el => { if (!el || !el.isConnected) return;
+  // typing more text that still fits: nothing to do (skips a full re-measure on every key)
+  const len = el.value.length, grew = len >= (el._ltLen || 0); el._ltLen = len;
+  if (grew && el.style.height && !el.closest('[data-k="client"]') && el.scrollHeight <= el.clientHeight + 1) return;
+  el.style.height = 'auto'; const full = el.scrollHeight + 2;
   // several customers (Developer / client): show up to the 3rd, then it scrolls inside the box
   const m = el.closest('[data-k="client"]') && String(el.value).match(/(?:^|\s)4\s*[).]\s/);
   const cap = m ? ltMeasure(el, el.value.slice(0, m.index)) : 0;
@@ -482,7 +486,7 @@ function ltUnits(info, row) {
 /** the Project title Folio writes: front title + work code + TO + full name + AT + the project's full Address */
 function ltAutoTitle(f, row, info, res, totals) {
   const P = DB.propByName(DB.kpiDb(), 'Address'), address = P ? String(DB.value(row, P) || '') : '';
-  return autoProjectTitle({ prefix: ltPrefix(f, row, totals), code: ltCode(f, res), name: E.isMultiApplicant(info.title) ? info.title : (E.splitNameIc(f.client || info.title).name || info.title), address, units: ltUnits(info, row) });
+  return autoProjectTitle({ prefix: ltPrefix(f, row, totals), code: ltCode(f, res).replace('ST LIGHT', 'PUBLIC LIGHTING') /* the Project title spells it out */, name: E.isMultiApplicant(info.title) ? info.title : (E.splitNameIc(f.client || info.title).name || info.title), address, units: ltUnits(info, row) });
 }
 function ltDefaults(row, info, w, res) {
   const c = E.customerOf(row), P = n => DB.propByName(DB.kpiDb(), n), pv = n => P(n) ? DB.value(row, P(n)) : '';
@@ -561,8 +565,9 @@ function longTextSheet(row, info, w) {
     // who releases the CDP (partially customer funded): (b) up to RM25,000 → Manager (Theresa); above RM25,000 → Regional Manager (Hung)
     { const b = +String(f.costNoOH ?? '').replace(/rm|,|\s/gi, ''), has = String(f.costNoOH ?? '').trim() !== '' && isFinite(b) && b > 0 && t.cdpSeek > 0.004;
       relNote.replaceChildren(h('small', {}, '3) Approval / Release by'),
-        h('b', {}, has ? (b <= 25000 ? 'Manager (Theresa)' : 'Regional Manager (Hung)') : !(String(f.costNoOH ?? '').trim() !== '' && isFinite(b) && b > 0) ? 'Enter (b) Cost of project without OH' : 'No CDP to seek'),
-        ...(has ? [h('span', {}, `Cost of project without OH ${RMS(b)} ${b <= 25000 ? '≤' : '>'} RM25,000 with CDP ${RMS(t.cdpSeek)} (partially customer funded)`)] : [])); }
+        h('b', {}, has ? (b <= 25000 ? 'Manager (Theresa)' : 'Regional Manager (Hung)') : !(String(f.costNoOH ?? '').trim() !== '' && isFinite(b) && b > 0) ? 'Enter (b) Cost of project without OH' : 'Manager (Theresa)'),
+        ...(has ? [h('span', {}, `Cost of project without OH ${RMS(b)} ${b <= 25000 ? '≤' : '>'} RM25,000 with CDP ${RMS(t.cdpSeek)} (partially customer funded)`)]
+          : String(f.costNoOH ?? '').trim() !== '' && isFinite(b) && b > 0 ? [h('span', {}, 'CDP to seek RM 0.00')] : [])); } // no CDP to seek: the Manager releases it
     // ECPAR Budget Amount follows CDP to seek (once (b) Total cost of project is filled in, so CDP is a real figure)
     if (String(f.costNoOH ?? '').trim() !== '' && isFinite(+String(f.costNoOH).replace(/,/g, ''))) {
       const ep = E.ecpar(row), cur = E.g(ep, 'budget');

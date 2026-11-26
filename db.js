@@ -246,7 +246,13 @@ export function daysLeftLabel(t, days, now = Date.now()) {
   if (days < 0) return { text: '\uD83D\uDD34 OVERDUE (' + Math.abs(days) + (days === -1 ? ' day)' : ' days)'), tone: 'late' };
   return days <= 2 ? { text: '\uD83D\uDFE0 ' + days + (days === 1 ? ' day left' : ' days left'), tone: 'soon' } : { text: '\uD83D\uDD35 ' + days + ' days left', tone: 'ok' };
 }
+/** a project's status / due / KPI facts. Worked out once per data change (and per minute of the clock) and reused by every screen;
+ *  each caller gets its own copy, so changing it cannot affect another screen */
 export function kpiInfo(row, dbr, now = Date.now()) {
+  if (!row || !dbr) return kpiInfoNow(row, dbr, now);
+  return { ...D.memo('ki:' + row.id + ':' + dbr.id + ':' + Math.floor(now / 60000), () => kpiInfoNow(row, dbr, now)) };
+}
+function kpiInfoNow(row, dbr, now = Date.now()) {
   const P = n => propByName(dbr, n), today = startOfDay(new Date(now));
   const status = value(row, P('Status')) || '';
   const archived = value(row, P('Archive')) === true;

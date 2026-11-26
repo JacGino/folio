@@ -88,13 +88,14 @@ const textOf = d => d == null ? '' : typeof d === 'string' ? d
   : (Object.entries(d).find(([k]) => /^(text|body|content|email)$/i.test(k)) || [])[1] ?? Object.values(d).filter(v => typeof v === 'string').join('\n');
 
 /** read inbox/ (after each sync); returns the BTU numbers recorded */
+const readCache = new Map();
 export async function checkInbox() {
   if (busy || !Sync.connected() || !DB.kpiDb()) return [];
   busy = true; const done = [], waiting = [];
   try {
     E.ensureAll();
     for (const f of await Sync.inboxList()) {
-      const p = parseEcparEmail(textOf(await Sync.inboxRead(f.path)), f.name);
+      const ck = f.path + '@' + f.sha, p = readCache.has(ck) ? readCache.get(ck) : parseEcparEmail(textOf(await Sync.inboxRead(f.path)), f.name); readCache.set(ck, p); // an email waiting for its project is read once, not every sync
       if (!p || !p.rejected) { await Sync.inboxDrop(f.path, f.sha); continue; } // empty test runs and anything that is not a rejection
       const row = findProject(p.ref);
       if (!row) { waiting.push({ ...p, path: f.path, sha: f.sha, file: f.name }); continue; } // stays in inbox/ until you pick the project

@@ -193,7 +193,7 @@ function tableCard(kind, def, S, base, rows, n) {
   const list = h('div', { class: 'flist', role: 'table', 'aria-label': def.title });
   const tabEls = def.tabs.map(([k, l, ic, f]) => h('button', { class: 'dchip' + (S.tab === k ? ' on' : ''), 'aria-pressed': S.tab === k ? 'true' : 'false', onclick: () => { S.tab = k; S.show = 60; render(); } }, ic ? icon(ic, 14) : null, l, h('span', { class: 'dcount' }, base.filter(f).length)));
   if (kind === 'ecpar') tabEls.push(h('button', { class: 'dchip ecarchip', onclick: () => go('#/ecpar-archive'), title: 'Every ECPAR rejection, by year, for the KPI review' }, icon('archive', 14), 'Archive'),
-    h('button', { class: 'dchip ecarchip', onclick: () => pasteEmailFlow(), title: 'Record a rejection from a SAP_WFRT email you copy and paste' }, icon('mail', 14), 'Paste email'));
+    h('button', { class: 'dchip ecpaste', onclick: () => pasteEmailFlow(), title: 'Record a rejection from a SAP_WFRT email you copy and paste' }, icon('mail', 14), 'Paste email'));
   const search = textbox({ value: S.q, cls: 'hsearch-in', placeholder: { today: 'Search ECX, customer, address…', survey: 'Search project, customer, address…', ecpar: 'Search ECPAR no., customer, address…', ecx: 'Search ECX, customer, address…' }[kind], label: 'Search',
     oninput: () => { S.q = search.value; clearTimeout(search._t); search._t = setTimeout(() => refreshInPlace(kind, search), 220); } });
   const active = [S.cat && ['Category: ' + short(S.cat), () => S.cat = ''], S.pri && ['Priority: ' + S.pri, () => S.pri = ''], S.status && ['Status: ' + S.status, () => S.status = ''],
@@ -235,7 +235,8 @@ function refreshInPlace(kind, search) {
   const wrap = search.closest('.focus'); if (!wrap) return;
   const fresh = focusScreen(kind);
   for (const sel of ['.fmetrics', '.fgrid']) { const a = wrap.querySelector(sel), b = fresh.querySelector(sel); if (a && b) a.replaceWith(b); }
-  const slot = wrap.querySelector('.fsearch .tbox'); if (slot && slot !== search) slot.replaceWith(search);
+  const slot = wrap.querySelector('.fsearch .tbox'); if (slot && slot !== search) { const x = slot.nextSibling && slot.nextSibling.classList && slot.nextSibling.classList.contains('tclear') ? slot.nextSibling : null; slot.replaceWith(search); if (x) x.remove(); }
+  search._placeClear && search._placeClear();
 }
 const clearFilters = S => { Object.assign(S, { q: '', cat: '', pri: '', status: '', date: '', tab: 'all', pf: [], col: null }); render(); };
 const sortOptions = kind => [['due', 'Due date'], ['cust', 'Customer'], ['pri', 'Priority'], ...(kind === 'survey' ? [['sched', 'Survey date']] : []), ...(kind === 'ecpar' || kind === 'ecx' ? [['rejected', 'Rejected date (newest)']] : [])];

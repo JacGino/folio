@@ -257,7 +257,7 @@ export function projectsScreen() {
     return r;
   }
 
-  const search = textbox({ value: pq, placeholder: 'Search customer, address, reference or ECX…', cls: 'hsearch-in', label: 'Search projects', oninput: () => { pq = search.value; pshow = 50; draw(); } });
+  const search = textbox({ value: pq, placeholder: 'Search customer, address, reference or ECX…', cls: 'hsearch-in', label: 'Search projects', oninput: () => { pq = search.value; pshow = 50; clearTimeout(search._t); search._t = setTimeout(draw, 160); } }); // redraw once typing pauses, not on every key
   const cats = (P('Project Category')?.options || []).map(o => o.name), stats = (P('Status')?.options || []).map(o => o.name);
   const filterMenu = a => menu(a, [
     { el: h('div', { class: 'mhead' }, 'Category') }, { label: 'All categories', checked: !pcat, run: () => { pcat = ''; render(); } }, ...cats.map(c => ({ label: c, checked: pcat === c, run: () => { pcat = c; render(); } })), '-',
@@ -457,7 +457,7 @@ function overview(row, info, n) {
   // other projects of this customer: a different ECX No is a separate application (rare — usually the first is cancelled);
   // the same ECX No is another record of this same application (a likely duplicate), shown apart so it can be removed
   const ecxNo = r => String(DB.refParts(r).ecx || (E.ecxOf(r.id)[0] && g(E.ecxOf(r.id)[0], 'number')) || '').trim().toUpperCase();
-  const mine = ecxNo(row), all = c ? E.projectsOf(c.id).filter(r => r.id !== row.id) : [];
+  const mine = ecxNo(row), all = E.projectsNamed(info.title).filter(r => r.id !== row.id); // same customer name (each project keeps its own details)
   const dups = mine ? all.filter(r => ecxNo(r) === mine) : [], others = all.filter(r => !dups.includes(r));
   const year = r => { const i = DB.kpiInfo(r, DB.kpiDb(), n); return (i.assigned || new Date(D.val(r, 'created', n))).getFullYear(); };
   const ms = E.milestones(row, info), kd = E.kpiDays(info, n);
