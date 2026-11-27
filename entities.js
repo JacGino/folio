@@ -24,6 +24,8 @@ export const TARIFFS = ['Domestic', 'Commercial'];
 // Type of Supply (shown in Metering Scheme); 'Underground' from before is a Service Cable
 export const APP_TYPES = ['Service Line', 'Service Cable'];
 export const METER_TYPES = ['1-Phase', '3-Phase', 'LVCT'];
+/** Metering Scheme of a development (Load Summary): one type, or a mix */
+export const METER_SCHEMES = [...METER_TYPES, '1-Phase & 3-Phase', '1-Phase & LVCT', '3-Phase & LVCT', '1-Phase, 3-Phase & LVCT'];
 export const NEM_METER_TYPES = ['1-Phase', '3-Phase', 'PV Meter'];
 // SAL100KW sub-type (shown with the category in Project Information); Government Subsidy is the customer's subsidy (Long Text uses it)
 export const SAL_TYPES = ['Normal Project', 'Government Subsidy (70%)', 'Government Subsidy (100%)'];
@@ -129,6 +131,16 @@ export const projectsOf = custId => projects().filter(r => D.val(r, 'cust') === 
 /** projects with the same customer name (each has its own customer details) */
 export const projectsNamed = name => { const k = custKey(name || ''); return k ? projects().filter(r => custKey(DB.title(r)) === k) : []; };
 let custCount = null; // customer id → number of projects linked, built once per ensureModel
+/** Station names in capitals (Bintulu → BINTULU), like the other stations: the option list and every project that uses it */
+function stationsUpper(dbr) {
+  const P = DB.propByName(dbr, 'Station'); if (!P || !Array.isArray(P.options)) return;
+  const low = P.options.filter(o => o && o.name && o.name !== o.name.toUpperCase()); if (!low.length) return;
+  const map = new Map(low.map(o => [o.name, o.name.toUpperCase()]));
+  const seen = new Set(), options = [];
+  for (const o of P.options) { const n = map.get(o.name) || o.name; if (seen.has(n)) continue; seen.add(n); options.push({ ...o, name: n }); }
+  DB.saveProps(dbr, DB.props(dbr).map(p => p.id === P.id ? { ...p, options } : p));
+  for (const r of DB.rows(dbr.id)) { const v = D.val(r, 'p:' + P.id); if (typeof v === 'string' && map.has(v)) D.update(r.id, { ['p:' + P.id]: map.get(v) }); else if (Array.isArray(v) && v.some(x => map.has(x))) D.update(r.id, { ['p:' + P.id]: v.map(x => map.get(x) || x) }); }
+}
 /** each project has its OWN customer details (address, load, units, phone, tariff …), even when the customer name is the same
  *  as another project's — so changing one project never changes another. Older projects that shared one record are split once:
  *  the newest keeps it, each older one gets its own copy (load / units / premise from its own saved calculation when it has one). */
@@ -539,6 +551,7 @@ export function kpiDays(info, now = Date.now()) {
 // ---------------- migration: runs at start-up and after every sync; only writes what is missing ----------------
 export function ensureModel() {
   const dbr = DB.kpiDb(); if (!dbr) return;
+  stationsUpper(dbr);
   for (const k of ['ecpar', 'ecx']) for (const r of D.all(k)) { const s = g(r, 'status'), to = OLD_STATUS[k][s]; if (to) D.update(r.id, { 'p:status': to }); }
   // ECX Draft / Approved are gone: Draft → Submitted when it has a Completed Date (else no status); Approved → Resubmitted / Submitted (never Closed: that would close the project)
   for (const x of D.all('ecx', x => ['Draft', 'Approved'].includes(g(x, 'status')))) D.update(x.id, { 'p:status': g(x, 'status') === 'Approved' ? (g(x, 'resubmitted') ? 'Resubmitted' : 'Submitted') : g(x, 'submitted') ? 'Submitted' : null });

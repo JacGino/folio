@@ -568,7 +568,7 @@ function overview(row, info, n) {
         h('section', { class: 'hcard pcard' },
           h('h3', { class: 'ph' }, icon('barchart', 17), 'Load Summary'),
           h('div', { class: 'kvs' }, cf('text', 'Description', 'loadDesc', { ph: 'e.g. 20 units double storey terrace house' }),
-            cf('today', 'Metering Scheme', 'meter', { type: 'select', options: E.METER_TYPES }),
+            cf('today', 'Metering Scheme', 'meter', { type: 'select', options: E.METER_SCHEMES }),
             kv('layers', 'No of Unit', c ? num('No of Unit', () => unitsOf(row), v => setUnits(row, v)) : '—'),
             kv('formula', 'Max Demand After Diversity Factor (kVA)', cnum('maxDemand', 'Max Demand After Diversity Factor (kVA)', ' kVA')),
             kv('formula', 'Total Development Loading (kVA)', cnum('devLoad', 'Total Development Loading (kVA)', ' kVA')))),

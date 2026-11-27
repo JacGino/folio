@@ -158,7 +158,7 @@ export function createKpiTracker(parentPage = null) {
   const opts = (...l) => l.map(([name, color]) => ({ name, color }));
   const props = [
     P('Customer Name', 'title'), P(REF_ECX, 'text'), P(REF_ECPAR, 'text'), P('Project Category', 'multi', { options: opts(['New Application', 'blue'], ['SAL100KW', 'brown'], ['Resubmission', 'pink'], ['NEM', 'gray']) }),
-    P('Address', 'text'), P('Pin Location', 'url'), P('Station', 'select', { options: opts(['Bintulu', 'brown']) }),
+    P('Address', 'text'), P('Pin Location', 'url'), P('Station', 'select', { options: opts(['BINTULU', 'brown']) }),
     P('Date Assigned', 'date'), P('Due Date', 'date'), P('Date Completed', 'date'), P('ECPAR Rejected', 'date'),
     P('Status', 'status', { options: opts(['Site Survey', 'blue'], ['Estimation', 'yellow'], ['To Amend', 'orange'], ['Done', 'green'], ['Rejected', 'red']) }),
     P('Alert', 'formula', { formula: ALERT_FORMULA }), P('Archive', 'checkbox')];

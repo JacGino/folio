@@ -61,7 +61,7 @@ const extrasSum = w => Math.round(extrasRes(w).reduce((a, x) => a + x.amount, 0)
 function fromCustomer(row) {
   const w = blank(), c = E.customerOf(row); if (!c) return w;
   const meter = g(c, 'meter'), prem = PREMISES.find(p => p.label === g(c, 'premise'));
-  if (meter) w.inputs.phase = meter === '1-Phase' ? 1 : 3; // LVCT is three-phase
+  if (meter) w.inputs.phase = meter === '1-Phase' ? 1 : 3; // LVCT is three-phase; a mix with 3-Phase or LVCT counts as three-phase
   if (prem) w.inputs.premise = prem.key;
   if (g(c, 'load') != null && g(c, 'load') !== '') w.inputs.applied = g(c, 'load'); // Applied Load keyed in on the Overview
   if (g(c, 'units') != null && g(c, 'units') !== '') { w.inputs.units = g(c, 'units'); w.inputs.unitsAuto = false; } // No of Unit keyed in on the Overview
