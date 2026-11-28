@@ -2,7 +2,7 @@
 /* Folio v2 — calm, Apple-system colours, glass navigation over opaque content. */
 :root {
   --cellsel: #EDEDEF;
-  --bg: #FFFFFF; --bg2: #F2F2F7; --bg3: #E5E5EA; --ink: #111111; --ink2: #45443F; --ink3: #6B6A66; --muted: #6B6A66; --rule: #E9E9E7;
+  --bg: #FFFFFF; --bg2: #F2F2F7; --bg3: #E5E5EA; --ink: #111111; --ink2: #45443F; --ink3: #9B9A97; --muted: #9B9A97; --rule: #E9E9E7;
   --blue: #1F72C4; --red: #C4403B; --orange: #B35A0C; --orange-n: #D9730D;
   --red-bg: #FFE2DD; --orange-bg: #FADEC9; --blue-bg: #D3E5EF;
   --glass: rgba(255,255,255,0.6); --glass-b: rgba(255,255,255,0.7); --glass-in: rgba(255,255,255,0.8); --active: rgba(55,53,47,0.86); --active-ink: #FFFFFF;
